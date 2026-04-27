@@ -74,29 +74,29 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse max-w-xs">
+      <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse" style={{ minWidth: 200 }}>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
           Request #{d.index + 1}
         </p>
         <div className="space-y-1.5">
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
             <span className="text-zinc-400 dark:text-zinc-400">Total tokens</span>
             <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.x.toLocaleString()}</span>
           </div>
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
             <span className="text-zinc-400 dark:text-zinc-400">TTFT</span>
             <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.y.toLocaleString()}ms</span>
           </div>
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
             <span className="text-zinc-400 dark:text-zinc-400">Cache hit</span>
             <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{(d.cacheRatio * 100).toFixed(0)}%</span>
           </div>
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
             <span className="text-zinc-400 dark:text-zinc-400">New input</span>
             <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.input.toLocaleString()}</span>
           </div>
           {d.stallCount > 0 && (
-            <div className="flex justify-between text-xs">
+            <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
               <span className="text-ember">Stalls</span>
               <span className="metric-mono font-semibold text-ember">{d.stallCount}</span>
             </div>
@@ -162,7 +162,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
             <ZAxis type="number" dataKey="z" range={[40, 200]} />
-            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} allowEscapeViewBox={{ x: true, y: true }} />
             <Scatter data={data} onClick={(d: any) => onPointClick(d.id)}>
               {data.map((entry, index) => (
                 <Cell
