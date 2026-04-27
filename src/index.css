@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -19,26 +18,26 @@
 }
 
 :root {
-  --bg: #f9fafb;
+  --bg: #fafafa;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --border: rgba(226, 232, 240, 0.5);
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-tertiary: #94a3b8;
+  --border: rgba(228, 228, 231, 0.5);
+  --text-primary: #09090b;
+  --text-secondary: #71717a;
+  --text-tertiary: #a1a1aa;
   --accent: #0891b2;
   --accent-light: #06b6d4;
   --accent-muted: #164e63;
 }
 
 .dark {
-  --bg: #0a0a0f;
-  --surface: #111118;
-  --surface-raised: #18181f;
-  --border: rgba(51, 65, 85, 0.4);
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
+  --bg: #18181b;
+  --surface: #1e1e22;
+  --surface-raised: #27272a;
+  --border: rgba(255, 255, 255, 0.06);
+  --text-primary: #d4d4d8;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
   --accent: #06b6d4;
   --accent-light: #22d3ee;
   --accent-muted: #164e63;
@@ -65,7 +64,7 @@ body {
   }
 
   .dark .card-surface {
-    box-shadow: 0 20px 40px -15px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -8px rgba(0,0,0,0.4);
   }
 
   .glass-panel {
@@ -77,9 +76,9 @@ body {
   }
 
   .dark .glass-panel {
-    background: rgba(17, 17, 24, 0.85);
-    border: 1px solid rgba(51, 65, 85, 0.3);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 20px 40px -15px rgba(0,0,0,0.4);
+    background: rgba(30, 30, 34, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px -8px rgba(0,0,0,0.5);
   }
 
   .metric-mono {

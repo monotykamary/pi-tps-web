@@ -27,7 +27,7 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
       className={`flex items-center gap-3 px-5 py-3 rounded-2xl border transition-colors ${
         accent
           ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
-          : 'bg-white/60 border-slate-200/50 dark:bg-slate-800/60 dark:border-slate-700/40'
+          : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
       }`}
       whileHover={{ y: -1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -35,14 +35,14 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
       <div className={`p-2 rounded-xl ${
         accent
           ? 'bg-accent/10 text-accent dark:bg-accent/15'
-          : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+          : 'bg-zinc-100 text-zinc-500 dark:bg-white/[0.04] dark:text-zinc-400'
       }`}>
         <Icon weight="bold" size={18} />
       </div>
       <div>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
-        <p className="metric-mono text-lg font-semibold text-slate-800 dark:text-slate-100 leading-none">
-          {value}{unit && <span className="text-sm text-slate-400 dark:text-slate-500 ml-0.5">{unit}</span>}
+        <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{label}</p>
+        <p className="metric-mono text-lg font-semibold text-zinc-800 dark:text-zinc-300 leading-none">
+          {value}{unit && <span className="text-sm text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
         </p>
       </div>
     </motion.div>
@@ -116,21 +116,21 @@ export default function App() {
 
   return (
     <div
-      className="min-h-[100dvh] bg-[#f9fafb] dark:bg-[#0a0a0f]"
+      className="min-h-[100dvh] bg-[#fafafa] dark:bg-[#18181b]"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#f9fafb]/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/40">
+      <header className="sticky top-0 z-40 bg-[#fafafa]/80 dark:bg-[#18181b]/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-white/[0.06]">
         <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-accent/10 dark:bg-accent/15 rounded-xl">
               <Gauge weight="bold" size={22} className="text-accent" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50 leading-none">pi-tps</h1>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium tracking-wide mt-0.5">TELEMETRY INSPECTOR</p>
+              <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-300 leading-none">pi-tps</h1>
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-400 font-medium tracking-wide mt-0.5">TELEMETRY INSPECTOR</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -142,33 +142,33 @@ export default function App() {
                 className="sr-only"
                 onChange={handleFileInput}
               />
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-xl text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
                 <FileArrowUp size={16} weight="bold" />
                 <span>Import JSONL</span>
               </div>
             </label>
             {summary && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-white/80 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40 rounded-xl">
+              <div className="flex items-center gap-2 px-3 py-2 bg-white/80 dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-xl">
                 <Pulse size={14} className="text-moss" weight="fill" />
                 {summary.models.length === 1 ? (
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{summary.models[0].modelId.split('/').pop()}</span>
+                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{summary.models[0].modelId.split('/').pop()}</span>
                 ) : (
                   <div className="flex items-center gap-1.5">
                     {summary.models.map(m => (
                       <span
                         key={m.modelId}
-                        className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1"
+                        className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1"
                         title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
                       >
                         {m.modelId.split('/').pop()}
-                        <span className="text-[10px] metric-mono text-slate-400 dark:text-slate-500">{m.callCount}</span>
+                        <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400">{m.callCount}</span>
                       </span>
-                    )).reduce<React.ReactNode[]>((acc, el, i) => i > 0 ? [...acc, <span key={`sep-${i}`} className="text-[10px] text-slate-300 dark:text-slate-600">·</span>, el] : [el], [])}
+                    )).reduce<React.ReactNode[]>((acc, el, i) => i > 0 ? [...acc, <span key={`sep-${i}`} className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>, el] : [el], [])}
                   </div>
                 )}
                 {(summary.modelChangeCount > 0 || summary.rewindCount > 0) && (
                   <>
-                    <span className="text-[10px] text-slate-300 dark:text-slate-600">·</span>
+                    <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
                     <div className="flex items-center gap-1.5">
                       {summary.modelChangeCount > 0 && (
                         <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${summary.modelChangeCount} model switches`}>
@@ -201,8 +201,8 @@ export default function App() {
             className="flex items-center justify-center min-h-[60dvh]"
           >
             <div className="flex flex-col items-center gap-4">
-              <div className="w-10 h-10 border-2 border-slate-200 dark:border-slate-700 border-t-accent rounded-full animate-spin" />
-              <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">Loading telemetry...</p>
+              <div className="w-10 h-10 border-2 border-zinc-200 dark:border-white/[0.06] border-t-accent rounded-full animate-spin" />
+              <p className="text-sm text-zinc-400 dark:text-zinc-400 font-medium">Loading telemetry...</p>
             </div>
           </motion.div>
         ) : !events || tpsEvents.length === 0 ? (
@@ -215,14 +215,14 @@ export default function App() {
             <div className={`max-w-md w-full text-center p-12 rounded-[2.5rem] border-2 border-dashed transition-colors ${
               dragOver
                 ? 'border-accent bg-accent/5 dark:border-accent dark:bg-accent/10'
-                : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800/60'
+                : 'border-zinc-200 bg-white dark:border-white/[0.06] dark:bg-zinc-800/40'
             }`}>
-              <div className="w-16 h-16 mx-auto mb-6 bg-slate-50 dark:bg-slate-700/50 rounded-3xl flex items-center justify-center">
-                <FileArrowUp size={28} className="text-slate-300 dark:text-slate-500" weight="duotone" />
+              <div className="w-16 h-16 mx-auto mb-6 bg-zinc-50 dark:bg-white/[0.06] rounded-3xl flex items-center justify-center">
+                <FileArrowUp size={28} className="text-zinc-300 dark:text-zinc-400" weight="duotone" />
               </div>
-              <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-200 mb-2">Drop a telemetry file</h2>
-              <p className="text-sm text-slate-400 dark:text-slate-500 mb-8 leading-relaxed">
-                Drag and drop a <code className="metric-mono text-xs bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded">.jsonl</code> file from pi to inspect tokens-per-second, timing, and cache behavior.
+              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop a telemetry file</h2>
+              <p className="text-sm text-zinc-400 dark:text-zinc-400 mb-8 leading-relaxed">
+                Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file from pi to inspect tokens-per-second, timing, and cache behavior.
               </p>
               <button
                 onClick={loadSample}

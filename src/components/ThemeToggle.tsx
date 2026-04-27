@@ -15,22 +15,22 @@ const options: { value: Theme; icon: React.ElementType; label: string }[] = [
 
 export default function ThemeToggle({ theme, setTheme }: Props) {
   return (
-    <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl p-1">
+    <div className="flex items-center gap-1 bg-zinc-100/80 dark:bg-zinc-800/50 rounded-xl p-1">
       {options.map(({ value, icon: Icon, label }) => (
         <button
           key={value}
           onClick={() => setTheme(value)}
           className={`relative flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
             theme === value
-              ? 'text-slate-800 dark:text-slate-100'
-              : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+              ? 'text-zinc-800 dark:text-zinc-300'
+              : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
           }`}
           title={label}
         >
           {theme === value && (
             <motion.div
               layoutId="theme-toggle-bg"
-              className="absolute inset-0 bg-white dark:bg-slate-700 rounded-lg shadow-sm"
+              className="absolute inset-0 bg-white dark:bg-zinc-700/60 rounded-lg shadow-sm"
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             />
           )}

@@ -23,7 +23,7 @@ export default function CacheEfficiency({ events }: Props) {
     const totalOut = sorted.reduce((s, e) => s + e.data.tokens.output, 0);
     return [
       { name: 'Cache Read', value: totalCache, color: '#0891b2' },
-      { name: 'New Input', value: totalNew, color: '#0f172a' },
+      { name: 'New Input', value: totalNew, color: '#3f3f46' },
       { name: 'Output', value: totalOut, color: '#059669' },
     ];
   }, [sorted]);
@@ -49,7 +49,7 @@ export default function CacheEfficiency({ events }: Props) {
     const d = payload[0];
     return (
       <div className="glass-panel rounded-xl px-3 py-2 text-xs shadow-diffuse">
-        <span className="font-semibold text-slate-700 dark:text-slate-200">{d.name}:</span> <span className="metric-mono">{d.value.toLocaleString()}</span>
+        <span className="font-semibold text-zinc-700 dark:text-zinc-300">{d.name}:</span> <span className="metric-mono">{d.value.toLocaleString()}</span>
       </div>
     );
   };
@@ -65,7 +65,7 @@ export default function CacheEfficiency({ events }: Props) {
         <div className="p-1.5 bg-accent/10 dark:bg-accent/15 rounded-lg">
           <HardDrives size={16} className="text-accent" weight="bold" />
         </div>
-        <h2 className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">Cache Efficiency</h2>
+        <h2 className="text-base font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">Cache Efficiency</h2>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -91,8 +91,8 @@ export default function CacheEfficiency({ events }: Props) {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="metric-mono text-2xl font-bold text-slate-800 dark:text-slate-100">{cacheHitRate.toFixed(0)}%</span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wider">cache hit</span>
+            <span className="metric-mono text-2xl font-bold text-zinc-800 dark:text-zinc-300">{cacheHitRate.toFixed(0)}%</span>
+            <span className="text-[10px] text-zinc-400 dark:text-zinc-400 font-medium uppercase tracking-wider">cache hit</span>
           </div>
         </div>
 
@@ -101,10 +101,10 @@ export default function CacheEfficiency({ events }: Props) {
           {overall.map(item => (
             <div key={item.name}>
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-500 dark:text-slate-400 font-medium">{item.name}</span>
-                <span className="metric-mono text-slate-700 dark:text-slate-200 font-semibold">{((item.value / overall.reduce((s, v) => s + v.value, 0)) * 100).toFixed(0)}%</span>
+                <span className="text-zinc-500 dark:text-zinc-400 font-medium">{item.name}</span>
+                <span className="metric-mono text-zinc-700 dark:text-zinc-300 font-semibold">{((item.value / overall.reduce((s, v) => s + v.value, 0)) * 100).toFixed(0)}%</span>
               </div>
-              <div className="h-1.5 bg-slate-100 dark:bg-slate-700/60 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-zinc-100 dark:bg-white/[0.06] rounded-full overflow-hidden">
                 <motion.div
                   className="h-full rounded-full"
                   style={{ backgroundColor: item.color }}
@@ -119,8 +119,8 @@ export default function CacheEfficiency({ events }: Props) {
       </div>
 
       {/* Over-time mini bars */}
-      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">Cache hit rate over time (by request range)</p>
+      <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-white/[0.06]">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-3">Cache hit rate over time (by request range)</p>
         <div className="flex items-end gap-1.5 h-12">
           {(() => {
             const rates = cacheOverTime.map(c => c.hitRate);
@@ -137,7 +137,7 @@ export default function CacheEfficiency({ events }: Props) {
                     animate={{ height: `${Math.max(8, normalized)}%` }}
                     transition={{ delay: 0.55 + i * 0.06, duration: 0.5, type: 'spring', stiffness: 80 }}
                   />
-                  <span className="text-[9px] metric-mono text-slate-400 dark:text-slate-500">{c.hitRate}%</span>
+                  <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">{c.hitRate}%</span>
                 </div>
               );
             });

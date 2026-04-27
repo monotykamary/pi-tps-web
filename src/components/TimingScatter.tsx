@@ -75,25 +75,25 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
     const d = payload[0].payload;
     return (
       <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse max-w-xs">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
           Request #{d.index + 1}
         </p>
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400 dark:text-slate-500">Total tokens</span>
-            <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">{d.x.toLocaleString()}</span>
+            <span className="text-zinc-400 dark:text-zinc-400">Total tokens</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.x.toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400 dark:text-slate-500">TTFT</span>
-            <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">{d.y.toLocaleString()}ms</span>
+            <span className="text-zinc-400 dark:text-zinc-400">TTFT</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.y.toLocaleString()}ms</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400 dark:text-slate-500">Cache hit</span>
-            <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">{(d.cacheRatio * 100).toFixed(0)}%</span>
+            <span className="text-zinc-400 dark:text-zinc-400">Cache hit</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{(d.cacheRatio * 100).toFixed(0)}%</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400 dark:text-slate-500">New input</span>
-            <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">{d.input.toLocaleString()}</span>
+            <span className="text-zinc-400 dark:text-zinc-400">New input</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.input.toLocaleString()}</span>
           </div>
           {d.stallCount > 0 && (
             <div className="flex justify-between text-xs">
@@ -115,16 +115,16 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
     >
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-slate-800 dark:text-slate-100">TTFT vs Context Size</h2>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Color indicates cache efficiency category derived from data.</p>
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">TTFT vs Context Size</h2>
+          <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">Color indicates cache efficiency category derived from data.</p>
         </div>
-        <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-700/60 rounded-xl p-1">
+        <div className="flex items-center gap-1.5 bg-zinc-100/80 dark:bg-white/[0.06] rounded-xl p-1">
           {(['log', 'linear'] as const).map(s => (
             <button
               key={s}
               onClick={() => setScale(s)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                scale === s ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                scale === s ? 'bg-white dark:bg-zinc-600 text-zinc-800 dark:text-zinc-300 shadow-sm' : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
               }`}
             >
               {s === 'log' ? 'Log Scale' : 'Linear'}
@@ -136,14 +136,14 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:opacity-20" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" className="dark:opacity-40" />
             <XAxis
               type="number"
               dataKey="x"
               name="Total Tokens"
               scale={scale}
               domain={xDomain as [number, number]}
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
               axisLine={false}
               tickLine={false}
               dy={8}
@@ -155,7 +155,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
               name="TTFT (ms)"
               scale={scale}
               domain={yDomain as [number, number]}
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
               axisLine={false}
               tickLine={false}
               dx={-4}
@@ -182,19 +182,19 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
       <div className="mt-4 flex items-center gap-5 text-[11px]">
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-moss" />
-          <span className="text-slate-400 dark:text-slate-500">Fast (cached, &gt;{formatThreshold(cacheThreshold)})</span>
+          <span className="text-zinc-400 dark:text-zinc-400">Fast (cached, &gt;{formatThreshold(cacheThreshold)})</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-accent" />
-          <span className="text-slate-400 dark:text-slate-500">Normal</span>
+          <span className="text-zinc-400 dark:text-zinc-400">Normal</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-ember" />
-          <span className="text-slate-400 dark:text-slate-500">Slow zone ({formatThreshold(lowContext)}–{formatThreshold(cacheThreshold)})</span>
+          <span className="text-zinc-400 dark:text-zinc-400">Slow zone ({formatThreshold(lowContext)}–{formatThreshold(cacheThreshold)})</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-amber" />
-          <span className="text-slate-400 dark:text-slate-500">Anomaly (massive new input)</span>
+          <span className="text-zinc-400 dark:text-zinc-400">Anomaly (massive new input)</span>
         </div>
       </div>
     </motion.div>

@@ -35,13 +35,13 @@ export default function TokenBreakdown({ events }: Props) {
     const d = payload[0].payload;
     return (
       <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Request #{d.index}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">Request #{d.index}</p>
         <div className="space-y-1">
           {payload.map((p: any) => (
             <div key={p.dataKey} className="flex items-center gap-2 text-xs">
               <div className="w-2 h-2 rounded-sm" style={{ background: p.color }} />
-              <span className="text-slate-400 dark:text-slate-500 w-20">{p.name}</span>
-              <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">{p.value?.toLocaleString()}</span>
+              <span className="text-zinc-400 dark:text-zinc-400 w-20">{p.name}</span>
+              <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{p.value?.toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -58,25 +58,25 @@ export default function TokenBreakdown({ events }: Props) {
     >
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-slate-800 dark:text-slate-100">Token Composition — Last 30 Requests</h2>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">How cache, new input, and output compose each request</p>
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">Token Composition — Last 30 Requests</h2>
+          <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">How cache, new input, and output compose each request</p>
         </div>
       </div>
 
       <div className="h-60">
         <ResponsiveContainer width="100%" height="100%">
           <RBarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:opacity-20" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" className="dark:opacity-40" vertical={false} />
             <XAxis
               dataKey="index"
-              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
               axisLine={false}
               tickLine={false}
               dy={8}
               interval={4}
             />
             <YAxis
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
               axisLine={false}
               tickLine={false}
               dx={-4}
@@ -84,7 +84,7 @@ export default function TokenBreakdown({ events }: Props) {
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="cacheRead" name="Cache Read" stackId="a" fill="#0891b2" fillOpacity={0.8} radius={[0, 0, 0, 0]} />
-            <Bar dataKey="input" name="New Input" stackId="a" fill="#0f172a" fillOpacity={0.6} radius={[0, 0, 0, 0]} />
+            <Bar dataKey="input" name="New Input" stackId="a" fill="#3f3f46" fillOpacity={0.8} radius={[0, 0, 0, 0]} />
             <Bar dataKey="output" name="Output" stackId="a" fill="#059669" fillOpacity={0.7} radius={[2, 2, 0, 0]} />
           </RBarChart>
         </ResponsiveContainer>
@@ -93,15 +93,15 @@ export default function TokenBreakdown({ events }: Props) {
       <div className="mt-4 flex items-center gap-5 text-[11px]">
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 rounded-sm bg-accent" />
-          <span className="text-slate-400 dark:text-slate-500">Cache Read</span>
+          <span className="text-zinc-400 dark:text-zinc-400">Cache Read</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-sm bg-slate-900/60 dark:bg-slate-400/60" />
-          <span className="text-slate-400 dark:text-slate-500">New Input</span>
+          <div className="w-2.5 h-2.5 rounded-sm bg-zinc-700 dark:bg-zinc-400" />
+          <span className="text-zinc-400 dark:text-zinc-400">New Input</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 rounded-sm bg-moss" />
-          <span className="text-slate-400 dark:text-slate-500">Output</span>
+          <span className="text-zinc-400 dark:text-zinc-400">Output</span>
         </div>
       </div>
     </motion.div>

@@ -56,13 +56,13 @@ export default function TimingDistribution({ events, thresholds }: Props) {
             <Timer size={16} className="text-accent" weight="bold" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-slate-800 dark:text-slate-100">TTFT Distribution</h2>
-            <p className="text-sm text-slate-400 dark:text-slate-500">Where time is spent across all calls</p>
+            <h2 className="text-lg font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">TTFT Distribution</h2>
+            <p className="text-sm text-zinc-400 dark:text-zinc-400">Where time is spent across all calls</p>
           </div>
         </div>
         <div className="flex items-center gap-3 text-[11px]">
           <span className="metric-mono font-semibold text-moss">{fastCount} fast</span>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
+          <span className="text-zinc-300 dark:text-zinc-700">·</span>
           <span className="metric-mono font-semibold text-ember">{slowCount} slow</span>
         </div>
       </div>
@@ -70,8 +70,8 @@ export default function TimingDistribution({ events, thresholds }: Props) {
       <div className="space-y-3">
         {bins.map((bin, i) => (
           <div key={bin.label} className="flex items-center gap-3">
-            <span className="text-[11px] metric-mono text-slate-500 dark:text-slate-400 w-14 shrink-0 text-right">{bin.label}</span>
-            <div className="flex-1 h-7 bg-slate-50 dark:bg-slate-700/30 rounded-lg overflow-hidden relative">
+            <span className="text-[11px] metric-mono text-zinc-500 dark:text-zinc-400 w-14 shrink-0 text-right">{bin.label}</span>
+            <div className="flex-1 h-7 bg-zinc-50 dark:bg-white/[0.04] rounded-lg overflow-hidden relative">
               <motion.div
                 className={`h-full ${bin.color} rounded-lg`}
                 initial={{ width: 0 }}
@@ -84,14 +84,14 @@ export default function TimingDistribution({ events, thresholds }: Props) {
                 </span>
               )}
             </div>
-            <span className="text-[11px] metric-mono text-slate-400 dark:text-slate-500 w-10 shrink-0">{bin.pct.toFixed(0)}%</span>
+            <span className="text-[11px] metric-mono text-zinc-400 dark:text-zinc-400 w-10 shrink-0">{bin.pct.toFixed(0)}%</span>
           </div>
         ))}
       </div>
 
-      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-[11px]">
-        <span className="text-slate-400 dark:text-slate-500">Median TTFT</span>
-        <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">
+      <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06] flex items-center justify-between text-[11px]">
+        <span className="text-zinc-400 dark:text-zinc-400">Median TTFT</span>
+        <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">
           {(() => {
             const ttfts = sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b);
             const mid = Math.floor(ttfts.length / 2);
