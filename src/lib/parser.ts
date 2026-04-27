@@ -127,7 +127,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const totalGenerationMs = sorted.reduce((s, e) => s + e.data.timing.generationMs, 0);
   const totalStallMs = sorted.reduce((s, e) => s + e.data.timing.stallMs, 0);
   const totalStallCount = sorted.reduce((s, e) => s + e.data.timing.stallCount, 0);
-  const avgTps = sorted.reduce((s, e) => s + e.data.tps, 0) / sorted.length;
+  const avgTps = totalGenerationMs > 0 ? totalOutput / (totalGenerationMs / 1000) : 0;
   const ttfts = sorted.map(e => e.data.timing.ttftMs);
   const avgTtft = ttfts.reduce((a, b) => a + b, 0) / ttfts.length;
 
@@ -233,11 +233,13 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
     const first = slice[0];
     const last = slice[slice.length - 1];
     const time = new Date(first.timestamp);
-    const label = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+    const label = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}:${time.getSeconds().toString().padStart(2, '0')}`;
 
     const avgTtft = slice.reduce((s, e) => s + e.data.timing.ttftMs, 0) / slice.length;
     const avgTotal = slice.reduce((s, e) => s + e.data.timing.totalMs, 0) / slice.length;
-    const avgTps = slice.reduce((s, e) => s + e.data.tps, 0) / slice.length;
+    const totalOutput = slice.reduce((s, e) => s + e.data.tokens.output, 0);
+    const totalGenerationMs = slice.reduce((s, e) => s + e.data.timing.generationMs, 0);
+    const avgTps = totalGenerationMs > 0 ? totalOutput / (totalGenerationMs / 1000) : 0;
     const totalTokens = slice.reduce((s, e) => s + e.data.tokens.total, 0);
 
     buckets.push({
