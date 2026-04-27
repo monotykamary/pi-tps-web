@@ -147,7 +147,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Energy & Cost</p>
                   <div className="grid grid-cols-2 gap-2">
                     <TimingPill label="Energy" value={selectedEvent.energy ? `${selectedEvent.energy.energy_joules.toFixed(1)}J` : '-'} />
-                    <TimingPill label={selectedEvent.data.cost ? 'Cost (est.)' : 'Cost'} value={selectedEvent.energy ? `$${(selectedEvent.energy.cost_usd * 1000).toFixed(2)}m` : selectedEvent.data.cost ? `$${(selectedEvent.data.cost.total * 1000).toFixed(2)}m` : '-'} />
+                    <TimingPill label={selectedEvent.data.cost ? 'Cost (est.)' : 'Cost'} value={selectedEvent.energy ? `$${selectedEvent.energy.cost_usd.toFixed(4)}` : selectedEvent.data.cost ? `$${selectedEvent.data.cost.total.toFixed(4)}` : '-'} />
                   </div>
                 </div>
               </motion.div>

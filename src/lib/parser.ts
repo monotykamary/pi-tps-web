@@ -317,6 +317,5 @@ export function formatNumber(n: number | null, decimals = 0): string {
 
 export function formatCurrency(n: number | null): string {
   if (n === null) return '-';
-  if (n < 0.001) return `$${(n * 1000).toFixed(2)}m`;
   return `$${n.toFixed(4)}`;
 }
