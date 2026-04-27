@@ -87,10 +87,10 @@ export default function CacheEfficiency({ events }: Props) {
                   <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.85} />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} wrapperStyle={{ zIndex: 10 }} />
             </PieChart>
           </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
             <span className="metric-mono text-2xl font-bold text-zinc-800 dark:text-zinc-300">{cacheHitRate.toFixed(0)}%</span>
             <span className="text-[10px] text-zinc-400 dark:text-zinc-400 font-medium uppercase tracking-wider">cache hit</span>
           </div>
