@@ -4,7 +4,7 @@ A static telemetry inspector for pi's tokens-per-second (TPS) exports. Drag a `.
 
 Built for provider engineers to inspect real-world LLM behavior: how cache hit rates shift as conversations grow, where the slow zones live, and whether routing thresholds land where they should.
 
-![preview](/tmp/pi-tps-web-v7.png)
+![preview](./public/preview.png)
 
 ## What it shows
 
