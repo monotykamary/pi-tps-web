@@ -26,6 +26,14 @@ export interface TpsPayload {
     messageCount: number;
   };
   tps: number;
+  /** Token cost from provider billing (via pi-ai Usage.cost). null if not available. */
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  } | null;
   timestamp: number;
 }
 
@@ -94,6 +102,8 @@ export interface ConversationSummary {
   avgTps: number;
   avgTtft: number;
   totalCostUsd: number | null;
+  /** 'neuralwatt' = from neuralwatt energy events, 'tps' = from pi-tps token cost, null = no cost data */
+  costSource: 'neuralwatt' | 'tps' | null;
   totalEnergyJoules: number | null;
   minTtft: number;
   maxTtft: number;

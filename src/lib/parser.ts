@@ -131,9 +131,15 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const ttfts = sorted.map(e => e.data.timing.ttftMs);
   const avgTtft = ttfts.reduce((a, b) => a + b, 0) / ttfts.length;
 
-  const totalCostUsd = energyEvents.length > 0
+  // Neuralwatt cost takes priority; fall back to TPS token cost (from pi-ai Usage.cost)
+  const neuralwattCost = energyEvents.length > 0
     ? energyEvents.reduce((s, e) => s + e.data.cost_usd, 0)
     : null;
+  const tpsCost = sorted.length > 0 && sorted.every(e => e.data.cost !== null)
+    ? sorted.reduce((s, e) => s + (e.data.cost?.total ?? 0), 0)
+    : null;
+  const totalCostUsd = neuralwattCost ?? tpsCost;
+  const costSource: 'neuralwatt' | 'tps' | null = neuralwattCost !== null ? 'neuralwatt' : (tpsCost !== null ? 'tps' : null);
   const totalEnergyJoules = energyEvents.length > 0
     ? energyEvents.reduce((s, e) => s + e.data.energy_joules, 0)
     : null;
@@ -167,6 +173,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     avgTps,
     avgTtft,
     totalCostUsd,
+    costSource,
     totalEnergyJoules,
     minTtft: Math.min(...ttfts),
     maxTtft: Math.max(...ttfts),

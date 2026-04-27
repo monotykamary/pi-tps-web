@@ -152,6 +152,7 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
                   <p className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400 mt-1">
                     #{a.index + 1} · total={a.event.data.tokens.total.toLocaleString()}
                     {a.event.energy && ` · ${(a.event.energy.cost_usd * 100).toFixed(2)}c`}
+                    {!a.event.energy && a.event.data.cost && ` · ~${(a.event.data.cost.total * 100).toFixed(2)}c`}
                   </p>
                 </div>
               </div>
