@@ -83,6 +83,21 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     ? energyEvents.reduce((s, e) => s + e.data.energy_joules, 0)
     : null;
 
+  // Collect unique models with their call counts
+  const modelMap = new Map<string, { provider: string; count: number }>();
+  for (const e of sorted) {
+    const key = e.data.model.modelId;
+    const existing = modelMap.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      modelMap.set(key, { provider: e.data.model.provider, count: 1 });
+    }
+  }
+  const models = [...modelMap.entries()]
+    .map(([modelId, { provider, count }]) => ({ modelId, provider, callCount: count }))
+    .sort((a, b) => b.callCount - a.callCount);
+
   return {
     totalCalls: sorted.length,
     totalTokens: totalInput + totalOutput + totalCacheRead + totalCacheWrite,
@@ -102,6 +117,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     maxTtft: Math.max(...ttfts),
     model: last?.data.model.modelId ?? 'unknown',
     provider: last?.data.model.provider ?? 'unknown',
+    models,
     timeRange: {
       start: sorted[0]?.timestamp ?? '',
       end: last?.timestamp ?? '',

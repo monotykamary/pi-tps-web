@@ -144,7 +144,22 @@ export default function App() {
             {summary && (
               <div className="flex items-center gap-2 px-3 py-2 bg-white/80 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40 rounded-xl">
                 <Pulse size={14} className="text-moss" weight="fill" />
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{summary.model.split('/').pop()}</span>
+                {summary.models.length === 1 ? (
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{summary.models[0].modelId.split('/').pop()}</span>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    {summary.models.map(m => (
+                      <span
+                        key={m.modelId}
+                        className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1"
+                        title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
+                      >
+                        {m.modelId.split('/').pop()}
+                        <span className="text-[10px] metric-mono text-slate-400 dark:text-slate-500">{m.callCount}</span>
+                      </span>
+                    )).reduce<React.ReactNode[]>((acc, el, i) => i > 0 ? [...acc, <span key={`sep-${i}`} className="text-[10px] text-slate-300 dark:text-slate-600">·</span>, el] : [el], [])}
+                  </div>
+                )}
               </div>
             )}
           </div>

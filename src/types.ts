@@ -55,6 +55,12 @@ export interface RewindEvent extends TelemetryEvent {
 
 export type ParsedEvent = TpsEvent | EnergyEvent | RewindEvent;
 
+export interface ModelInfo {
+  modelId: string;
+  provider: string;
+  callCount: number;
+}
+
 export interface ConversationSummary {
   totalCalls: number;
   totalTokens: number;
@@ -74,6 +80,7 @@ export interface ConversationSummary {
   maxTtft: number;
   model: string;
   provider: string;
+  models: ModelInfo[];
   timeRange: {
     start: string;
     end: string;
