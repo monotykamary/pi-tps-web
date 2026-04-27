@@ -131,15 +131,48 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const ttfts = sorted.map(e => e.data.timing.ttftMs);
   const avgTtft = ttfts.reduce((a, b) => a + b, 0) / ttfts.length;
 
-  // Neuralwatt cost takes priority; fall back to TPS token cost (from pi-ai Usage.cost)
-  const neuralwattCost = energyEvents.length > 0
-    ? energyEvents.reduce((s, e) => s + e.data.cost_usd, 0)
-    : null;
-  const tpsCost = sorted.length > 0 && sorted.every(e => e.data.cost !== null)
-    ? sorted.reduce((s, e) => s + (e.data.cost?.total ?? 0), 0)
-    : null;
-  const totalCostUsd = neuralwattCost ?? tpsCost;
-  const costSource: 'neuralwatt' | 'tps' | null = neuralwattCost !== null ? 'neuralwatt' : (tpsCost !== null ? 'tps' : null);
+  // Total cost sums ALL sources, but dedupes per-event: when a TPS event has both
+  // a token cost AND a paired neuralwatt energy cost, only the energy cost is used
+  // (they measure the same spend — neuralwatt is the authoritative source when present).
+  const energyByParentId = new Map<string, EnergyPayload>();
+  for (const e of energyEvents) {
+    energyByParentId.set(e.parentId ?? '', e.data);
+  }
+  const tpsIds = new Set(sorted.map(e => e.id));
+  let totalCostUsd = 0;
+  let hasAnyCost = false;
+  let usedNeuralwatt = false;
+  let usedTpsCost = false;
+
+  // Per-TPS-event: prefer paired energy cost, fall back to token cost
+  for (const tps of sorted) {
+    const pairedEnergy = energyByParentId.get(tps.id);
+    if (pairedEnergy) {
+      totalCostUsd += pairedEnergy.cost_usd;
+      usedNeuralwatt = true;
+      hasAnyCost = true;
+    } else if (tps.data.cost !== null) {
+      totalCostUsd += tps.data.cost.total;
+      usedTpsCost = true;
+      hasAnyCost = true;
+    }
+  }
+
+  // Orphan energy events (not paired with any TPS event)
+  for (const e of energyEvents) {
+    if (!tpsIds.has(e.parentId ?? '')) {
+      totalCostUsd += e.data.cost_usd;
+      usedNeuralwatt = true;
+      hasAnyCost = true;
+    }
+  }
+
+  const totalCostUsdResult = hasAnyCost ? totalCostUsd : null;
+  const costSource: 'neuralwatt' | 'tps' | 'both' | null =
+    usedNeuralwatt && usedTpsCost ? 'both' :
+    usedNeuralwatt ? 'neuralwatt' :
+    usedTpsCost ? 'tps' :
+    null;
   const totalEnergyJoules = energyEvents.length > 0
     ? energyEvents.reduce((s, e) => s + e.data.energy_joules, 0)
     : null;
@@ -172,7 +205,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     totalStallCount,
     avgTps,
     avgTtft,
-    totalCostUsd,
+    totalCostUsd: totalCostUsdResult,
     costSource,
     totalEnergyJoules,
     minTtft: Math.min(...ttfts),

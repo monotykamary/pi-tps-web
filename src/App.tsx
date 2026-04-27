@@ -253,7 +253,7 @@ export default function App() {
                 <MetricPill icon={Gauge} label="Avg TPS" value={summary.avgTps.toFixed(1)} />
                 <MetricPill icon={Clock} label="Avg TTFT" value={`${Math.round(summary.avgTtft)}ms`} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent />
-                <MetricPill icon={Coins} label={summary.costSource === 'tps' ? 'Cost (est.)' : 'Cost'} value={formatCurrency(summary.totalCostUsd)} />
+                <MetricPill icon={Coins} label={summary.costSource === 'tps' ? 'Cost (est.)' : summary.costSource === 'both' ? 'Cost (mixed)' : 'Cost'} value={formatCurrency(summary.totalCostUsd)} />
                 <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} />
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} />
               </motion.div>

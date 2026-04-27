@@ -102,8 +102,8 @@ export interface ConversationSummary {
   avgTps: number;
   avgTtft: number;
   totalCostUsd: number | null;
-  /** 'neuralwatt' = from neuralwatt energy events, 'tps' = from pi-tps token cost, null = no cost data */
-  costSource: 'neuralwatt' | 'tps' | null;
+  /** 'neuralwatt' = only energy costs, 'tps' = only token costs, 'both' = mixed (energy preferred where paired), null = no cost data */
+  costSource: 'neuralwatt' | 'tps' | 'both' | null;
   totalEnergyJoules: number | null;
   minTtft: number;
   maxTtft: number;
