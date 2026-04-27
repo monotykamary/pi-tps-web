@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary } from './types';
-import { parseJsonl, getTpsEvents, getEnergyEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, formatNumber, formatCurrency, formatDuration } from './lib/parser';
+import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import TimelineChart from './components/TimelineChart';
 import TimingScatter from './components/TimingScatter';
@@ -56,12 +56,18 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
 
-  const tpsEvents = events ? getTpsEvents(events) : [];
-  const energyEvents = events ? getEnergyEvents(events) : [];
-  const summary: ConversationSummary | null = events ? computeSummary(tpsEvents, energyEvents) : null;
-  const buckets = events ? computeTimingBuckets(tpsEvents) : [];
-  const paired = events ? pairEnergyWithTps(tpsEvents, energyEvents) : [];
+  const tpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
+  const energyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
+  const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
+  const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
+  const paired = useMemo(() => events ? pairEnergyWithTps(tpsEvents, energyEvents) : [], [events, tpsEvents, energyEvents]);
+  const summary: ConversationSummary | null = useMemo(
+    () => events ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null,
+    [events, tpsEvents, energyEvents, modelChanges, rewindEvents]
+  );
+  const buckets = useMemo(() => events ? computeTimingBuckets(tpsEvents) : [], [events, tpsEvents]);
   const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
+  const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
 
   const loadSample = useCallback(async () => {
     setLoading(true);
@@ -160,6 +166,25 @@ export default function App() {
                     )).reduce<React.ReactNode[]>((acc, el, i) => i > 0 ? [...acc, <span key={`sep-${i}`} className="text-[10px] text-slate-300 dark:text-slate-600">·</span>, el] : [el], [])}
                   </div>
                 )}
+                {(summary.modelChangeCount > 0 || summary.rewindCount > 0) && (
+                  <>
+                    <span className="text-[10px] text-slate-300 dark:text-slate-600">·</span>
+                    <div className="flex items-center gap-1.5">
+                      {summary.modelChangeCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${summary.modelChangeCount} model switches`}>
+                          <ArrowsLeftRight size={10} weight="bold" />
+                          {summary.modelChangeCount}
+                        </span>
+                      )}
+                      {summary.rewindCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-ember" title={`${summary.rewindCount} rewinds`}>
+                          <ArrowBendUpLeft size={10} weight="bold" />
+                          {summary.rewindCount}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -252,7 +277,7 @@ export default function App() {
                 <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholds} />
                 <AnomalyDetector events={paired} thresholds={dataThresholds} />
                 <RequestInspector
-                  events={paired}
+                  timeline={timeline}
                   selectedId={selectedTpsId}
                   onSelect={(id) => setSelectedTpsId(id)}
                   thresholds={dataThresholds}

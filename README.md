@@ -15,7 +15,7 @@ Built for provider engineers to inspect real-world LLM behavior: how cache hit r
 - **Threshold Crossings** — Compare average TTFT below and above 32k, 50k, 65k, and 80k token thresholds. Progress bars and delta badges tell the routing story.
 - **Anomaly Detector** — Automatic identification of cache drops (sub-agent spawns), slow-zone requests, stall spikes, and massive new-input events.
 - **Cache Efficiency** — Donut chart with overall cache hit rate, token-type breakdown, and cache-rate bars over time.
-- **Request Inspector** — Full list of all calls with inline TTFT and cache-hit badges. Click to drill into one request's tokens, timing, and energy footprint.
+- **Request Inspector** — Full list of all calls with inline TTFT, cache-hit badges, and provider/model tags. Model switches, rewinds, and branch summaries appear as contextual markers. Click to drill into one request's tokens, timing, model, and energy footprint.
 
 ## Energy data
 
@@ -33,12 +33,19 @@ In production, serve `./dist` from any static host. The sample data at `./public
 
 ## Data format
 
-Expects the newline-delimited JSON format produced by `pi-tps`:
+Expects the newline-delimited JSON format produced by `pi-tps` (via `/tps-export`). The export includes telemetry entries plus structural entries that capture the session's branching story:
 
 ```jsonl
-{"type":"custom","customType":"tps","data":{"model":{"provider":"...","modelId":"..."},"tokens":{"input":...,"output":...,"cacheRead":...},"timing":{"ttftMs":...,"totalMs":...},...}}
-{"type":"custom","customType":"neuralwatt-energy","data":{"energy_joules":...,"cost_usd":...}}
-}
+{"type":"model_change","id":"...","parentId":null,"timestamp":"...","provider":"neuralwatt","modelId":"moonshotai/Kimi-K2.6"}
+{"type":"custom","customType":"tps","id":"...","parentId":"...","timestamp":"...","data":{"model":{"provider":"...","modelId":"..."},"tokens":{"input":...,"output":...,"cacheRead":...},"timing":{"ttftMs":...,"totalMs":...},...}}
+{"type":"custom","customType":"neuralwatt-energy","id":"...","parentId":"...","timestamp":"...","data":{"energy_joules":...,"cost_usd":...}}
+{"type":"custom","customType":"rewind-turn","id":"...","parentId":"...","timestamp":"...","data":{"v":2,"snapshots":[...],"bindings":[...]}}
+{"type":"branch_summary","id":"...","parentId":"...","timestamp":"...","fromId":"...","summary":"..."}
+```
+
+### Tree structure
+
+ParentIds are re-chained so the exported entries form a self-contained tree. The root is typically a `model_change` entry with `parentId: null`. Branching (rewinds) creates new children at earlier points in the tree, just like pi's native session tree.
 ```
 
 ## License

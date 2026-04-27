@@ -1,4 +1,4 @@
-import type { ParsedEvent, TpsEvent, EnergyEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds } from '../types';
+import type { ParsedEvent, TpsEvent, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
 
 export function parseJsonl(raw: string): ParsedEvent[] {
   const lines = raw.trim().split('\n');
@@ -32,6 +32,24 @@ export function parseJsonl(raw: string): ParsedEvent[] {
           type: 'rewind',
           data: rawEvent.data,
         });
+      } else if (rawEvent.type === 'model_change') {
+        events.push({
+          id: rawEvent.id,
+          parentId: rawEvent.parentId,
+          timestamp: rawEvent.timestamp,
+          type: 'model_change',
+          provider: rawEvent.provider,
+          modelId: rawEvent.modelId,
+        });
+      } else if (rawEvent.type === 'branch_summary') {
+        events.push({
+          id: rawEvent.id,
+          parentId: rawEvent.parentId,
+          timestamp: rawEvent.timestamp,
+          type: 'branch_summary',
+          fromId: rawEvent.fromId,
+          summary: rawEvent.summary,
+        });
       }
     } catch {
       // skip malformed lines
@@ -49,10 +67,22 @@ export function getEnergyEvents(events: ParsedEvent[]): EnergyEvent[] {
   return events.filter((e): e is EnergyEvent => e.type === 'energy');
 }
 
+export function getModelChangeEvents(events: ParsedEvent[]): ModelChangeEvent[] {
+  return events.filter((e): e is ModelChangeEvent => e.type === 'model_change');
+}
+
+export function getBranchSummaryEvents(events: ParsedEvent[]): BranchSummaryEvent[] {
+  return events.filter((e): e is BranchSummaryEvent => e.type === 'branch_summary');
+}
+
+export function getRewindEvents(events: ParsedEvent[]): RewindEvent[] {
+  return events.filter((e): e is RewindEvent => e.type === 'rewind');
+}
+
 export function pairEnergyWithTps(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[]): (TpsEvent & { energy?: EnergyPayload })[] {
   const energyById = new Map<string, EnergyPayload>();
   for (const e of energyEvents) {
-    energyById.set(e.parentId, e.data);
+    energyById.set(e.parentId ?? '', e.data);
   }
   return tpsEvents.map(t => ({
     ...t,
@@ -60,7 +90,32 @@ export function pairEnergyWithTps(tpsEvents: TpsEvent[], energyEvents: EnergyEve
   }));
 }
 
-export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[]): ConversationSummary {
+/**
+ * Build a merged timeline of all events sorted by timestamp.
+ * TPS events carry their paired energy data; structural events
+ * (model_change, rewind, branch_summary) appear as markers.
+ */
+export function buildTimeline(
+  events: ParsedEvent[],
+  tpsEnergyPairs: (TpsEvent & { energy?: EnergyPayload })[]
+): TimelineEvent[] {
+  const pairedById = new Map(tpsEnergyPairs.map(e => [e.id, e]));
+  const timeline: TimelineEvent[] = [];
+
+  for (const event of events) {
+    if (event.type === 'tps') {
+      const paired = pairedById.get(event.id);
+      if (paired) timeline.push(paired);
+    } else if (event.type === 'model_change' || event.type === 'rewind' || event.type === 'branch_summary') {
+      timeline.push(event);
+    }
+    // energy events are already paired into TPS events — skip
+  }
+
+  return timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[], modelChanges: ModelChangeEvent[] = [], rewindEvents: RewindEvent[] = []): ConversationSummary {
   const sorted = [...tpsEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   const last = sorted[sorted.length - 1];
 
@@ -122,6 +177,8 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
       start: sorted[0]?.timestamp ?? '',
       end: last?.timestamp ?? '',
     },
+    rewindCount: rewindEvents.length,
+    modelChangeCount: modelChanges.length,
   };
 }
 

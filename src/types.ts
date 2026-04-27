@@ -1,8 +1,8 @@
 export interface TelemetryEvent {
   id: string;
-  parentId: string;
+  parentId: string | null;
   timestamp: string;
-  type: 'tps' | 'energy' | 'rewind';
+  type: 'tps' | 'energy' | 'rewind' | 'model_change' | 'branch_summary';
 }
 
 export interface TpsPayload {
@@ -53,7 +53,26 @@ export interface RewindEvent extends TelemetryEvent {
   };
 }
 
-export type ParsedEvent = TpsEvent | EnergyEvent | RewindEvent;
+export interface ModelChangeEvent extends TelemetryEvent {
+  type: 'model_change';
+  provider: string;
+  modelId: string;
+}
+
+export interface BranchSummaryEvent extends TelemetryEvent {
+  type: 'branch_summary';
+  fromId: string;
+  summary: string;
+}
+
+export type ParsedEvent = TpsEvent | EnergyEvent | RewindEvent | ModelChangeEvent | BranchSummaryEvent;
+
+/** Discriminated union for the merged timeline (TPS events carry paired energy data) */
+export type TimelineEvent =
+  | (TpsEvent & { energy?: EnergyPayload })
+  | RewindEvent
+  | ModelChangeEvent
+  | BranchSummaryEvent;
 
 export interface ModelInfo {
   modelId: string;
@@ -85,6 +104,10 @@ export interface ConversationSummary {
     start: string;
     end: string;
   };
+  /** Number of rewind (branch) events in the session */
+  rewindCount: number;
+  /** Number of model change events in the session */
+  modelChangeCount: number;
 }
 
 export interface DataThresholds {
