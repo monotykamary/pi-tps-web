@@ -3,13 +3,16 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Timer } from '@phosphor-icons/react';
-import type { TpsEvent, EnergyPayload } from '../types';
+import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
+  thresholds: DataThresholds;
 }
 
-export default function TimingDistribution({ events }: Props) {
+export default function TimingDistribution({ events, thresholds }: Props) {
+  const { slowTtft, fastTtft, cacheThreshold } = thresholds;
+
   const sorted = useMemo(() => {
     return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [events]);
@@ -37,8 +40,8 @@ export default function TimingDistribution({ events }: Props) {
     return counts.map(c => ({ ...c, pct: (c.count / sorted.length) * 100, barPct: (c.count / maxCount) * 100 }));
   }, [sorted]);
 
-  const slowCount = sorted.filter(e => e.data.timing.ttftMs > 15000 && e.data.tokens.total < 65000).length;
-  const fastCount = sorted.filter(e => e.data.tokens.total > 65000 && e.data.timing.ttftMs < 3000).length;
+  const slowCount = sorted.filter(e => e.data.timing.ttftMs > slowTtft && e.data.tokens.total < cacheThreshold).length;
+  const fastCount = sorted.filter(e => e.data.tokens.total > cacheThreshold && e.data.timing.ttftMs < fastTtft).length;
 
   return (
     <motion.div

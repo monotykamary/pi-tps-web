@@ -3,13 +3,17 @@
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Warning, Lightning } from '@phosphor-icons/react';
-import type { TpsEvent, EnergyPayload } from '../types';
+import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
+import { formatThreshold } from '../lib/parser';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
+  thresholds: DataThresholds;
 }
 
-export default function AnomalyDetector({ events }: Props) {
+export default function AnomalyDetector({ events, thresholds }: Props) {
+  const { slowTtft, lowContext, cacheThreshold } = thresholds;
+
   const anomalies = useMemo(() => {
     const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
@@ -35,15 +39,15 @@ export default function AnomalyDetector({ events }: Props) {
         });
       }
 
-      // Slow zone (32-65k with high ttft)
+      // Slow zone (lowContext–cacheThreshold with high TTFT)
       const total = e.data.tokens.total;
       const ttft = e.data.timing.ttftMs;
-      if (total >= 32000 && total < 65000 && ttft > 15000) {
+      if (total >= lowContext && total < cacheThreshold && ttft > slowTtft) {
         results.push({
           type: 'slow-zone',
           event: e,
           index: i,
-          description: `TTFT ${Math.round(ttft / 1000)}s at ${(total / 1000).toFixed(1)}k tokens — requests in the 32-65k range are slower than expected`,
+          description: `TTFT ${Math.round(ttft / 1000)}s at ${formatThreshold(total)} tokens — requests in the ${formatThreshold(lowContext)}–${formatThreshold(cacheThreshold)} range are slower than expected`,
           severity: 'medium',
         });
       }
@@ -87,7 +91,7 @@ export default function AnomalyDetector({ events }: Props) {
     }
 
     return [...byId.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
-  }, [events]);
+  }, [events, slowTtft, lowContext, cacheThreshold]);
 
   if (anomalies.length === 0) {
     return (

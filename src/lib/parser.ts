@@ -1,4 +1,4 @@
-import type { ParsedEvent, TpsEvent, EnergyEvent, ConversationSummary, TimingBucket, EnergyPayload } from '../types';
+import type { ParsedEvent, TpsEvent, EnergyEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds } from '../types';
 
 export function parseJsonl(raw: string): ParsedEvent[] {
   const lines = raw.trim().split('\n');
@@ -141,12 +141,54 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
   return buckets;
 }
 
+export function deriveDataThresholds(tpsEvents: TpsEvent[]): DataThresholds {
+  if (tpsEvents.length === 0) {
+    return { cacheThreshold: 65000, lowContext: 32000, slowTtft: 15000, fastTtft: 3000, highNewInputRatio: 0.15 };
+  }
+
+  const totals = tpsEvents.map(e => e.data.tokens.total);
+  const ttfts = tpsEvents.map(e => e.data.timing.ttftMs);
+  const minTokens = Math.min(...totals);
+  const maxTokens = Math.max(...totals);
+  const sortedTtft = [...ttfts].sort((a, b) => a - b);
+
+  // Percentile-based TTFT boundaries
+  const p25 = sortedTtft[Math.floor(sortedTtft.length * 0.25)];
+  const p75 = sortedTtft[Math.floor(sortedTtft.length * 0.75)];
+  const fastTtft = p25;
+  const slowTtft = p75;
+
+  // Token thresholds: evenly divide the observed range
+  const range = maxTokens - minTokens;
+  const lowContext = Math.round((minTokens + range * 0.33) / 1000) * 1000;
+  const cacheThreshold = Math.round((minTokens + range * 0.66) / 1000) * 1000;
+
+  // New-input ratio: use the median cache-read ratio to find outliers
+  const cacheRatios = tpsEvents.map(e => e.data.tokens.cacheRead / Math.max(1, e.data.tokens.total)).sort((a, b) => a - b);
+  const medianCacheRatio = cacheRatios[Math.floor(cacheRatios.length * 0.5)];
+  const highNewInputRatio = Math.max(0.1, 1 - medianCacheRatio + 0.1);
+
+  return { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio };
+}
+
 export function computeThresholdCrossings(tpsEvents: TpsEvent[]): { threshold: number; events: TpsEvent[] }[] {
-  const thresholds = [32000, 50000, 65000, 80000];
+  const dt = deriveDataThresholds(tpsEvents);
+  const maxTokens = tpsEvents.length ? Math.max(...tpsEvents.map(e => e.data.tokens.total)) : 80000;
+  const thresholds = [
+    Math.round(dt.lowContext * 0.5 / 1000) * 1000,
+    dt.lowContext,
+    dt.cacheThreshold,
+    Math.round((dt.cacheThreshold + (maxTokens - dt.cacheThreshold) * 0.5) / 1000) * 1000,
+  ];
   return thresholds.map(threshold => ({
     threshold,
     events: tpsEvents.filter(e => e.data.tokens.total >= threshold),
   }));
+}
+
+export function formatThreshold(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
+  return n.toString();
 }
 
 export function formatDuration(ms: number): string {

@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary } from './types';
-import { parseJsonl, getTpsEvents, getEnergyEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, formatNumber, formatCurrency, formatDuration } from './lib/parser';
+import { parseJsonl, getTpsEvents, getEnergyEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, formatNumber, formatCurrency, formatDuration } from './lib/parser';
 import TimelineChart from './components/TimelineChart';
 import TimingScatter from './components/TimingScatter';
 import TokenBreakdown from './components/TokenBreakdown';
@@ -54,6 +54,7 @@ export default function App() {
   const summary: ConversationSummary | null = events ? computeSummary(tpsEvents, energyEvents) : null;
   const buckets = events ? computeTimingBuckets(tpsEvents) : [];
   const paired = events ? pairEnergyWithTps(tpsEvents, energyEvents) : [];
+  const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
 
   const loadSample = useCallback(async () => {
     setLoading(true);
@@ -215,9 +216,9 @@ export default function App() {
               {/* Left: Charts */}
               <div className="lg:col-span-8 space-y-6">
                 <TimelineChart buckets={buckets} onBucketClick={() => { }} />
-                <TimingScatter events={paired} onPointClick={(id) => setSelectedTpsId(id)} />
+                <TimingScatter events={paired} onPointClick={(id) => setSelectedTpsId(id)} thresholds={dataThresholds} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <TimingDistribution events={paired} />
+                  <TimingDistribution events={paired} thresholds={dataThresholds} />
                   <CacheEfficiency events={paired} />
                 </div>
                 <TokenBreakdown events={paired} />
@@ -225,12 +226,13 @@ export default function App() {
 
               {/* Right: Analysis Panel */}
               <div className="lg:col-span-4 flex flex-col gap-6">
-                <ThresholdAnalysis events={tpsEvents} />
-                <AnomalyDetector events={paired} />
+                <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholds} />
+                <AnomalyDetector events={paired} thresholds={dataThresholds} />
                 <RequestInspector
                   events={paired}
                   selectedId={selectedTpsId}
                   onSelect={(id) => setSelectedTpsId(id)}
+                  thresholds={dataThresholds}
                 />
               </div>
             </div>

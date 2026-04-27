@@ -3,15 +3,16 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Hash } from '@phosphor-icons/react';
-import type { TpsEvent, EnergyPayload } from '../types';
+import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  thresholds: DataThresholds;
 }
 
-export default function RequestInspector({ events, selectedId, onSelect }: Props) {
+export default function RequestInspector({ events, selectedId, onSelect, thresholds }: Props) {
   const sorted = useMemo(() => {
     return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [events]);
@@ -32,8 +33,8 @@ export default function RequestInspector({ events, selectedId, onSelect }: Props
     const ttft = e.data.timing.ttftMs;
     const newRatio = e.data.tokens.input / total;
     if (e.data.tokens.input > 10000) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
-    if (ttft > 15000 && total < 65000) return { label: 'slow', color: 'text-ember bg-ember/5 border-ember/20' };
-    if (total > 65000 && ttft < 3000 && newRatio < 0.15) return { label: 'fast', color: 'text-moss bg-moss/5 border-moss/20' };
+    if (ttft > thresholds.slowTtft && total < thresholds.cacheThreshold) return { label: 'slow', color: 'text-ember bg-ember/5 border-ember/20' };
+    if (total > thresholds.cacheThreshold && ttft < thresholds.fastTtft && newRatio < thresholds.highNewInputRatio) return { label: 'fast', color: 'text-moss bg-moss/5 border-moss/20' };
     return { label: 'normal', color: 'text-slate-400 bg-slate-50/50 border-slate-100' };
   };
 
@@ -159,7 +160,7 @@ export default function RequestInspector({ events, selectedId, onSelect }: Props
                           <span className="text-[10px] text-slate-400">tokens</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`text-[10px] font-medium ${e.data.timing.ttftMs > 15000 ? 'text-ember' : e.data.timing.ttftMs < 3000 ? 'text-moss' : 'text-slate-400'}`}>
+                          <span className={`text-[10px] font-medium ${e.data.timing.ttftMs > thresholds.slowTtft ? 'text-ember' : e.data.timing.ttftMs < thresholds.fastTtft ? 'text-moss' : 'text-slate-400'}`}>
                             ttft {e.data.timing.ttftMs.toLocaleString()}ms
                           </span>
                           <span className="text-[10px] text-slate-300">·</span>

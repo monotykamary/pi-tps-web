@@ -80,6 +80,19 @@ export interface ConversationSummary {
   };
 }
 
+export interface DataThresholds {
+  /** Token count at which cache efficiency meaningfully improves */
+  cacheThreshold: number;
+  /** Token count below which requests are considered "small context" */
+  lowContext: number;
+  /** TTFT above which a request is considered slow */
+  slowTtft: number;
+  /** TTFT below which a request is considered fast */
+  fastTtft: number;
+  /** New-input ratio above which a request is considered cache-miss-heavy */
+  highNewInputRatio: number;
+}
+
 export interface TimingBucket {
   range: string;
   label: string;

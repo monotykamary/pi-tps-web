@@ -5,15 +5,18 @@ import { motion } from 'framer-motion';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
-import type { TpsEvent, EnergyPayload } from '../types';
+import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
+import { formatThreshold } from '../lib/parser';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
   onPointClick: (id: string) => void;
+  thresholds: DataThresholds;
 }
 
-export default function TimingScatter({ events, onPointClick }: Props) {
+export default function TimingScatter({ events, onPointClick, thresholds }: Props) {
   const [scale, setScale] = useState<'linear' | 'log'>('log');
+  const { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio } = thresholds;
 
   const data = useMemo(() => {
     const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -22,8 +25,8 @@ export default function TimingScatter({ events, onPointClick }: Props) {
       const newRatio = e.data.tokens.input / e.data.tokens.total;
       let category: 'fast' | 'normal' | 'slow' | 'anomaly' = 'normal';
       if (e.data.tokens.input > 10000) category = 'anomaly';
-      else if (e.data.timing.ttftMs > 15000 && e.data.tokens.total < 65000) category = 'slow';
-      else if (e.data.tokens.total > 65000 && e.data.timing.ttftMs < 3000 && newRatio < 0.15) category = 'fast';
+      else if (e.data.timing.ttftMs > slowTtft && e.data.tokens.total < cacheThreshold) category = 'slow';
+      else if (e.data.tokens.total > cacheThreshold && e.data.timing.ttftMs < fastTtft && newRatio < highNewInputRatio) category = 'fast';
 
       return {
         x: e.data.tokens.total,
@@ -42,7 +45,7 @@ export default function TimingScatter({ events, onPointClick }: Props) {
         timestamp: e.timestamp,
       };
     });
-  }, [events]);
+  }, [events, cacheThreshold, slowTtft, fastTtft, highNewInputRatio]);
 
   const colorMap = {
     fast: '#059669',
@@ -113,7 +116,7 @@ export default function TimingScatter({ events, onPointClick }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-slate-800">TTFT vs Context Size</h2>
-          <p className="text-sm text-slate-400 mt-0.5">Color indicates cache efficiency. Green = fast cache hits. Red = slow zone.</p>
+          <p className="text-sm text-slate-400 mt-0.5">Color indicates cache efficiency category derived from data.</p>
         </div>
         <div className="flex items-center gap-1.5 bg-slate-100/80 rounded-xl p-1">
           {(['log', 'linear'] as const).map(s => (
@@ -179,7 +182,7 @@ export default function TimingScatter({ events, onPointClick }: Props) {
       <div className="mt-4 flex items-center gap-5 text-[11px]">
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-moss" />
-          <span className="text-slate-400">Fast (cached, &gt;65k)</span>
+          <span className="text-slate-400">Fast (cached, &gt;{formatThreshold(cacheThreshold)})</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-accent" />
@@ -187,7 +190,7 @@ export default function TimingScatter({ events, onPointClick }: Props) {
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-ember" />
-          <span className="text-slate-400">Slow zone (32-65k)</span>
+          <span className="text-slate-400">Slow zone ({formatThreshold(lowContext)}–{formatThreshold(cacheThreshold)})</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-amber" />

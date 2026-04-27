@@ -3,18 +3,31 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Gauge, TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
-import type { TpsEvent } from '../types';
+import type { TpsEvent, DataThresholds } from '../types';
+import { formatThreshold } from '../lib/parser';
 
 interface Props {
   events: TpsEvent[];
+  thresholds: DataThresholds;
 }
 
-export default function ThresholdAnalysis({ events }: Props) {
-  const thresholds = [32000, 50000, 65000, 80000];
+
+
+export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
+  // Derive 4 display thresholds from data-derived boundaries
+  const displayThresholds = useMemo(() => {
+    const maxTokens = events.length ? Math.max(...events.map(e => e.data.tokens.total)) : 80000;
+    return [
+      Math.round(dt.lowContext * 0.5 / 1000) * 1000,
+      dt.lowContext,
+      dt.cacheThreshold,
+      Math.round((dt.cacheThreshold + (maxTokens - dt.cacheThreshold) * 0.5) / 1000) * 1000,
+    ];
+  }, [events, dt]);
 
   const stats = useMemo(() => {
     const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return thresholds.map(threshold => {
+    return displayThresholds.map(threshold => {
       const above = sorted.filter(e => e.data.tokens.total >= threshold);
       const below = sorted.filter(e => e.data.tokens.total < threshold);
 
@@ -27,14 +40,24 @@ export default function ThresholdAnalysis({ events }: Props) {
       const avgCacheRatioAbove = above.length ? above.reduce((s, e) => s + e.data.tokens.cacheRead / e.data.tokens.total, 0) / above.length : 0;
       const avgCacheRatioBelow = below.length ? below.reduce((s, e) => s + e.data.tokens.cacheRead / e.data.tokens.total, 0) / below.length : 0;
 
+      const ttftDelta = avgTtftAbove - avgTtftBelow;
+
       return {
         threshold,
         above: { count: above.length, avgTtft: avgTtftAbove, avgTps: avgTpsAbove, avgCacheRatio: avgCacheRatioAbove },
         below: { count: below.length, avgTtft: avgTtftBelow, avgTps: avgTpsBelow, avgCacheRatio: avgCacheRatioBelow },
         firstAboveIndex: sorted.findIndex(e => e.data.tokens.total >= threshold),
+        ttftDelta,
       };
     });
-  }, [events]);
+  }, [events, displayThresholds]);
+
+  // Find the threshold with the strongest improvement (largest negative delta = above is faster)
+  const strongest = useMemo(() => {
+    const improving = stats.filter(s => s.ttftDelta < 0 && s.above.count > 0 && s.below.count > 0);
+    if (!improving.length) return null;
+    return improving.reduce((best, s) => s.ttftDelta < best.ttftDelta ? s : best, improving[0]);
+  }, [stats]);
 
   return (
     <motion.div
@@ -50,7 +73,6 @@ export default function ThresholdAnalysis({ events }: Props) {
 
       <div className="space-y-4">
         {stats.map((s, i) => {
-          const ttftDelta = s.above.avgTtft - s.below.avgTtft;
           const progress = s.below.count / (s.below.count + s.above.count);
 
           return (
@@ -63,7 +85,7 @@ export default function ThresholdAnalysis({ events }: Props) {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  At {(s.threshold / 1000).toFixed(0)}k tokens
+                  At {formatThreshold(s.threshold)} tokens
                 </span>
                 <span className="text-[11px] metric-mono text-slate-400">
                   {s.above.count} above
@@ -87,14 +109,14 @@ export default function ThresholdAnalysis({ events }: Props) {
                 </div>
                 <div className="flex items-center justify-center">
                   <div className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                    ttftDelta > 0
+                    s.ttftDelta > 0
                       ? 'bg-ember/10 text-ember'
-                      : ttftDelta < 0
+                      : s.ttftDelta < 0
                       ? 'bg-moss/10 text-moss'
                       : 'bg-slate-100 text-slate-400'
                   }`}>
-                    {ttftDelta > 0 ? <TrendUp size={10} /> : ttftDelta < 0 ? <TrendDown size={10} /> : <Minus size={10} />}
-                    {ttftDelta !== 0 && <span className="metric-mono">{Math.abs(Math.round(ttftDelta)).toLocaleString()}ms</span>}
+                    {s.ttftDelta > 0 ? <TrendUp size={10} /> : s.ttftDelta < 0 ? <TrendDown size={10} /> : <Minus size={10} />}
+                    {s.ttftDelta !== 0 && <span className="metric-mono">{Math.abs(Math.round(s.ttftDelta)).toLocaleString()}ms</span>}
                   </div>
                 </div>
                 <div className="text-center">
@@ -108,10 +130,18 @@ export default function ThresholdAnalysis({ events }: Props) {
       </div>
 
       <div className="mt-5 pt-4 border-t border-slate-100">
-        <p className="text-xs leading-relaxed text-slate-500">
-          The <span className="metric-mono font-semibold text-slate-700">65k threshold</span> shows the strongest
-          improvement signal — ttft drops significantly once requests begin hitting the cache-optimized server.
-        </p>
+        {strongest ? (
+          <p className="text-xs leading-relaxed text-slate-500">
+            The <span className="metric-mono font-semibold text-slate-700">{formatThreshold(strongest.threshold)} threshold</span> shows
+            the strongest improvement signal — TTFT drops by{' '}
+            <span className="metric-mono font-semibold text-moss">{Math.abs(Math.round(strongest.ttftDelta)).toLocaleString()}ms</span>{' '}
+            once requests cross it, suggesting cache-optimized routing kicks in above this point.
+          </p>
+        ) : (
+          <p className="text-xs leading-relaxed text-slate-500">
+            No threshold shows a significant TTFT improvement above it. Requests remain consistently timed across token counts.
+          </p>
+        )}
       </div>
     </motion.div>
   );
