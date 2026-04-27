@@ -142,8 +142,8 @@ export default function App() {
                 className="sr-only"
                 onChange={handleFileInput}
               />
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-xl text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
-                <FileArrowUp size={16} weight="bold" />
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
+                <FileArrowUp size={14} weight="bold" />
                 <span>Import JSONL</span>
               </div>
             </label>
