@@ -16,7 +16,7 @@ interface Props {
 
 export default function TimingScatter({ events, onPointClick, thresholds }: Props) {
   const [scale, setScale] = useState<'linear' | 'log'>('log');
-  const { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio } = thresholds;
+  const { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio, anomalyInputThreshold } = thresholds;
 
   const data = useMemo(() => {
     const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -24,7 +24,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
       const cacheRatio = e.data.tokens.cacheRead / e.data.tokens.total;
       const newRatio = e.data.tokens.input / e.data.tokens.total;
       let category: 'fast' | 'normal' | 'slow' | 'anomaly' = 'normal';
-      if (e.data.tokens.input > 10000) category = 'anomaly';
+      if (e.data.tokens.input > anomalyInputThreshold) category = 'anomaly';
       else if (e.data.timing.ttftMs > slowTtft && e.data.tokens.total < cacheThreshold) category = 'slow';
       else if (e.data.tokens.total > cacheThreshold && e.data.timing.ttftMs < fastTtft && newRatio < highNewInputRatio) category = 'fast';
 

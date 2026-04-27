@@ -143,14 +143,20 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
 
 export function deriveDataThresholds(tpsEvents: TpsEvent[]): DataThresholds {
   if (tpsEvents.length === 0) {
-    return { cacheThreshold: 65000, lowContext: 32000, slowTtft: 15000, fastTtft: 3000, highNewInputRatio: 0.15 };
+    return {
+      cacheThreshold: 65000, lowContext: 32000, slowTtft: 15000, fastTtft: 3000, highNewInputRatio: 0.15,
+      anomalyInputThreshold: 10000, cacheDropMinTotal: 10000, cacheDropMinInput: 5000,
+      highInputRatio: 0.5, highInputSeverityToken: 20000, stallCountThreshold: 3, stallMsSeverity: 5000,
+    };
   }
 
   const totals = tpsEvents.map(e => e.data.tokens.total);
   const ttfts = tpsEvents.map(e => e.data.timing.ttftMs);
+  const inputs = tpsEvents.map(e => e.data.tokens.input);
   const minTokens = Math.min(...totals);
   const maxTokens = Math.max(...totals);
   const sortedTtft = [...ttfts].sort((a, b) => a - b);
+  const sortedInputs = [...inputs].sort((a, b) => a - b);
 
   // Percentile-based TTFT boundaries
   const p25 = sortedTtft[Math.floor(sortedTtft.length * 0.25)];
@@ -168,7 +174,30 @@ export function deriveDataThresholds(tpsEvents: TpsEvent[]): DataThresholds {
   const medianCacheRatio = cacheRatios[Math.floor(cacheRatios.length * 0.5)];
   const highNewInputRatio = Math.max(0.1, 1 - medianCacheRatio + 0.1);
 
-  return { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio };
+  // Anomaly thresholds derived from input distribution
+  const p90Input = sortedInputs[Math.floor(sortedInputs.length * 0.9)];
+  const anomalyInputThreshold = Math.max(5000, p90Input);
+  const cacheDropMinTotal = Math.round(minTokens + range * 0.1);
+  const cacheDropMinInput = Math.round(p90Input * 0.5);
+  const highInputRatio = Math.max(0.3, highNewInputRatio);
+  const p95Input = sortedInputs[Math.floor(sortedInputs.length * 0.95)];
+  const highInputSeverityToken = Math.max(p90Input, p95Input);
+
+  // Stall thresholds from distribution
+  const stallCounts = tpsEvents.map(e => e.data.timing.stallCount).filter(c => c > 0);
+  const stallCountThreshold = stallCounts.length
+    ? Math.max(2, Math.round(stallCounts.reduce((s, c) => s + c, 0) / stallCounts.length))
+    : 3;
+  const stallMs = tpsEvents.map(e => e.data.timing.stallMs).filter(m => m > 0);
+  const stallMsSeverity = stallMs.length
+    ? Math.round(stallMs.reduce((s, m) => s + m, 0) / stallMs.length)
+    : 5000;
+
+  return {
+    cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio,
+    anomalyInputThreshold, cacheDropMinTotal, cacheDropMinInput,
+    highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity,
+  };
 }
 
 export function computeThresholdCrossings(tpsEvents: TpsEvent[]): { threshold: number; events: TpsEvent[] }[] {

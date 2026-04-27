@@ -91,6 +91,20 @@ export interface DataThresholds {
   fastTtft: number;
   /** New-input ratio above which a request is considered cache-miss-heavy */
   highNewInputRatio: number;
+  /** Absolute token input above which a request is flagged as anomaly */
+  anomalyInputThreshold: number;
+  /** Minimum total tokens for cache-drop detection */
+  cacheDropMinTotal: number;
+  /** Minimum new-input tokens for cache-drop detection */
+  cacheDropMinInput: number;
+  /** New-input ratio for high-new-input anomaly */
+  highInputRatio: number;
+  /** New-input token count for severity escalation */
+  highInputSeverityToken: number;
+  /** Stall count threshold */
+  stallCountThreshold: number;
+  /** Stall ms threshold for high severity */
+  stallMsSeverity: number;
 }
 
 export interface TimingBucket {

@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function AnomalyDetector({ events, thresholds }: Props) {
-  const { slowTtft, lowContext, cacheThreshold } = thresholds;
+  const { slowTtft, lowContext, cacheThreshold, cacheDropMinTotal, cacheDropMinInput, highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity } = thresholds;
 
   const anomalies = useMemo(() => {
     const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -29,7 +29,7 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
 
     sorted.forEach((e, i) => {
       // Cache drop (sub-agent spawn or reset)
-      if (e.data.tokens.cacheRead < maxCache * 0.5 && e.data.tokens.total > 10000 && e.data.tokens.input > 5000) {
+      if (e.data.tokens.cacheRead < maxCache * 0.5 && e.data.tokens.total > cacheDropMinTotal && e.data.tokens.input > cacheDropMinInput) {
         results.push({
           type: 'cache-drop',
           event: e,
@@ -54,24 +54,24 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
 
       // High new input
       const newRatio = e.data.tokens.input / e.data.tokens.total;
-      if (newRatio > 0.5 && e.data.tokens.input > 5000) {
+      if (newRatio > highInputRatio && e.data.tokens.input > cacheDropMinInput) {
         results.push({
           type: 'high-new-input',
           event: e,
           index: i,
           description: `${(newRatio * 100).toFixed(0)}% new input (${e.data.tokens.input.toLocaleString()} tokens) — minimal cache hit`,
-          severity: e.data.tokens.input > 20000 ? 'high' : 'low',
+          severity: e.data.tokens.input > highInputSeverityToken ? 'high' : 'low',
         });
       }
 
       // Stall spike
-      if (e.data.timing.stallCount >= 3) {
+      if (e.data.timing.stallCount >= stallCountThreshold) {
         results.push({
           type: 'stall-spike',
           event: e,
           index: i,
           description: `${e.data.timing.stallCount} stalls adding ${e.data.timing.stallMs.toLocaleString()}ms of stall time`,
-          severity: e.data.timing.stallMs > 5000 ? 'high' : 'medium',
+          severity: e.data.timing.stallMs > stallMsSeverity ? 'high' : 'medium',
         });
       }
 
@@ -91,7 +91,7 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
     }
 
     return [...byId.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
-  }, [events, slowTtft, lowContext, cacheThreshold]);
+  }, [events, slowTtft, lowContext, cacheThreshold, cacheDropMinTotal, cacheDropMinInput, highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity]);
 
   if (anomalies.length === 0) {
     return (

@@ -135,7 +135,7 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
             The <span className="metric-mono font-semibold text-slate-700">{formatThreshold(strongest.threshold)} threshold</span> shows
             the strongest improvement signal — TTFT drops by{' '}
             <span className="metric-mono font-semibold text-moss">{Math.abs(Math.round(strongest.ttftDelta)).toLocaleString()}ms</span>{' '}
-            once requests cross it, suggesting cache-optimized routing kicks in above this point.
+            once requests cross it, indicating a meaningful TTFT shift at this boundary.
           </p>
         ) : (
           <p className="text-xs leading-relaxed text-slate-500">

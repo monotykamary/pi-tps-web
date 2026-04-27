@@ -32,7 +32,7 @@ export default function RequestInspector({ events, selectedId, onSelect, thresho
     const total = e.data.tokens.total;
     const ttft = e.data.timing.ttftMs;
     const newRatio = e.data.tokens.input / total;
-    if (e.data.tokens.input > 10000) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
+    if (e.data.tokens.input > thresholds.anomalyInputThreshold) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
     if (ttft > thresholds.slowTtft && total < thresholds.cacheThreshold) return { label: 'slow', color: 'text-ember bg-ember/5 border-ember/20' };
     if (total > thresholds.cacheThreshold && ttft < thresholds.fastTtft && newRatio < thresholds.highNewInputRatio) return { label: 'fast', color: 'text-moss bg-moss/5 border-moss/20' };
     return { label: 'normal', color: 'text-slate-400 bg-slate-50/50 border-slate-100' };
