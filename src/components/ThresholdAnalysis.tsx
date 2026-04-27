@@ -68,7 +68,7 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
     >
       <div className="flex items-center gap-2 mb-5">
         <Gauge size={18} className="text-accent" weight="bold" />
-        <h2 className="text-base font-semibold tracking-tight text-slate-800">Threshold Crossings</h2>
+        <h2 className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">Threshold Crossings</h2>
       </div>
 
       <div className="space-y-4">
@@ -84,16 +84,16 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
               className="group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   At {formatThreshold(s.threshold)} tokens
                 </span>
-                <span className="text-[11px] metric-mono text-slate-400">
+                <span className="text-[11px] metric-mono text-slate-400 dark:text-slate-500">
                   {s.above.count} above
                 </span>
               </div>
 
               {/* Progress bar */}
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-3">
+              <div className="h-1.5 bg-slate-100 dark:bg-slate-700/60 rounded-full overflow-hidden mb-3">
                 <motion.div
                   className="h-full rounded-full bg-accent"
                   initial={{ width: 0 }}
@@ -104,8 +104,8 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
-                  <p className="metric-mono text-sm font-bold text-slate-700">{Math.round(s.below.avgTtft).toLocaleString()}ms</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Below</p>
+                  <p className="metric-mono text-sm font-bold text-slate-700 dark:text-slate-200">{Math.round(s.below.avgTtft).toLocaleString()}ms</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Below</p>
                 </div>
                 <div className="flex items-center justify-center">
                   <div className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
@@ -113,15 +113,15 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
                       ? 'bg-ember/10 text-ember'
                       : s.ttftDelta < 0
                       ? 'bg-moss/10 text-moss'
-                      : 'bg-slate-100 text-slate-400'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
                   }`}>
                     {s.ttftDelta > 0 ? <TrendUp size={10} /> : s.ttftDelta < 0 ? <TrendDown size={10} /> : <Minus size={10} />}
                     {s.ttftDelta !== 0 && <span className="metric-mono">{Math.abs(Math.round(s.ttftDelta)).toLocaleString()}ms</span>}
                   </div>
                 </div>
                 <div className="text-center">
-                  <p className="metric-mono text-sm font-bold text-slate-700">{Math.round(s.above.avgTtft).toLocaleString()}ms</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Above</p>
+                  <p className="metric-mono text-sm font-bold text-slate-700 dark:text-slate-200">{Math.round(s.above.avgTtft).toLocaleString()}ms</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Above</p>
                 </div>
               </div>
             </motion.div>
@@ -129,16 +129,16 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
         })}
       </div>
 
-      <div className="mt-5 pt-4 border-t border-slate-100">
+      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-700/50">
         {strongest ? (
-          <p className="text-xs leading-relaxed text-slate-500">
-            The <span className="metric-mono font-semibold text-slate-700">{formatThreshold(strongest.threshold)} threshold</span> shows
+          <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            The <span className="metric-mono font-semibold text-slate-700 dark:text-slate-200">{formatThreshold(strongest.threshold)} threshold</span> shows
             the strongest improvement signal — TTFT drops by{' '}
             <span className="metric-mono font-semibold text-moss">{Math.abs(Math.round(strongest.ttftDelta)).toLocaleString()}ms</span>{' '}
             once requests cross it, indicating a meaningful TTFT shift at this boundary.
           </p>
         ) : (
-          <p className="text-xs leading-relaxed text-slate-500">
+          <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             No threshold shows a significant TTFT improvement above it. Requests remain consistently timed across token counts.
           </p>
         )}

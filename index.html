@@ -1,11 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>pi-tps — Telemetry Inspector</title>
     <meta name="description" content="Inspect pi telemetry JSONL files. Analyze LLM tokens-per-second, timing, cache behavior, and routing performance." />
+    <script>
+      // Inline script to prevent flash of wrong theme
+      (function() {
+        var stored = localStorage.getItem('theme');
+        if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -31,6 +31,19 @@
   --accent-muted: #164e63;
 }
 
+.dark {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --surface-raised: #18181f;
+  --border: rgba(51, 65, 85, 0.4);
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --accent: #06b6d4;
+  --accent-light: #22d3ee;
+  --accent-muted: #164e63;
+}
+
 html {
   font-family: 'Geist', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -51,12 +64,22 @@ body {
     box-shadow: 0 20px 40px -15px rgba(0,0,0,0.05);
   }
 
+  .dark .card-surface {
+    box-shadow: 0 20px 40px -15px rgba(0,0,0,0.3);
+  }
+
   .glass-panel {
     background: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 20px 40px -15px rgba(0,0,0,0.05);
+  }
+
+  .dark .glass-panel {
+    background: rgba(17, 17, 24, 0.85);
+    border: 1px solid rgba(51, 65, 85, 0.3);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 20px 40px -15px rgba(0,0,0,0.4);
   }
 
   .metric-mono {
@@ -76,6 +99,11 @@ body {
     background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
     background-size: 200% 100%;
     animation: shimmer 2s infinite;
+  }
+
+  .dark .shimmer-bg {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
+    background-size: 200% 100%;
   }
 }
 

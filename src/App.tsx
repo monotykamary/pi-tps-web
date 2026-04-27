@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary } from './types';
 import { parseJsonl, getTpsEvents, getEnergyEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, formatNumber, formatCurrency, formatDuration } from './lib/parser';
+import { useTheme } from './hooks/useTheme';
 import TimelineChart from './components/TimelineChart';
 import TimingScatter from './components/TimingScatter';
 import TokenBreakdown from './components/TokenBreakdown';
@@ -11,6 +12,7 @@ import AnomalyDetector from './components/AnomalyDetector';
 import RequestInspector from './components/RequestInspector';
 import CacheEfficiency from './components/CacheEfficiency';
 import TimingDistribution from './components/TimingDistribution';
+import ThemeToggle from './components/ThemeToggle';
 
 function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
   icon: React.ElementType;
@@ -24,19 +26,23 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
       layout
       className={`flex items-center gap-3 px-5 py-3 rounded-2xl border transition-colors ${
         accent
-          ? 'bg-accent/5 border-accent/15'
-          : 'bg-white/60 border-slate-200/50'
+          ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
+          : 'bg-white/60 border-slate-200/50 dark:bg-slate-800/60 dark:border-slate-700/40'
       }`}
       whileHover={{ y: -1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
-      <div className={`p-2 rounded-xl ${accent ? 'bg-accent/10 text-accent' : 'bg-slate-100 text-slate-500'}`}>
+      <div className={`p-2 rounded-xl ${
+        accent
+          ? 'bg-accent/10 text-accent dark:bg-accent/15'
+          : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+      }`}>
         <Icon weight="bold" size={18} />
       </div>
       <div>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{label}</p>
-        <p className="metric-mono text-lg font-semibold text-slate-800 leading-none">
-          {value}{unit && <span className="text-sm text-slate-400 ml-0.5">{unit}</span>}
+        <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
+        <p className="metric-mono text-lg font-semibold text-slate-800 dark:text-slate-100 leading-none">
+          {value}{unit && <span className="text-sm text-slate-400 dark:text-slate-500 ml-0.5">{unit}</span>}
         </p>
       </div>
     </motion.div>
@@ -44,6 +50,7 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
 }
 
 export default function App() {
+  const { theme, setTheme } = useTheme();
   const [events, setEvents] = useState<ParsedEvent[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -67,8 +74,6 @@ export default function App() {
     }
     setLoading(false);
   }, []);
-
-  // No auto-load — user must drop a file or click "Load Sample Data"
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -105,24 +110,25 @@ export default function App() {
 
   return (
     <div
-      className="min-h-[100dvh] bg-[#f9fafb]"
+      className="min-h-[100dvh] bg-[#f9fafb] dark:bg-[#0a0a0f]"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#f9fafb]/80 backdrop-blur-xl border-b border-slate-200/50">
+      <header className="sticky top-0 z-40 bg-[#f9fafb]/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/40">
         <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-accent/10 rounded-xl">
+            <div className="p-2 bg-accent/10 dark:bg-accent/15 rounded-xl">
               <Gauge weight="bold" size={22} className="text-accent" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight text-slate-900 leading-none">pi-tps</h1>
-              <p className="text-[11px] text-slate-400 font-medium tracking-wide mt-0.5">TELEMETRY INSPECTOR</p>
+              <h1 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50 leading-none">pi-tps</h1>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium tracking-wide mt-0.5">TELEMETRY INSPECTOR</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle theme={theme} setTheme={setTheme} />
             <label className="relative cursor-pointer group">
               <input
                 type="file"
@@ -130,15 +136,15 @@ export default function App() {
                 className="sr-only"
                 onChange={handleFileInput}
               />
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200/60 rounded-xl text-sm font-medium text-slate-600 hover:border-accent/30 hover:text-accent transition-all group-active:scale-[0.98]">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
                 <FileArrowUp size={16} weight="bold" />
                 <span>Import JSONL</span>
               </div>
             </label>
             {summary && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-white/80 border border-slate-200/40 rounded-xl">
+              <div className="flex items-center gap-2 px-3 py-2 bg-white/80 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40 rounded-xl">
                 <Pulse size={14} className="text-moss" weight="fill" />
-                <span className="text-xs font-medium text-slate-500">{summary.model.split('/').pop()}</span>
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{summary.model.split('/').pop()}</span>
               </div>
             )}
           </div>
@@ -155,8 +161,8 @@ export default function App() {
             className="flex items-center justify-center min-h-[60dvh]"
           >
             <div className="flex flex-col items-center gap-4">
-              <div className="w-10 h-10 border-2 border-slate-200 border-t-accent rounded-full animate-spin" />
-              <p className="text-sm text-slate-400 font-medium">Loading telemetry...</p>
+              <div className="w-10 h-10 border-2 border-slate-200 dark:border-slate-700 border-t-accent rounded-full animate-spin" />
+              <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">Loading telemetry...</p>
             </div>
           </motion.div>
         ) : !events || tpsEvents.length === 0 ? (
@@ -167,14 +173,16 @@ export default function App() {
             className="flex items-center justify-center min-h-[70dvh] px-6"
           >
             <div className={`max-w-md w-full text-center p-12 rounded-[2.5rem] border-2 border-dashed transition-colors ${
-              dragOver ? 'border-accent bg-accent/5' : 'border-slate-200 bg-white'
+              dragOver
+                ? 'border-accent bg-accent/5 dark:border-accent dark:bg-accent/10'
+                : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800/60'
             }`}>
-              <div className="w-16 h-16 mx-auto mb-6 bg-slate-50 rounded-3xl flex items-center justify-center">
-                <FileArrowUp size={28} className="text-slate-300" weight="duotone" />
+              <div className="w-16 h-16 mx-auto mb-6 bg-slate-50 dark:bg-slate-700/50 rounded-3xl flex items-center justify-center">
+                <FileArrowUp size={28} className="text-slate-300 dark:text-slate-500" weight="duotone" />
               </div>
-              <h2 className="text-xl font-semibold text-slate-700 mb-2">Drop a telemetry file</h2>
-              <p className="text-sm text-slate-400 mb-8 leading-relaxed">
-                Drag and drop a <code className="metric-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">.jsonl</code> file from pi to inspect tokens-per-second, timing, and cache behavior.
+              <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-200 mb-2">Drop a telemetry file</h2>
+              <p className="text-sm text-slate-400 dark:text-slate-500 mb-8 leading-relaxed">
+                Drag and drop a <code className="metric-mono text-xs bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded">.jsonl</code> file from pi to inspect tokens-per-second, timing, and cache behavior.
               </p>
               <button
                 onClick={loadSample}

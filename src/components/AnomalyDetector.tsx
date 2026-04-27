@@ -28,7 +28,6 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
     let maxCache = 0;
 
     sorted.forEach((e, i) => {
-      // Cache drop (sub-agent spawn or reset)
       if (e.data.tokens.cacheRead < maxCache * 0.5 && e.data.tokens.total > cacheDropMinTotal && e.data.tokens.input > cacheDropMinInput) {
         results.push({
           type: 'cache-drop',
@@ -39,7 +38,6 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
         });
       }
 
-      // Slow zone (lowContext–cacheThreshold with high TTFT)
       const total = e.data.tokens.total;
       const ttft = e.data.timing.ttftMs;
       if (total >= lowContext && total < cacheThreshold && ttft > slowTtft) {
@@ -52,7 +50,6 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
         });
       }
 
-      // High new input
       const newRatio = e.data.tokens.input / e.data.tokens.total;
       if (newRatio > highInputRatio && e.data.tokens.input > cacheDropMinInput) {
         results.push({
@@ -64,7 +61,6 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
         });
       }
 
-      // Stall spike
       if (e.data.timing.stallCount >= stallCountThreshold) {
         results.push({
           type: 'stall-spike',
@@ -75,13 +71,11 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
         });
       }
 
-      // Update max cache
       if (e.data.tokens.cacheRead > maxCache) {
         maxCache = e.data.tokens.cacheRead;
       }
     });
 
-    // Deduplicate by event ID + keep highest severity
     const byId = new Map<string, typeof results[0]>();
     for (const r of results) {
       const existing = byId.get(r.event.id);
@@ -104,9 +98,9 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
           <div className="p-1.5 bg-moss/10 rounded-lg">
             <Lightning size={16} className="text-moss" weight="bold" />
           </div>
-          <h2 className="text-base font-semibold tracking-tight text-slate-800">Anomaly Detector</h2>
+          <h2 className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">Anomaly Detector</h2>
         </div>
-        <p className="text-sm text-slate-400">No anomalies detected in this session.</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500">No anomalies detected in this session.</p>
       </motion.div>
     );
   }
@@ -115,7 +109,7 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
     switch (s) {
       case 'high': return 'bg-ember/8 border-ember/20 text-ember';
       case 'medium': return 'bg-amber/8 border-amber/20 text-amber';
-      default: return 'bg-slate-100 border-slate-200 text-slate-500';
+      default: return 'bg-slate-100 border-slate-200 dark:bg-slate-700/50 dark:border-slate-600 text-slate-500 dark:text-slate-400';
     }
   };
 
@@ -131,9 +125,9 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
           <div className="p-1.5 bg-amber/10 rounded-lg">
             <Warning size={16} className="text-amber" weight="bold" />
           </div>
-          <h2 className="text-base font-semibold tracking-tight text-slate-800">Anomaly Detector</h2>
+          <h2 className="text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100">Anomaly Detector</h2>
         </div>
-        <span className="text-[11px] metric-mono font-semibold text-slate-400">{anomalies.length} found</span>
+        <span className="text-[11px] metric-mono font-semibold text-slate-400 dark:text-slate-500">{anomalies.length} found</span>
       </div>
 
       <div className="space-y-2.5 max-h-80 overflow-y-auto scrollbar-hide">
@@ -154,8 +148,8 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
                   {a.type === 'stall-spike' && <Warning size={14} weight="bold" />}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-slate-700">{a.description}</p>
-                  <p className="text-[10px] metric-mono text-slate-400 mt-1">
+                  <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{a.description}</p>
+                  <p className="text-[10px] metric-mono text-slate-400 dark:text-slate-500 mt-1">
                     #{a.index + 1} · total={a.event.data.tokens.total.toLocaleString()}
                     {a.event.energy && ` · ${(a.event.energy.cost_usd * 100).toFixed(2)}c`}
                   </p>
