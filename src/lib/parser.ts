@@ -108,25 +108,29 @@ function parseLegacyMessage(message: string): TpsPayload | null {
   };
 }
 
+interface AssistantMsg {
+  id: string | null;
+  parentId: string | null;
+  entryTimestamp: string;
+  provider: string;
+  modelId: string;
+  usage: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } | null;
+  messageTimestamp: number;
+  prevEntryTimestamp: string | null;
+}
+
 export function parseJsonl(raw: string): ParsedEvent[] {
   const lines = raw.trim().split('\n');
   const events: ParsedEvent[] = [];
 
-  // Collect assistant messages for synthesis when no custom/tps entries exist.
-  // This supports raw pi session JSONL files that predate the pi-tps extension.
-  const assistantMessages: Array<{
-    id: string | null;
-    parentId: string | null;
-    entryTimestamp: string;
-    provider: string;
-    modelId: string;
-    usage: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
-    cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } | null;
-    messageTimestamp: number;
-    prevEntryTimestamp: string | null;
-  }> = [];
+  // Always collect assistant messages — used for:
+  //  1. Synthesizing TpsEvents when no custom/tps entries exist (pre-pi-tps sessions)
+  //  2. Enriching legacy TPS entries with model + cost data from the raw session
+  const assistantMessages: AssistantMsg[] = [];
 
   let hasTpsEntries = false;
+  let hasLegacyTpsEntries = false;
   let synthCounter = 0;
   let prevEntryTimestamp: string | null = null;
 
@@ -148,6 +152,7 @@ export function parseJsonl(raw: string): ParsedEvent[] {
         const data = rawEvent.data;
         // Legacy format: { message: string, timestamp: number } — parse the message string
         if (data && typeof data.message === 'string' && !data.model) {
+          hasLegacyTpsEntries = true;
           const parsed = parseLegacyMessage(data.message);
           if (parsed) {
             parsed.timestamp = data.timestamp ?? 0;
@@ -217,7 +222,7 @@ export function parseJsonl(raw: string): ParsedEvent[] {
           });
         }
       } else if (rawEvent.type === 'message') {
-        // Collect assistant messages for potential synthesis when no custom/tps entries exist
+        // Collect assistant messages for synthesis and/or enrichment
         const msg = rawEvent.message;
         if (
           msg && msg.role === 'assistant' && msg.usage &&
@@ -253,11 +258,62 @@ export function parseJsonl(raw: string): ParsedEvent[] {
     }
   }
 
-  // Synthesize TpsEvent entries from assistant messages when no custom/tps entries exist.
-  // This enables the inspector to work with raw pi session JSONL files that predate pi-tps.
-  // Timing is derived from the gap between the assistant message and its preceding entry
-  // (parentId-based for versioned sessions, sequential fallback for older sessions).
-  // TTFT, stall detection, and true generation TPS are unavailable without pi-tps.
+  // ── Enrich legacy TPS entries with model + cost from assistant messages ────
+  // Legacy entries (parsed from display strings) lack model and cost data.
+  // In the session JSONL, each legacy TPS entry's parentId chains back to an
+  // assistant message. Walk the parentId chain to find the nearest assistant
+  // message with matching output tokens, then fill in model + cost.
+  if (hasLegacyTpsEntries && assistantMessages.length > 0) {
+    const assistantById = new Map<string, AssistantMsg>();
+    for (const m of assistantMessages) {
+      if (m.id) assistantById.set(m.id, m);
+    }
+
+    // Also index assistant messages by output token count for fallback matching
+    const assistantByOutput = new Map<number, AssistantMsg[]>();
+    for (const m of assistantMessages) {
+      const list = assistantByOutput.get(m.usage.output) ?? [];
+      list.push(m);
+      assistantByOutput.set(m.usage.output, list);
+    }
+
+    // Walk parentId chain up to 5 hops looking for an assistant message
+    const findAssistant = (parentId: string | null, output: number): AssistantMsg | null => {
+      // Direct match via parentId chain
+      let current = parentId;
+      for (let hop = 0; hop < 5 && current; hop++) {
+        const m = assistantById.get(current);
+        if (m) return m;
+        const parentEntry = events.find(e => e.id === current);
+        current = parentEntry?.parentId ?? null;
+      }
+      // Fallback: match by output token count + chronological proximity
+      const candidates = assistantByOutput.get(output);
+      if (candidates && candidates.length > 0) return candidates[0];
+      return null;
+    };
+
+    for (const event of events) {
+      if (event.type !== 'tps') continue;
+      const data = event.data as TpsPayload;
+      if (data.model.modelId !== 'unknown') continue; // already enriched or structured
+
+      const assistant = findAssistant(event.parentId, data.tokens.output);
+      if (!assistant) continue;
+
+      data.model = { provider: assistant.provider, modelId: assistant.modelId };
+      if (data.cost === null && assistant.cost) {
+        data.cost = assistant.cost;
+      }
+    }
+  }
+
+  // ── Synthesize TpsEvent entries when no custom/tps entries exist ─────────
+  // This enables the inspector to work with raw pi session JSONL files
+  // that predate pi-tps. Timing is derived from the gap between the
+  // assistant message and its preceding entry (parentId-based for versioned
+  // sessions, sequential fallback for older sessions). TTFT, stall detection,
+  // and true generation TPS are unavailable without pi-tps.
   if (!hasTpsEntries) {
     for (const msg of assistantMessages) {
       // Derive approximate totalMs from the gap to the predecessor entry
