@@ -168,12 +168,15 @@ export function parseJsonl(raw: string): ParsedEvent[] {
           continue;
         }
         // Structured format: TurnTelemetry
+        // Normalize: cost may be absent (undefined) — coerce to null
+        const tpsData = rawEvent.data;
+        if (tpsData.cost === undefined) tpsData.cost = null;
         events.push({
           id: rawEvent.id,
           parentId: rawEvent.parentId,
           timestamp: rawEvent.timestamp,
           type: 'tps',
-          data: rawEvent.data,
+          data: tpsData,
         });
       } else if (rawEvent.type === 'custom' && rawEvent.customType === 'neuralwatt-energy') {
         events.push({
@@ -453,7 +456,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
       totalCostUsd += pairedEnergy.cost_usd;
       usedNeuralwatt = true;
       hasAnyCost = true;
-    } else if (tps.data.cost !== null) {
+    } else if (tps.data.cost) {
       totalCostUsd += tps.data.cost.total;
       usedTpsCost = true;
       hasAnyCost = true;
