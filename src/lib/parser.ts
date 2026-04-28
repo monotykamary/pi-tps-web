@@ -112,11 +112,39 @@ export function parseJsonl(raw: string): ParsedEvent[] {
   const lines = raw.trim().split('\n');
   const events: ParsedEvent[] = [];
 
+  // Collect assistant messages for synthesis when no custom/tps entries exist.
+  // This supports raw pi session JSONL files that predate the pi-tps extension.
+  const assistantMessages: Array<{
+    id: string | null;
+    parentId: string | null;
+    entryTimestamp: string;
+    provider: string;
+    modelId: string;
+    usage: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+    cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } | null;
+    messageTimestamp: number;
+    prevEntryTimestamp: string | null;
+  }> = [];
+
+  let hasTpsEntries = false;
+  let synthCounter = 0;
+  let prevEntryTimestamp: string | null = null;
+
+  // Track entry timestamps by ID for deriving approximate timing from parent relationships
+  const timestampById = new Map<string, string>();
+
   for (const line of lines) {
     if (!line.trim()) continue;
     try {
       const rawEvent = JSON.parse(line);
+
+      // Track timestamps for timing derivation
+      if (rawEvent.id && rawEvent.timestamp) {
+        timestampById.set(rawEvent.id, rawEvent.timestamp);
+      }
+
       if (rawEvent.type === 'custom' && rawEvent.customType === 'tps') {
+        hasTpsEntries = true;
         const data = rawEvent.data;
         // Legacy format: { message: string, timestamp: number } — parse the message string
         if (data && typeof data.message === 'string' && !data.model) {
@@ -131,6 +159,7 @@ export function parseJsonl(raw: string): ParsedEvent[] {
               data: parsed,
             });
           }
+          prevEntryTimestamp = rawEvent.timestamp ?? prevEntryTimestamp;
           continue;
         }
         // Structured format: TurnTelemetry
@@ -175,9 +204,101 @@ export function parseJsonl(raw: string): ParsedEvent[] {
           fromId: rawEvent.fromId,
           summary: rawEvent.summary,
         });
+      } else if (rawEvent.type === 'session') {
+        // Older session entries embed the initial model; extract as model_change
+        if (rawEvent.provider && rawEvent.modelId) {
+          events.push({
+            id: rawEvent.id ? `session-model-${rawEvent.id}` : `session-model-${synthCounter++}`,
+            parentId: null,
+            timestamp: rawEvent.timestamp,
+            type: 'model_change',
+            provider: rawEvent.provider,
+            modelId: rawEvent.modelId,
+          });
+        }
+      } else if (rawEvent.type === 'message') {
+        // Collect assistant messages for potential synthesis when no custom/tps entries exist
+        const msg = rawEvent.message;
+        if (
+          msg && msg.role === 'assistant' && msg.usage &&
+          typeof msg.usage.output === 'number' && msg.usage.output > 0
+        ) {
+          const u = msg.usage;
+          const total = u.totalTokens || (u.input || 0) + u.output + (u.cacheRead || 0) + (u.cacheWrite || 0);
+          assistantMessages.push({
+            id: rawEvent.id ?? null,
+            parentId: rawEvent.parentId ?? null,
+            entryTimestamp: rawEvent.timestamp,
+            provider: msg.provider || 'unknown',
+            modelId: msg.model || 'unknown',
+            usage: {
+              input: u.input || 0,
+              output: u.output,
+              cacheRead: u.cacheRead || 0,
+              cacheWrite: u.cacheWrite || 0,
+              total,
+            },
+            cost: u.cost || null,
+            messageTimestamp: msg.timestamp || 0,
+            prevEntryTimestamp,
+          });
+        }
+      }
+
+      if (rawEvent.timestamp) {
+        prevEntryTimestamp = rawEvent.timestamp;
       }
     } catch {
       // skip malformed lines
+    }
+  }
+
+  // Synthesize TpsEvent entries from assistant messages when no custom/tps entries exist.
+  // This enables the inspector to work with raw pi session JSONL files that predate pi-tps.
+  // Timing is derived from the gap between the assistant message and its preceding entry
+  // (parentId-based for versioned sessions, sequential fallback for older sessions).
+  // TTFT, stall detection, and true generation TPS are unavailable without pi-tps.
+  if (!hasTpsEntries) {
+    for (const msg of assistantMessages) {
+      // Derive approximate totalMs from the gap to the predecessor entry
+      let totalMs = 0;
+      if (msg.parentId) {
+        const parentTs = timestampById.get(msg.parentId);
+        if (parentTs && msg.entryTimestamp) {
+          totalMs = Math.max(0, new Date(msg.entryTimestamp).getTime() - new Date(parentTs).getTime());
+        }
+      }
+      // Fall back to sequential gap (for older sessions without parentId)
+      if (totalMs === 0 && msg.prevEntryTimestamp && msg.entryTimestamp) {
+        totalMs = Math.max(0, new Date(msg.entryTimestamp).getTime() - new Date(msg.prevEntryTimestamp).getTime());
+      }
+
+      // Wall-clock TPS: output / totalSeconds (lower bound — includes TTFT and stalls)
+      const tps = totalMs > 0
+        ? Math.round((msg.usage.output / (totalMs / 1000)) * 10) / 10
+        : 0;
+
+      events.push({
+        id: msg.id ? `synth-${msg.id}` : `synth-${synthCounter++}`,
+        parentId: msg.parentId,
+        timestamp: msg.entryTimestamp,
+        type: 'tps',
+        data: {
+          model: { provider: msg.provider, modelId: msg.modelId },
+          tokens: msg.usage,
+          timing: {
+            ttftMs: 0,
+            totalMs,
+            generationMs: totalMs,
+            stallMs: 0,
+            stallCount: 0,
+            messageCount: 1,
+          },
+          tps,
+          cost: msg.cost,
+          timestamp: msg.messageTimestamp,
+        },
+      });
     }
   }
 

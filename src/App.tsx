@@ -220,9 +220,9 @@ export default function App() {
               <div className="w-16 h-16 mx-auto mb-6 bg-zinc-50 dark:bg-white/[0.06] rounded-3xl flex items-center justify-center">
                 <FileArrowUp size={28} className="text-zinc-300 dark:text-zinc-400" weight="duotone" />
               </div>
-              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop a telemetry file</h2>
+              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop a telemetry or session file</h2>
               <p className="text-sm text-zinc-400 dark:text-zinc-400 mb-8 leading-relaxed">
-                Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file from pi to inspect tokens-per-second, timing, and cache behavior.
+                Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file from pi — telemetry exports, or raw session files from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">~/.pi/agent/sessions</code> — to inspect tokens-per-second, timing, and cache behavior.
               </p>
               <button
                 onClick={loadSample}
