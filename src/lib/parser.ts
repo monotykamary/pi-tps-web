@@ -1,4 +1,112 @@
-import type { ParsedEvent, TpsEvent, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
+import type { ParsedEvent, TpsEvent, TpsPayload, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
+
+/**
+ * Parse a legacy TPS message string into a TpsPayload.
+ *
+ * Legacy format A (pre-TTFT):  "TPS 25.3 tok/s. out 1,234, in 56,789, cache r/w 12,345/6,789, total 70,000, 12.3s"
+ * Legacy format B (with TTFT): "TPS 25.3 tok/s · TTFT 3.2s · 12.0s · out 1,234 · in 56,789"
+ * Also handles duration variants: whole seconds ("3s"), decimal ("3.2s"), multi-unit ("1m 30s").
+ *
+ * Returns null if the message cannot be parsed.
+ */
+function parseLegacyMessage(message: string): TpsPayload | null {
+  // Extract TPS
+  const tpsMatch = message.match(/TPS\s+([\d.]+)\s+tok\/s/);
+  if (!tpsMatch) return null;
+  const tps = parseFloat(tpsMatch[1]);
+
+  let input = 0;
+  let output = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  let total = 0;
+  let ttftMs = 0;
+  let totalMs = 0;
+
+  // Parse duration string like "3.2s", "3s", "1m 30s", "2h 15m"
+  const parseDurationMs = (s: string): number => {
+    let ms = 0;
+    const hourMatch = s.match(/(\d+)h/);
+    const minMatch = s.match(/(\d+)m(?![s])/); // m not followed by s
+    const secMatch = s.match(/([\d.]+)s/);
+    if (hourMatch) ms += parseFloat(hourMatch[1]) * 3600000;
+    if (minMatch) ms += parseFloat(minMatch[1]) * 60000;
+    if (secMatch) ms += parseFloat(secMatch[1]) * 1000;
+    return ms;
+  };
+
+  // Parse a locale-formatted number like "1,234" or "1.234" or "1234"
+  const parseLocaleNumber = (s: string): number => {
+    // Remove digit-grouping separators (commas or dots between digits)
+    // but preserve decimal point (last dot/comma if surrounded by digits on right)
+    const stripped = s.replace(/[.,](?=\d{3})/g, '');
+    return parseFloat(stripped) || 0;
+  };
+
+  // Detect format by separator style
+  if (message.includes('·')) {
+    // Format B: "TPS 25.3 tok/s · TTFT 3.2s · 12.0s · out 1,234 · in 56,789"
+    const parts = message.split('·').map((p) => p.trim());
+    for (const part of parts) {
+      const ttftMatch = part.match(/^TTFT\s+(.+)$/);
+      if (ttftMatch) {
+        ttftMs = parseDurationMs(ttftMatch[1]);
+        continue;
+      }
+      const outMatch = part.match(/^out\s+([\d,.]+)$/);
+      if (outMatch) {
+        output = parseLocaleNumber(outMatch[1]);
+        continue;
+      }
+      const inMatch = part.match(/^in\s+([\d,.]+)$/);
+      if (inMatch) {
+        input = parseLocaleNumber(inMatch[1]);
+        continue;
+      }
+      // Duration-only part (not TTFT, not tokens): total wall-clock time
+      const durMatch = part.match(/^[\d.]+[hms]/);
+      if (durMatch && !part.startsWith('TPS') && !part.startsWith('TTFT')) {
+        totalMs = parseDurationMs(part);
+      }
+    }
+  } else if (message.includes('.')) {
+    // Format A: "TPS 25.3 tok/s. out 1,234, in 56,789, cache r/w 12,345/6,789, total 70,000, 12.3s"
+    const outMatch = message.match(/out\s+([\d,.]+)/);
+    if (outMatch) output = parseLocaleNumber(outMatch[1]);
+    const inMatch = message.match(/in\s+([\d,.]+)/);
+    if (inMatch) input = parseLocaleNumber(inMatch[1]);
+    const cacheMatch = message.match(/cache\s+r\/w\s+([\d,.]+)\/([\d,.]+)/);
+    if (cacheMatch) {
+      cacheRead = parseLocaleNumber(cacheMatch[1]);
+      cacheWrite = parseLocaleNumber(cacheMatch[2]);
+    }
+    const totalMatch = message.match(/total\s+([\d,.]+)/);
+    if (totalMatch) total = parseLocaleNumber(totalMatch[1]);
+    // Duration is the last number before the end (e.g. "12.3s")
+    const durMatch = message.match(/([\d.]+s)\s*$/);
+    if (durMatch) totalMs = parseDurationMs(durMatch[1]);
+  }
+
+  if (total === 0) total = input + output + cacheRead + cacheWrite;
+  // In legacy format, generationMs equals totalMs minus TTFT (stall detection didn't exist)
+  const generationMs = totalMs - ttftMs > 0 ? totalMs - ttftMs : totalMs;
+
+  return {
+    model: { provider: 'unknown', modelId: 'unknown' },
+    tokens: { input, output, cacheRead, cacheWrite, total },
+    timing: {
+      ttftMs,
+      totalMs,
+      generationMs,
+      stallMs: 0,
+      stallCount: 0,
+      messageCount: 1,
+    },
+    tps,
+    cost: null,
+    timestamp: 0,
+  };
+}
 
 export function parseJsonl(raw: string): ParsedEvent[] {
   const lines = raw.trim().split('\n');
@@ -9,6 +117,23 @@ export function parseJsonl(raw: string): ParsedEvent[] {
     try {
       const rawEvent = JSON.parse(line);
       if (rawEvent.type === 'custom' && rawEvent.customType === 'tps') {
+        const data = rawEvent.data;
+        // Legacy format: { message: string, timestamp: number } — parse the message string
+        if (data && typeof data.message === 'string' && !data.model) {
+          const parsed = parseLegacyMessage(data.message);
+          if (parsed) {
+            parsed.timestamp = data.timestamp ?? 0;
+            events.push({
+              id: rawEvent.id,
+              parentId: rawEvent.parentId,
+              timestamp: rawEvent.timestamp,
+              type: 'tps',
+              data: parsed,
+            });
+          }
+          continue;
+        }
+        // Structured format: TurnTelemetry
         events.push({
           id: rawEvent.id,
           parentId: rawEvent.parentId,
