@@ -219,6 +219,10 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
             ttft {event.data.timing.ttftMs.toLocaleString()}ms
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
+          <span className={`text-[10px] font-medium ${event.data.tps > 40 ? 'text-moss' : event.data.tps > 20 ? 'text-accent' : 'text-ember'}`}>
+            {event.data.tps.toFixed(1)} tps
+          </span>
+          <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">
             {((event.data.tokens.cacheRead / event.data.tokens.total) * 100).toFixed(0)}% cache
           </span>
