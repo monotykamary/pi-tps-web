@@ -118,30 +118,30 @@ export default function CacheEfficiency({ events }: Props) {
         </div>
       </div>
 
-      {/* Over-time mini bars */}
+      {/* Over-time cache hit rate */}
       <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-white/[0.06]">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-3">Cache hit rate over time (by request range)</p>
-        <div className="flex items-end gap-1.5 h-12">
-          {(() => {
-            const rates = cacheOverTime.map(c => c.hitRate);
-            const minR = Math.min(...rates);
-            const maxR = Math.max(...rates, 1);
-            const range = maxR - minR || 1;
-            return cacheOverTime.map((c, i) => {
-              const normalized = ((c.hitRate - minR) / range) * 100;
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+        <div className="space-y-1.5">
+          {cacheOverTime.map((c, i) => {
+            const color = c.hitRate >= 80 ? 'bg-moss' : c.hitRate >= 50 ? 'bg-accent' : c.hitRate >= 20 ? 'bg-amber' : 'bg-ember';
+            const textColor = c.hitRate >= 80 ? 'text-moss' : c.hitRate >= 50 ? 'text-accent' : c.hitRate >= 20 ? 'text-amber' : 'text-ember';
+            return (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400 w-10 shrink-0 text-right">{c.label}</span>
+                <div className="flex-1 h-4 bg-zinc-50 dark:bg-white/[0.04] rounded-sm overflow-hidden relative">
                   <motion.div
-                    className="w-full bg-accent/20 rounded-t-sm"
-                    initial={{ height: 0 }}
-                    animate={{ height: `${Math.max(8, normalized)}%` }}
+                    className={`h-full ${color} rounded-sm`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${c.hitRate}%` }}
                     transition={{ delay: 0.55 + i * 0.06, duration: 0.5, type: 'spring', stiffness: 80 }}
                   />
-                  <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">{c.hitRate}%</span>
+                  <span className={`absolute inset-y-0 right-1.5 flex items-center text-[9px] metric-mono font-semibold ${textColor} mix-blend-difference`}>
+                    {c.hitRate}%
+                  </span>
                 </div>
-              );
-            });
-          })()}
+              </div>
+            );
+          })}
         </div>
       </div>
     </motion.div>

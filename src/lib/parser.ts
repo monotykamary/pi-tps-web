@@ -432,9 +432,24 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const totalGenerationMs = sorted.reduce((s, e) => s + e.data.timing.generationMs, 0);
   const totalStallMs = sorted.reduce((s, e) => s + e.data.timing.stallMs, 0);
   const totalStallCount = sorted.reduce((s, e) => s + e.data.timing.stallCount, 0);
-  const avgTps = totalGenerationMs > 0 ? totalOutput / (totalGenerationMs / 1000) : 0;
-  const ttfts = sorted.map(e => e.data.timing.ttftMs);
-  const avgTtft = ttfts.reduce((a, b) => a + b, 0) / ttfts.length;
+  // Weighted TPS: totalOutput / totalGenerationSec — longer outputs contribute more
+  const weightedTps = totalGenerationMs > 0 ? totalOutput / (totalGenerationMs / 1000) : 0;
+  // Simple average TPS: arithmetic mean of per-request TPS values
+  const avgTps = sorted.length > 0 ? sorted.reduce((s, e) => s + e.data.tps, 0) / sorted.length : 0;
+
+  const ttfts = sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b);
+  const avgTtft = ttfts.length > 0 ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length : 0;
+
+  // TTFT percentiles
+  const percentile = (arr: number[], p: number): number => {
+    if (arr.length === 0) return 0;
+    const idx = Math.min(Math.floor(arr.length * p), arr.length - 1);
+    return arr[idx];
+  };
+  const ttftP50 = percentile(ttfts, 0.50);
+  const ttftP75 = percentile(ttfts, 0.75);
+  const ttftP90 = percentile(ttfts, 0.90);
+  const ttftP99 = percentile(ttfts, 0.99);
 
   // Total cost sums ALL sources, but dedupes per-event: when a TPS event has both
   // a token cost AND a paired neuralwatt energy cost, only the energy cost is used
@@ -509,7 +524,12 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     totalStallMs,
     totalStallCount,
     avgTps,
+    weightedTps,
     avgTtft,
+    ttftP50,
+    ttftP75,
+    ttftP90,
+    ttftP99,
     totalCostUsd: totalCostUsdResult,
     costSource,
     totalEnergyJoules,

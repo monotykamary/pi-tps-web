@@ -99,8 +99,16 @@ export interface ConversationSummary {
   totalGenerationMs: number;
   totalStallMs: number;
   totalStallCount: number;
+  /** Simple arithmetic mean of per-request TPS values */
   avgTps: number;
+  /** Output-token-weighted TPS: totalOutput / totalGenerationSec — higher-output requests contribute more */
+  weightedTps: number;
   avgTtft: number;
+  /** TTFT percentiles */
+  ttftP50: number;
+  ttftP75: number;
+  ttftP90: number;
+  ttftP99: number;
   totalCostUsd: number | null;
   /** 'neuralwatt' = only energy costs, 'tps' = only token costs, 'both' = mixed (energy preferred where paired), null = no cost data */
   costSource: 'neuralwatt' | 'tps' | 'both' | null;

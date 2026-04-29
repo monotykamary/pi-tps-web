@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary } from './types';
 import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
@@ -24,7 +24,7 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
   return (
     <motion.div
       layout
-      className={`flex items-center gap-3 px-5 py-3 rounded-2xl border transition-colors ${
+      className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
         accent
           ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
           : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
@@ -32,17 +32,17 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
       whileHover={{ y: -1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
-      <div className={`p-2 rounded-xl ${
+      <div className={`shrink-0 p-1.5 rounded-lg ${
         accent
           ? 'bg-accent/10 text-accent dark:bg-accent/15'
           : 'bg-zinc-100 text-zinc-500 dark:bg-white/[0.04] dark:text-zinc-400'
       }`}>
-        <Icon weight="bold" size={18} />
+        <Icon weight="bold" size={14} />
       </div>
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{label}</p>
-        <p className="metric-mono text-lg font-semibold text-zinc-800 dark:text-zinc-300 leading-none">
-          {value}{unit && <span className="text-sm text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
+        <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight mt-0.5">
+          {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
         </p>
       </div>
     </motion.div>
@@ -246,11 +246,12 @@ export default function App() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3"
+                className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2"
               >
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} />
                 <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.totalTimeMs)} />
-                <MetricPill icon={Gauge} label="Avg TPS" value={summary.avgTps.toFixed(1)} />
+                <MetricPill icon={Gauge} label="Avg TPS" value={summary.avgTps.toFixed(1)} unit="tok/s" />
+                <MetricPill icon={Barbell} label="Wtd TPS" value={summary.weightedTps.toFixed(1)} unit="tok/s" accent />
                 <MetricPill icon={Clock} label="Avg TTFT" value={`${Math.round(summary.avgTtft)}ms`} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} />

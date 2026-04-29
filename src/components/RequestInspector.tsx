@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure } from '@phosphor-icons/react';
+import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binoculars } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
 
 interface Props {
@@ -18,6 +18,18 @@ function isTpsEvent(e: TimelineEvent): e is TpsEvent & { energy?: EnergyPayload 
 
 export default function RequestInspector({ timeline, selectedId, onSelect, thresholds }: Props) {
   const tpsEvents = useMemo(() => timeline.filter(isTpsEvent), [timeline]);
+
+  const cacheHitRates = useMemo(() => {
+    return tpsEvents.map(e => {
+      const total = e.data.tokens.total || 1;
+      return (e.data.tokens.cacheRead / total) * 100;
+    });
+  }, [tpsEvents]);
+
+  const avgCacheHitRate = useMemo(() => {
+    if (cacheHitRates.length === 0) return 0;
+    return cacheHitRates.reduce((a, b) => a + b, 0) / cacheHitRates.length;
+  }, [cacheHitRates]);
 
   const sorted = useMemo(() => {
     return [...timeline].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -53,11 +65,39 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.4, type: 'spring', stiffness: 100, damping: 20 }}
       className="card-surface p-0 overflow-hidden flex flex-col"
-      style={{ maxHeight: '700px' }}
+      style={{ maxHeight: '750px' }}
     >
       <div className="flex items-center justify-between p-5 pb-4 border-b border-zinc-100 dark:border-white/[0.06]">
         <h2 className="text-base font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">Request Inspector</h2>
         <span className="text-[11px] metric-mono font-semibold text-zinc-400 dark:text-zinc-400">{tpsEvents.length} calls</span>
+      </div>
+
+      {/* Cache hit rate sparkline */}
+      <div className="px-5 pt-4 pb-3 border-b border-zinc-100 dark:border-white/[0.06]">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <Binoculars size={12} className="text-accent" weight="bold" />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Cache Hit Rate</span>
+          </div>
+          <span className="metric-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{avgCacheHitRate.toFixed(0)}% avg</span>
+        </div>
+        <div className="flex items-end gap-px h-8" title={`Cache hit rate per request · avg ${avgCacheHitRate.toFixed(0)}%`}>
+          {cacheHitRates.map((rate, i) => {
+            const h = Math.max(4, (rate / 100) * 100);
+            const color = rate >= 80 ? 'bg-moss' : rate >= 50 ? 'bg-accent' : rate >= 20 ? 'bg-amber' : 'bg-ember';
+            return (
+              <div
+                key={i}
+                className={`flex-1 min-w-[3px] rounded-sm ${color} transition-all`}
+                style={{ height: `${h}%` }}
+              />
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between mt-1.5 text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">
+          <span>#{1}</span>
+          <span>#{cacheHitRates.length}</span>
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden" style={{ minHeight: '400px' }}>

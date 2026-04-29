@@ -10,6 +10,14 @@ interface Props {
   thresholds: DataThresholds;
 }
 
+/** Format a TTFT percentile from a sorted array */
+function formatTtft(sorted: number[], p: number): string {
+  if (sorted.length === 0) return '-';
+  const idx = Math.min(Math.floor(sorted.length * p), sorted.length - 1);
+  const v = sorted[idx];
+  return v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${v}ms`;
+}
+
 export default function TimingDistribution({ events, thresholds }: Props) {
   const { slowTtft, fastTtft, cacheThreshold } = thresholds;
 
@@ -39,6 +47,8 @@ export default function TimingDistribution({ events, thresholds }: Props) {
     const maxCount = Math.max(...counts.map(c => c.count), 1);
     return counts.map(c => ({ ...c, pct: (c.count / sorted.length) * 100, barPct: (c.count / maxCount) * 100 }));
   }, [sorted]);
+
+  const sortedTtfts = useMemo(() => sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b), [sorted]);
 
   const slowCount = sorted.filter(e => e.data.timing.ttftMs > slowTtft && e.data.tokens.total < cacheThreshold).length;
   const fastCount = sorted.filter(e => e.data.tokens.total > cacheThreshold && e.data.timing.ttftMs < fastTtft).length;
@@ -89,15 +99,22 @@ export default function TimingDistribution({ events, thresholds }: Props) {
         ))}
       </div>
 
-      <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06] flex items-center justify-between text-[11px]">
-        <span className="text-zinc-400 dark:text-zinc-400">Median TTFT</span>
-        <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">
-          {(() => {
-            const ttfts = sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b);
-            const mid = Math.floor(ttfts.length / 2);
-            return `${(ttfts[mid] >= 1000 ? (ttfts[mid] / 1000).toFixed(1) + 's' : ttfts[mid] + 'ms')}`;
-          })()}
-        </span>
+      <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06]">
+        <div className="grid grid-cols-4 gap-0 divide-x divide-zinc-100 dark:divide-white/[0.06]">
+          {[
+            { label: 'P50', p: 0.50, color: 'text-zinc-700 dark:text-zinc-300' },
+            { label: 'P75', p: 0.75, color: 'text-amber' },
+            { label: 'P90', p: 0.90, color: 'text-accent' },
+            { label: 'P99', p: 0.99, color: 'text-ember' },
+          ].map(({ label, p, color }) => (
+            <div key={label} className="text-center px-3 py-2 first:pl-0 last:pr-0">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{label}</p>
+              <p className={`metric-mono text-sm font-semibold ${color} mt-0.5`}>
+                {formatTtft(sortedTtfts, p)}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </motion.div>
   );
