@@ -55,17 +55,28 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
 
-  const tpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
+  const allTpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
+  const tpsEvents = useMemo(
+    () => selectedModel ? allTpsEvents.filter(e => e.data.model.modelId === selectedModel) : allTpsEvents,
+    [allTpsEvents, selectedModel]
+  );
   const energyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
   const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
   const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
-  const paired = useMemo(() => events ? pairEnergyWithTps(tpsEvents, energyEvents) : [], [events, tpsEvents, energyEvents]);
-  const summary: ConversationSummary | null = useMemo(
-    () => events ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null,
-    [events, tpsEvents, energyEvents, modelChanges, rewindEvents]
+  const paired = useMemo(() => pairEnergyWithTps(tpsEvents, energyEvents), [tpsEvents, energyEvents]);
+  // Full-session summary for header model list (always unfiltered)
+  const sessionSummary: ConversationSummary | null = useMemo(
+    () => allTpsEvents.length > 0 ? computeSummary(allTpsEvents, energyEvents, modelChanges, rewindEvents) : null,
+    [allTpsEvents, energyEvents, modelChanges, rewindEvents]
   );
-  const buckets = useMemo(() => events ? computeTimingBuckets(tpsEvents) : [], [events, tpsEvents]);
+  // Filtered summary for metrics strip and dashboard
+  const summary: ConversationSummary | null = useMemo(
+    () => tpsEvents.length > 0 ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null,
+    [tpsEvents, energyEvents, modelChanges, rewindEvents]
+  );
+  const buckets = useMemo(() => computeTimingBuckets(tpsEvents), [tpsEvents]);
   const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
 
@@ -75,6 +86,7 @@ export default function App() {
       const res = await fetch('/sample.jsonl');
       const text = await res.text();
       setEvents(parseJsonl(text));
+      setSelectedModel(null);
     } catch (e) {
       console.error('Failed to load sample', e);
     }
@@ -90,6 +102,7 @@ export default function App() {
     reader.onload = () => {
       const text = reader.result as string;
       setEvents(parseJsonl(text));
+      setSelectedModel(null);
     };
     reader.readAsText(file);
   }, []);
@@ -110,6 +123,7 @@ export default function App() {
     reader.onload = () => {
       const text = reader.result as string;
       setEvents(parseJsonl(text));
+      setSelectedModel(null);
     };
     reader.readAsText(file);
   }, []);
@@ -147,39 +161,49 @@ export default function App() {
                 <span>Import JSONL</span>
               </div>
             </label>
-            {summary && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-white/80 dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-xl">
-                <Pulse size={14} className="text-moss" weight="fill" />
-                {summary.models.length === 1 ? (
-                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{summary.models[0].modelId.split('/').pop()}</span>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    {summary.models.map(m => (
-                      <span
-                        key={m.modelId}
-                        className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1"
-                        title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
-                      >
-                        {m.modelId.split('/').pop()}
-                        <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400">{m.callCount}</span>
-                      </span>
-                    )).reduce<React.ReactNode[]>((acc, el, i) => i > 0 ? [...acc, <span key={`sep-${i}`} className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>, el] : [el], [])}
-                  </div>
-                )}
-                {(summary.modelChangeCount > 0 || summary.rewindCount > 0) && (
+            {sessionSummary && (
+              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white/80 dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-xl">
+                <Pulse size={12} className={selectedModel === null ? 'text-moss' : 'text-zinc-400 dark:text-zinc-500'} weight="fill" />
+                {/* All models button */}
+                <button
+                  onClick={() => setSelectedModel(null)}
+                  className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                    selectedModel === null
+                      ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                      : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+                  }`}
+                >
+                  All
+                </button>
+                {sessionSummary.models.map(m => (
+                  <button
+                    key={m.modelId}
+                    onClick={() => setSelectedModel(m.modelId === selectedModel ? null : m.modelId)}
+                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
+                      selectedModel === m.modelId
+                        ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                        : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+                    }`}
+                    title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
+                  >
+                    {m.modelId.split('/').pop()}
+                    <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">{m.callCount}</span>
+                  </button>
+                ))}
+                {(sessionSummary.modelChangeCount > 0 || sessionSummary.rewindCount > 0) && (
                   <>
                     <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-                    <div className="flex items-center gap-1.5">
-                      {summary.modelChangeCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${summary.modelChangeCount} model switches`}>
+                    <div className="flex items-center gap-1">
+                      {sessionSummary.modelChangeCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${sessionSummary.modelChangeCount} model switches`}>
                           <ArrowsLeftRight size={10} weight="bold" />
-                          {summary.modelChangeCount}
+                          {sessionSummary.modelChangeCount}
                         </span>
                       )}
-                      {summary.rewindCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-ember" title={`${summary.rewindCount} rewinds`}>
+                      {sessionSummary.rewindCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-ember" title={`${sessionSummary.rewindCount} rewinds`}>
                           <ArrowBendUpLeft size={10} weight="bold" />
-                          {summary.rewindCount}
+                          {sessionSummary.rewindCount}
                         </span>
                       )}
                     </div>
