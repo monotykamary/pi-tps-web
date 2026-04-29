@@ -62,14 +62,25 @@ export default function App() {
     () => selectedModel ? allTpsEvents.filter(e => e.data.model.modelId === selectedModel) : allTpsEvents,
     [allTpsEvents, selectedModel]
   );
-  const energyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
+  const allEnergyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
+  const energyEvents = useMemo(
+    () => {
+      if (!selectedModel) return allEnergyEvents;
+      // Only include energy events whose parentId matches a TPS event in the
+      // filtered set — otherwise computeSummary treats unmatched energy events
+      // as "orphans" and double-counts their cost.
+      const tpsIds = new Set(tpsEvents.map(e => e.id));
+      return allEnergyEvents.filter(e => tpsIds.has(e.parentId ?? ''));
+    },
+    [allEnergyEvents, selectedModel, tpsEvents]
+  );
   const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
   const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
   const paired = useMemo(() => pairEnergyWithTps(tpsEvents, energyEvents), [tpsEvents, energyEvents]);
   // Full-session summary for header model list (always unfiltered)
   const sessionSummary: ConversationSummary | null = useMemo(
-    () => allTpsEvents.length > 0 ? computeSummary(allTpsEvents, energyEvents, modelChanges, rewindEvents) : null,
-    [allTpsEvents, energyEvents, modelChanges, rewindEvents]
+    () => allTpsEvents.length > 0 ? computeSummary(allTpsEvents, allEnergyEvents, modelChanges, rewindEvents) : null,
+    [allTpsEvents, allEnergyEvents, modelChanges, rewindEvents]
   );
   // Filtered summary for metrics strip and dashboard
   const summary: ConversationSummary | null = useMemo(
