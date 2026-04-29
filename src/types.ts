@@ -101,7 +101,7 @@ export interface ConversationSummary {
   totalStallCount: number;
   /** Simple arithmetic mean of per-request TPS values */
   avgTps: number;
-  /** Output-token-weighted TPS: totalOutput / totalGenerationSec — higher-output requests contribute more */
+  /** Output-token-weighted TPS: sum(tps_i × output_i) / sum(output_i) — longer outputs contribute proportionally more */
   weightedTps: number;
   avgTtft: number;
   /** TTFT percentiles */

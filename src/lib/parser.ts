@@ -432,8 +432,8 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const totalGenerationMs = sorted.reduce((s, e) => s + e.data.timing.generationMs, 0);
   const totalStallMs = sorted.reduce((s, e) => s + e.data.timing.stallMs, 0);
   const totalStallCount = sorted.reduce((s, e) => s + e.data.timing.stallCount, 0);
-  // Weighted TPS: totalOutput / totalGenerationSec — longer outputs contribute more
-  const weightedTps = totalGenerationMs > 0 ? totalOutput / (totalGenerationMs / 1000) : 0;
+  // Weighted TPS: output-token-weighted mean — each request's TPS weighted by its output tokens
+  const weightedTps = totalOutput > 0 ? sorted.reduce((s, e) => s + e.data.tps * e.data.tokens.output, 0) / totalOutput : 0;
   // Simple average TPS: arithmetic mean of per-request TPS values
   const avgTps = sorted.length > 0 ? sorted.reduce((s, e) => s + e.data.tps, 0) / sorted.length : 0;
 
