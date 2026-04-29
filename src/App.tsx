@@ -136,7 +136,7 @@ export default function App() {
       onDragLeave={handleDragLeave}
     >
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#fafafa]/80 dark:bg-[#18181b]/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-white/[0.06]">
+      <header className="sticky top-0 z-40 bg-[#fafafa]/95 dark:bg-[#18181b]/95 backdrop-blur-xl border-b border-zinc-200/60 dark:border-white/[0.08]">
         <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-accent/10 dark:bg-accent/15 rounded-xl">

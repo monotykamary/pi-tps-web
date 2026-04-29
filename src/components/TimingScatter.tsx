@@ -74,7 +74,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse" style={{ minWidth: 200 }}>
+      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 200 }}>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
           Request #{d.index + 1}
         </p>

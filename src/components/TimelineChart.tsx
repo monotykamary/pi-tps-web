@@ -34,7 +34,7 @@ export default function TimelineChart({ buckets }: Props) {
     if (!active || !payload?.length) return null;
     const data = payload[0]?.payload;
     return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse">
+      <div className="glass-panel rounded-2xl px-4 py-3 text-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{data.label}</p>
         <div className="flex items-baseline gap-2">
           <span className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300">{data[metric]}</span>

@@ -34,7 +34,7 @@ export default function TokenBreakdown({ events }: Props) {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm shadow-diffuse">
+      <div className="glass-panel rounded-2xl px-4 py-3 text-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">Request #{d.index}</p>
         <div className="space-y-1">
           {payload.map((p: any) => (

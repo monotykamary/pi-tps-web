@@ -48,7 +48,7 @@ export default function CacheEfficiency({ events }: Props) {
     if (!active || !payload?.length) return null;
     const d = payload[0];
     return (
-      <div className="glass-panel rounded-xl px-3 py-2 text-xs shadow-diffuse">
+      <div className="glass-panel rounded-xl px-3 py-2 text-xs">
         <span className="font-semibold text-zinc-700 dark:text-zinc-300">{d.name}:</span> <span className="metric-mono">{d.value.toLocaleString()}</span>
       </div>
     );
