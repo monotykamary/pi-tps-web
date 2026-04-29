@@ -81,7 +81,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
           </div>
           <span className="metric-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{avgCacheHitRate.toFixed(0)}% avg</span>
         </div>
-        <div className="flex items-end gap-px h-8" title={`Cache hit rate per request · avg ${avgCacheHitRate.toFixed(0)}%`}>
+        <div className="relative flex -mr-px h-8" title={`Cache hit rate per request · avg ${avgCacheHitRate.toFixed(0)}%`}>
           {cacheHitRates.map((rate, i) => {
             const h = Math.max(4, (rate / 100) * 100);
             const color = rate >= 80 ? 'bg-moss' : rate >= 50 ? 'bg-accent' : rate >= 20 ? 'bg-amber' : 'bg-ember';
@@ -90,10 +90,19 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
               <button
                 key={i}
                 onClick={() => onSelect(tpsEvents[i].id)}
-                className={`flex-1 min-w-[3px] rounded-sm ${color} transition-all cursor-pointer hover:opacity-80 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${isActive ? 'opacity-100 ring-1 ring-inset ring-white/40' : 'opacity-70 hover:opacity-90'}`}
-                style={{ height: `${h}%` }}
+                className={`flex-1 min-w-[3px] mr-px relative group cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${isActive ? 'z-10' : ''}`}
                 title={`#${i + 1} · ${rate.toFixed(0)}% cache hit`}
-              />
+              >
+                {/* Hover cursor strip — full column height */}
+                <div className={`absolute inset-0 rounded-sm transition-colors ${isActive ? 'bg-accent/10' : 'group-hover:bg-accent/[0.07]'}`} />
+                {/* Colored bar */}
+                <div className="absolute inset-0 flex items-end">
+                  <div
+                    className={`w-full rounded-sm ${color} transition-opacity ${isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-90'}`}
+                    style={{ height: `${h}%` }}
+                  />
+                </div>
+              </button>
             );
           })}
         </div>
