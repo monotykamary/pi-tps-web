@@ -89,7 +89,11 @@ export default function TimingDistribution({ events, thresholds }: Props) {
                 transition={{ delay: 0.5 + i * 0.06, duration: 0.6, type: 'spring', stiffness: 60 }}
               />
               {bin.count > 0 && (
-                <span className="absolute inset-y-0 left-2 flex items-center text-[10px] metric-mono font-semibold text-white mix-blend-difference">
+                <span
+                  className={`absolute inset-y-0 flex items-center text-[11px] metric-mono font-semibold drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] ${
+                    bin.barPct > 15 ? 'left-2 text-white' : 'left-1 text-zinc-600 dark:text-zinc-300'
+                  }`}
+                >
                   {bin.count}
                 </span>
               )}
