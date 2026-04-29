@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binoculars } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
@@ -15,6 +15,8 @@ interface Props {
 function isTpsEvent(e: TimelineEvent): e is TpsEvent & { energy?: EnergyPayload } {
   return e.type === 'tps';
 }
+
+const SPARKLINE_MAX_BARS = 120;
 
 export default function RequestInspector({ timeline, selectedId, onSelect, thresholds }: Props) {
   const tpsEvents = useMemo(() => timeline.filter(isTpsEvent), [timeline]);
@@ -31,16 +33,55 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
     return cacheHitRates.reduce((a, b) => a + b, 0) / cacheHitRates.length;
   }, [cacheHitRates]);
 
+  const selectedTpsIndex = useMemo(() => {
+    if (!selectedId) return -1;
+    return tpsEvents.findIndex(e => e.id === selectedId);
+  }, [selectedId, tpsEvents]);
+
+  const sparklineBins = useMemo(() => {
+    if (cacheHitRates.length <= SPARKLINE_MAX_BARS) {
+      return cacheHitRates.map((rate, i) => ({ rate, startIndex: i, count: 1 }));
+    }
+    const binSize = Math.ceil(cacheHitRates.length / SPARKLINE_MAX_BARS);
+    const bins: { rate: number; startIndex: number; count: number }[] = [];
+    for (let i = 0; i < cacheHitRates.length; i += binSize) {
+      const slice = cacheHitRates.slice(i, Math.min(i + binSize, cacheHitRates.length));
+      const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
+      bins.push({ rate: avg, startIndex: i, count: slice.length });
+    }
+    return bins;
+  }, [cacheHitRates]);
+
   const sorted = useMemo(() => {
     return [...timeline].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [timeline]);
 
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
+  const scrollPosRef = useRef(0);
+
+  const handleSelect = useCallback((id: string | null) => {
+    if (id !== null && listRef.current) {
+      scrollPosRef.current = listRef.current.scrollTop;
+    }
+    onSelect(id);
+  }, [onSelect]);
 
   useEffect(() => {
     if (selectedId && selectedRef.current && listRef.current) {
       selectedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [selectedId]);
+
+  // Restore scroll position when returning from detail to list
+  useEffect(() => {
+    if (selectedId === null) {
+      const timer = setTimeout(() => {
+        if (listRef.current) {
+          listRef.current.scrollTop = scrollPosRef.current;
+        }
+      }, 200);
+      return () => clearTimeout(timer);
     }
   }, [selectedId]);
 
@@ -81,17 +122,19 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
           </div>
           <span className="metric-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{avgCacheHitRate.toFixed(0)}% avg</span>
         </div>
-        <div className="relative flex -mr-px h-8" title={`Cache hit rate per request · avg ${avgCacheHitRate.toFixed(0)}%`}>
-          {cacheHitRates.map((rate, i) => {
-            const h = Math.max(4, (rate / 100) * 100);
-            const color = rate >= 80 ? 'bg-moss' : rate >= 50 ? 'bg-accent' : rate >= 20 ? 'bg-amber' : 'bg-ember';
-            const isActive = selectedId === tpsEvents[i].id;
+        <div className="relative flex -mr-px h-8" title={`Cache hit rate · avg ${avgCacheHitRate.toFixed(0)}%${cacheHitRates.length > SPARKLINE_MAX_BARS ? ` · aggregated into ${sparklineBins.length} bins` : ''}`}>
+          {sparklineBins.map((bin, i) => {
+            const h = Math.max(4, (bin.rate / 100) * 100);
+            const color = bin.rate >= 80 ? 'bg-moss' : bin.rate >= 50 ? 'bg-accent' : bin.rate >= 20 ? 'bg-amber' : 'bg-ember';
+            const isActive = selectedTpsIndex >= bin.startIndex && selectedTpsIndex < bin.startIndex + bin.count;
             return (
               <button
                 key={i}
-                onClick={() => onSelect(tpsEvents[i].id)}
+                onClick={() => handleSelect(tpsEvents[bin.startIndex].id)}
                 className={`flex-1 min-w-[3px] mr-px relative group cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${isActive ? 'z-10' : ''}`}
-                title={`#${i + 1} · ${rate.toFixed(0)}% cache hit`}
+                title={bin.count === 1
+                  ? `#${bin.startIndex + 1} · ${bin.rate.toFixed(0)}% cache hit`
+                  : `#${bin.startIndex + 1}–${bin.startIndex + bin.count} · avg ${bin.rate.toFixed(0)}% cache hit`}
               >
                 {/* Hover cursor strip — full column height */}
                 <div className={`absolute inset-0 rounded-sm transition-colors ${isActive ? 'bg-accent/10' : 'group-hover:bg-accent/[0.07]'}`} />
@@ -113,7 +156,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
       </div>
 
       <div className="flex-1 flex overflow-hidden" style={{ minHeight: '400px' }}>
-        <div ref={listRef} className="w-full overflow-y-auto scrollbar-hide">
+        <div ref={listRef} className="w-full overflow-y-auto scrollbar-thin">
           <AnimatePresence mode="wait">
             {selectedEvent && isTpsEvent(selectedEvent) ? (
               <motion.div
@@ -127,10 +170,10 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Request Detail</p>
-                    <p className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300 mt-0.5">#{tpsEvents.findIndex(e => e.id === selectedId) + 1} of {tpsEvents.length}</p>
+                    <p className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300 mt-0.5">#{selectedTpsIndex + 1} of {tpsEvents.length}</p>
                   </div>
                   <button
-                    onClick={() => onSelect(null)}
+                    onClick={() => handleSelect(null)}
                     className="p-2 rounded-xl bg-zinc-100 dark:bg-white/[0.04] hover:bg-zinc-200 dark:hover:bg-white/[0.08] transition-colors active:scale-[0.95]"
                   >
                     <X size={16} className="text-zinc-500 dark:text-zinc-400" />
@@ -214,7 +257,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                 {sorted.map((e) => {
                   if (isTpsEvent(e)) {
                     const tpsIdx = tpsEvents.findIndex(t => t.id === e.id);
-                    return <TpsRow key={e.id} event={e} tpsIndex={tpsIdx} thresholds={thresholds} selectedRef={selectedId === e.id ? selectedRef : undefined} onSelect={onSelect} shortModel={shortModel} />;
+                    return <TpsRow key={e.id} event={e} tpsIndex={tpsIdx} thresholds={thresholds} selectedRef={selectedId === e.id ? selectedRef : undefined} onSelect={(id: string) => handleSelect(id)} shortModel={shortModel} />;
                   }
                   return <StructuralRow key={e.id} event={e} />;
                 })}

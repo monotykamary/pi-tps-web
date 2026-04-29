@@ -29,7 +29,7 @@ export default function CacheEfficiency({ events }: Props) {
   }, [sorted]);
 
   const cacheOverTime = useMemo(() => {
-    const intervals = 6;
+    const intervals = Math.min(12, Math.max(6, Math.ceil(sorted.length / 60)));
     const chunkSize = Math.ceil(sorted.length / intervals);
     const chunks: { label: string; hitRate: number }[] = [];
     for (let i = 0; i < sorted.length; i += chunkSize) {

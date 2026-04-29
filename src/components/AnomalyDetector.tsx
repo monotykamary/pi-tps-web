@@ -130,7 +130,7 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
         <span className="text-[11px] metric-mono font-semibold text-zinc-400 dark:text-zinc-400">{anomalies.length} found</span>
       </div>
 
-      <div className="space-y-2.5 max-h-80 overflow-y-auto scrollbar-hide">
+      <div className="space-y-2.5 max-h-80 overflow-y-auto scrollbar-thin">
         <AnimatePresence>
           {anomalies.map((a, i) => (
             <motion.div
