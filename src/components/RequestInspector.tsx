@@ -85,11 +85,14 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
           {cacheHitRates.map((rate, i) => {
             const h = Math.max(4, (rate / 100) * 100);
             const color = rate >= 80 ? 'bg-moss' : rate >= 50 ? 'bg-accent' : rate >= 20 ? 'bg-amber' : 'bg-ember';
+            const isActive = selectedId === tpsEvents[i].id;
             return (
-              <div
+              <button
                 key={i}
-                className={`flex-1 min-w-[3px] rounded-sm ${color} transition-all`}
+                onClick={() => onSelect(tpsEvents[i].id)}
+                className={`flex-1 min-w-[3px] rounded-sm ${color} transition-all cursor-pointer hover:opacity-80 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${isActive ? 'opacity-100 ring-1 ring-inset ring-white/40' : 'opacity-70 hover:opacity-90'}`}
                 style={{ height: `${h}%` }}
+                title={`#${i + 1} · ${rate.toFixed(0)}% cache hit`}
               />
             );
           })}
