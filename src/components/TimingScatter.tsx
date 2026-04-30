@@ -6,7 +6,7 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
-import { formatThreshold } from '../lib/parser';
+import { formatThreshold, formatDuration } from '../lib/parser';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
@@ -85,7 +85,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
           </div>
           <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
             <span className="text-zinc-400 dark:text-zinc-400">TTFT</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.y.toLocaleString()}ms</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(d.y)}</span>
           </div>
           <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
             <span className="text-zinc-400 dark:text-zinc-400">Cache hit</span>

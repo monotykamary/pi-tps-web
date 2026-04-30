@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Timer } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
+import { formatDuration } from '../lib/parser';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
@@ -14,8 +15,7 @@ interface Props {
 function formatTtft(sorted: number[], p: number): string {
   if (sorted.length === 0) return '-';
   const idx = Math.min(Math.floor(sorted.length * p), sorted.length - 1);
-  const v = sorted[idx];
-  return v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${v}ms`;
+  return formatDuration(sorted[idx]);
 }
 
 export default function TimingDistribution({ events, thresholds }: Props) {

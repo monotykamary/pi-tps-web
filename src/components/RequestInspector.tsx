@@ -4,6 +4,7 @@ import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binoculars } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
+import { formatDuration } from '../lib/parser';
 
 interface Props {
   timeline: TimelineEvent[];
@@ -226,10 +227,10 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Timing</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <TimingPill label="TTFT" value={`${selectedEvent.data.timing.ttftMs.toLocaleString()}ms`} highlight />
-                    <TimingPill label="Total" value={`${selectedEvent.data.timing.totalMs.toLocaleString()}ms`} />
-                    <TimingPill label="Generation" value={`${selectedEvent.data.timing.generationMs.toLocaleString()}ms`} />
-                    <TimingPill label="Stall" value={`${selectedEvent.data.timing.stallMs.toLocaleString()}ms`} warn={selectedEvent.data.timing.stallMs > 0} />
+                    <TimingPill label="TTFT" value={formatDuration(selectedEvent.data.timing.ttftMs)} highlight />
+                    <TimingPill label="Total" value={formatDuration(selectedEvent.data.timing.totalMs)} />
+                    <TimingPill label="Generation" value={formatDuration(selectedEvent.data.timing.generationMs)} />
+                    <TimingPill label="Stall" value={formatDuration(selectedEvent.data.timing.stallMs)} warn={selectedEvent.data.timing.stallMs > 0} />
                   </div>
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${selectedEvent.data.tps > 40 ? 'bg-moss' : selectedEvent.data.tps > 20 ? 'bg-accent' : 'bg-ember'}`} />
@@ -311,7 +312,7 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className={`text-[10px] font-medium ${event.data.timing.ttftMs > thresholds.slowTtft ? 'text-ember' : event.data.timing.ttftMs < thresholds.fastTtft ? 'text-moss' : 'text-zinc-400 dark:text-zinc-400'}`}>
-            ttft {event.data.timing.ttftMs.toLocaleString()}ms
+            ttft {formatDuration(event.data.timing.ttftMs)}
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className={`text-[10px] font-medium ${event.data.tps > 40 ? 'text-moss' : event.data.tps > 20 ? 'text-accent' : 'text-ember'}`}>

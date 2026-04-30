@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Warning, Lightning } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
-import { formatThreshold } from '../lib/parser';
+import { formatThreshold, formatDuration } from '../lib/parser';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
@@ -66,7 +66,7 @@ export default function AnomalyDetector({ events, thresholds }: Props) {
           type: 'stall-spike',
           event: e,
           index: i,
-          description: `${e.data.timing.stallCount} stalls adding ${e.data.timing.stallMs.toLocaleString()}ms of stall time`,
+          description: `${e.data.timing.stallCount} stalls adding ${formatDuration(e.data.timing.stallMs)} of stall time`,
           severity: e.data.timing.stallMs > stallMsSeverity ? 'high' : 'medium',
         });
       }

@@ -287,7 +287,7 @@ export default function App() {
                 <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.totalTimeMs)} />
                 <MetricPill icon={Gauge} label="Avg TPS" value={summary.avgTps.toFixed(1)} unit="tok/s" />
                 <MetricPill icon={Barbell} label="Wtd TPS" value={summary.weightedTps.toFixed(1)} unit="tok/s" accent />
-                <MetricPill icon={Clock} label="Avg TTFT" value={`${Math.round(summary.avgTtft)}ms`} />
+                <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} />
                 <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} />

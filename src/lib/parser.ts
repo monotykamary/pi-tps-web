@@ -661,8 +661,14 @@ export function formatThreshold(n: number): string {
 }
 
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 1000) {
+    const rounded = Math.round(ms * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}ms`;
+  }
+  if (ms < 60000) {
+    const s = ms / 1000;
+    return `${Number.isInteger(s) ? s : s.toFixed(1)}s`;
+  }
   const m = Math.floor(ms / 60000);
   const s = ((ms % 60000) / 1000).toFixed(0);
   return `${m}m ${s}s`;

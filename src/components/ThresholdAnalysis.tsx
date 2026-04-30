@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Gauge, TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
 import type { TpsEvent, DataThresholds } from '../types';
-import { formatThreshold } from '../lib/parser';
+import { formatThreshold, formatDuration } from '../lib/parser';
 
 interface Props {
   events: TpsEvent[];
@@ -104,7 +104,7 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
-                  <p className="metric-mono text-sm font-bold text-zinc-700 dark:text-zinc-300">{Math.round(s.below.avgTtft).toLocaleString()}ms</p>
+                  <p className="metric-mono text-sm font-bold text-zinc-700 dark:text-zinc-300">{formatDuration(Math.round(s.below.avgTtft))}</p>
                   <p className="text-[10px] text-zinc-400 dark:text-zinc-400 mt-0.5">Below</p>
                 </div>
                 <div className="flex items-center justify-center">
@@ -116,11 +116,11 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
                       : 'bg-zinc-100 dark:bg-white/[0.04] text-zinc-400 dark:text-zinc-400'
                   }`}>
                     {s.ttftDelta > 0 ? <TrendUp size={10} /> : s.ttftDelta < 0 ? <TrendDown size={10} /> : <Minus size={10} />}
-                    {s.ttftDelta !== 0 && <span className="metric-mono">{Math.abs(Math.round(s.ttftDelta)).toLocaleString()}ms</span>}
+                    {s.ttftDelta !== 0 && <span className="metric-mono">{formatDuration(Math.abs(Math.round(s.ttftDelta)))}</span>}
                   </div>
                 </div>
                 <div className="text-center">
-                  <p className="metric-mono text-sm font-bold text-zinc-700 dark:text-zinc-300">{Math.round(s.above.avgTtft).toLocaleString()}ms</p>
+                  <p className="metric-mono text-sm font-bold text-zinc-700 dark:text-zinc-300">{formatDuration(Math.round(s.above.avgTtft))}</p>
                   <p className="text-[10px] text-zinc-400 dark:text-zinc-400 mt-0.5">Above</p>
                 </div>
               </div>
@@ -134,7 +134,7 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
           <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
             The <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatThreshold(strongest.threshold)} threshold</span> shows
             the strongest improvement signal — TTFT drops by{' '}
-            <span className="metric-mono font-semibold text-moss">{Math.abs(Math.round(strongest.ttftDelta)).toLocaleString()}ms</span>{' '}
+            <span className="metric-mono font-semibold text-moss">{formatDuration(Math.abs(Math.round(strongest.ttftDelta)))}</span>{' '}
             once requests cross it, indicating a meaningful TTFT shift at this boundary.
           </p>
         ) : (
