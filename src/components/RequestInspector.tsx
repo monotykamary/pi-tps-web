@@ -3,6 +3,17 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binoculars } from '@phosphor-icons/react';
+
+/** Format an ISO timestamp to a short time string (HH:MM:SS) */
+const formatTime = (ts: string) => ts.substring(11, 19);
+
+/** Format an ISO timestamp to a readable date+time (e.g. "Apr 30 · 12:34:56") */
+const formatFullTimestamp = (ts: string) => {
+  const d = new Date(ts);
+  const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const timePart = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return `${datePart} · ${timePart}`;
+};
 import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
 import { formatDuration } from '../lib/parser';
 
@@ -186,7 +197,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <MetricBox icon={Clock} label="Timestamp" value={selectedEvent.timestamp.substring(11, 19)} />
+                  <MetricBox icon={Clock} label="Timestamp" value={formatFullTimestamp(selectedEvent.timestamp)} />
                   <MetricBox icon={Hash} label="ID" value={selectedEvent.id.substring(0, 8)} />
                 </div>
 
@@ -311,6 +322,10 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
           </span>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400">
+            {formatTime(event.timestamp)}
+          </span>
+          <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className={`text-[10px] font-medium ${event.data.timing.ttftMs > thresholds.slowTtft ? 'text-ember' : event.data.timing.ttftMs < thresholds.fastTtft ? 'text-moss' : 'text-zinc-400 dark:text-zinc-400'}`}>
             ttft {formatDuration(event.data.timing.ttftMs)}
           </span>
@@ -344,6 +359,7 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
             {event.modelId.split('/').pop()}
           </span>
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">{event.provider}</span>
+          <span className="text-[10px] text-zinc-300 dark:text-zinc-700 ml-auto metric-mono">{formatTime(event.timestamp)}</span>
         </div>
       </div>
     );
@@ -361,6 +377,7 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">
             {bindingCount > 0 ? `${bindingCount} entries` : 'navigated'}
           </span>
+          <span className="text-[10px] text-zinc-300 dark:text-zinc-700 ml-auto metric-mono">{formatTime(event.timestamp)}</span>
         </div>
       </div>
     );
@@ -377,6 +394,7 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400 truncate max-w-[200px]">
             {event.summary.length > 60 ? event.summary.substring(0, 60) + '…' : event.summary}
           </span>
+          <span className="text-[10px] text-zinc-300 dark:text-zinc-700 ml-auto metric-mono">{formatTime(event.timestamp)}</span>
         </div>
       </div>
     );
