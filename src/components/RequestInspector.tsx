@@ -15,7 +15,7 @@ const formatFullTimestamp = (ts: string) => {
   return `${datePart} · ${timePart}`;
 };
 import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
-import { formatDuration } from '../lib/parser';
+import { formatDuration, formatTps } from '../lib/parser';
 
 interface Props {
   timeline: TimelineEvent[];
@@ -245,7 +245,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                   </div>
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${selectedEvent.data.tps > 40 ? 'bg-moss' : selectedEvent.data.tps > 20 ? 'bg-accent' : 'bg-ember'}`} />
-                    <span className="metric-mono text-sm font-bold text-zinc-800 dark:text-zinc-300">{selectedEvent.data.tps.toFixed(1)}</span>
+                    <span className="metric-mono text-sm font-bold text-zinc-800 dark:text-zinc-300">{formatTps(selectedEvent.data.tps)}</span>
                     <span className="text-xs text-zinc-400 dark:text-zinc-400">tokens/second</span>
                   </div>
                 </div>
@@ -331,7 +331,7 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className={`text-[10px] font-medium ${event.data.tps > 40 ? 'text-moss' : event.data.tps > 20 ? 'text-accent' : 'text-ember'}`}>
-            {event.data.tps.toFixed(1)} tps
+            {formatTps(event.data.tps)} tps
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">

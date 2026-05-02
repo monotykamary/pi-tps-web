@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary } from './types';
-import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration } from './lib/parser';
+import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import TimelineChart from './components/TimelineChart';
 import TimingScatter from './components/TimingScatter';
@@ -285,8 +285,8 @@ export default function App() {
               >
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} />
                 <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.totalTimeMs)} />
-                <MetricPill icon={Gauge} label="Avg TPS" value={summary.avgTps.toFixed(1)} unit="tok/s" />
-                <MetricPill icon={Barbell} label="Wtd TPS" value={summary.weightedTps.toFixed(1)} unit="tok/s" accent />
+                <MetricPill icon={Gauge} label="Avg TPS" value={formatTps(summary.avgTps)} unit="tok/s" />
+                <MetricPill icon={Barbell} label="Wtd TPS" value={formatTps(summary.weightedTps)} unit="tok/s" accent />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} />

@@ -687,3 +687,9 @@ export function formatCurrency(n: number | null): string {
   if (n === null) return '-';
   return `$${n.toFixed(4)}`;
 }
+
+/** Format TPS: keep 1 decimal for small values, drop it for large ones where it's noise */
+export function formatTps(n: number): string {
+  if (n >= 1000) return Math.round(n).toString();
+  return n.toFixed(1);
+}
