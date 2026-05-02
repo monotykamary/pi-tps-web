@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary } from './types';
@@ -14,7 +14,7 @@ import CacheEfficiency from './components/CacheEfficiency';
 import TimingDistribution from './components/TimingDistribution';
 import ThemeToggle from './components/ThemeToggle';
 
-function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent = false }: {
+function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent = false, tooltip }: {
   icon: React.ElementType;
   label: string;
   value: string;
@@ -22,40 +22,91 @@ function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent
   subLabel?: string;
   subValue?: string;
   accent?: boolean;
+  tooltip?: string;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [flipY, setFlipY] = useState(false);
+  const [xOffset, setXOffset] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!tooltip) return;
+    const el = ref.current;
+    if (!el) return;
+    const w = 224; // w-56
+    const pad = 12;
+    const check = () => {
+      const rect = el.getBoundingClientRect();
+      setFlipY(rect.top < 80);
+      const centerX = rect.left + rect.width / 2;
+      const tipLeft = centerX - w / 2;
+      const tipRight = centerX + w / 2;
+      let offset = 0;
+      if (tipLeft < pad) offset = pad - tipLeft;
+      else if (tipRight > window.innerWidth - pad) offset = window.innerWidth - pad - tipRight;
+      setXOffset(offset);
+    };
+    check();
+    const onScroll = () => check();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', check);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', check);
+    };
+  }, [tooltip]);
+
+  const tipV = flipY ? 'top-full mt-2' : 'bottom-full mb-2';
+  const arrowV = flipY ? '-top-1' : '-bottom-1';
+
   return (
-    <motion.div
-      layout
-      className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
-        accent
-          ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
-          : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
-      }`}
-      whileHover={{ y: -1 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-    >
-      <div className={`shrink-0 p-1.5 rounded-lg ${
-        accent
-          ? 'bg-accent/10 text-accent dark:bg-accent/15'
-          : 'bg-zinc-100 text-zinc-500 dark:bg-white/[0.04] dark:text-zinc-400'
-      }`}>
-        <Icon weight="bold" size={14} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
-        <div className="flex items-baseline gap-1.5 mt-0.5">
-          <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
-            {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
-          </p>
-          {subValue && (
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
-              {subLabel && <span className="text-zinc-400 dark:text-zinc-500 mr-0.5">{subLabel}</span>}
-              <span className="metric-mono font-medium">{subValue}</span>
-            </span>
-          )}
+    <div ref={ref} className="group relative">
+      <motion.div
+        layout
+        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
+          accent
+            ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
+            : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
+        }`}
+        whileHover={{ y: -1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      >
+        <div className={`shrink-0 p-1.5 rounded-lg ${
+          accent
+            ? 'bg-accent/10 text-accent dark:bg-accent/15'
+            : 'bg-zinc-100 text-zinc-500 dark:bg-white/[0.04] dark:text-zinc-400'
+        }`}>
+          <Icon weight="bold" size={14} />
         </div>
-      </div>
-    </motion.div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
+          <div className="flex items-baseline gap-1.5 mt-0.5">
+            <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
+              {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
+            </p>
+            {subValue && (
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                {subLabel && <span className="text-zinc-400 dark:text-zinc-500 mr-0.5">{subLabel}</span>}
+                <span className="metric-mono font-medium">{subValue}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </motion.div>
+      {tooltip && (
+        <div
+          className={`pointer-events-none absolute z-50 w-56 rounded-xl bg-zinc-900 px-3.5 py-2.5 text-xs text-zinc-100 opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 ${tipV} left-1/2 dark:bg-white dark:text-zinc-900`}
+          style={{ transform: `translateX(calc(-50% + ${xOffset}px))` }}
+        >
+          <div
+            className={`absolute left-1/2 h-2 w-2 bg-zinc-900 dark:bg-white ${arrowV}`}
+            style={{
+              transform: `translateX(calc(-50% - ${xOffset}px)) ${flipY ? 'rotate(225deg)' : 'rotate(45deg)'}`,
+            }}
+          />
+          <p className="relative leading-snug">{tooltip}</p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -297,15 +348,15 @@ export default function App() {
                 transition={{ delay: 0.1 }}
                 className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2"
               >
-                <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} />
-                <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.totalTimeMs)} />
-                <MetricPill icon={Gauge} label="Avg TPS" value={formatTps(summary.avgTps)} unit="tok/s" />
-                <MetricPill icon={Barbell} label="Wtd TPS" value={formatTps(summary.weightedTps)} unit="tok/s" accent />
-                <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} />
-                <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent />
-                <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} />
-                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} />
-                <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} />
+                <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip="Total number of LLM calls in this session." />
+                <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.totalTimeMs)} tooltip="Wall-clock time from the first to the last request." />
+                <MetricPill icon={Gauge} label="Avg TPS" value={formatTps(summary.avgTps)} unit="tok/s" tooltip="Simple mean of tokens per second across all requests." />
+                <MetricPill icon={Barbell} label="Wtd TPS" value={formatTps(summary.weightedTps)} unit="tok/s" accent tooltip="Token-weighted average TPS. Longer responses count more heavily, giving a truer sense of overall throughput." />
+                <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip="Mean Time To First Token — latency before the first generated token arrives." />
+                <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent tooltip="Number of stalls and total time spent stalled waiting for the model or network." />
+                <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip="Estimated total cost in USD based on token counts and model pricing." />
+                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} tooltip="Total energy consumed across all tracked requests." />
+                <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} tooltip="Total number of tokens generated or consumed." />
               </motion.div>
             )}
 
