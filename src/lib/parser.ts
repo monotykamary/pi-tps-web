@@ -1,5 +1,44 @@
 import type { ParsedEvent, TpsEvent, TpsPayload, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
 
+// ─── Shared TPS computation ───────────────────────────────────────────────────
+
+/** Minimum effective span for a reliable generation speed estimate */
+const MIN_GENERATION_MS = 50;
+
+/**
+ * Compute generation TPS for a single TPS event, mirroring the
+ * extension's buildTelemetry three-branch logic.
+ *
+ * Generation TPS = output / (active generation time), excluding both
+ * TTFT and known stalls. This measures the raw inference speed —
+ * how fast the model was actually producing tokens.
+ *
+ * Three guard conditions on the primary branch prevent inflation:
+ *  1. stallMs < streamMs: prevents stall-before-stream
+ *  2. effectiveStreamMs >= 50ms: active span must be measurable
+ *  3. stallMs < effectiveStreamMs: stalls must not exceed active time
+ *     (prevents buffer-flush bursts from being counted as generation)
+ *
+ * Primary:   all 3 guards pass → output / ((streamMs - stallMs) / 1000)
+ * Fallback:  generationMs >= 50ms → output / (effectiveGenMs / 1000)
+ *            where effectiveGenMs = max(generationMs - stallMs, 50ms).
+ *            Includes TTFT, underestimates, but never overshoots.
+ * Else:      0 — structurally unidentifiable.
+ */
+export function computeEffectiveTps(data: TpsPayload): number {
+  const streamMs = data.timing.streamMs ?? 0;
+  const stallMs = data.timing.stallMs;
+  const effectiveStreamMs = streamMs - stallMs;
+  if (streamMs > 0 && stallMs < streamMs && effectiveStreamMs >= MIN_GENERATION_MS && stallMs < effectiveStreamMs) {
+    return data.tokens.output / (effectiveStreamMs / 1000);
+  }
+  if (data.timing.generationMs >= MIN_GENERATION_MS) {
+    const effectiveGenMs = Math.max(data.timing.generationMs - stallMs, MIN_GENERATION_MS);
+    return data.tokens.output / (effectiveGenMs / 1000);
+  }
+  return 0;
+}
+
 /**
  * Parse a legacy TPS message string into a TpsPayload.
  *
@@ -434,10 +473,13 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const totalGenerationMs = sorted.reduce((s, e) => s + e.data.timing.generationMs, 0);
   const totalStallMs = sorted.reduce((s, e) => s + e.data.timing.stallMs, 0);
   const totalStallCount = sorted.reduce((s, e) => s + e.data.timing.stallCount, 0);
-  // Weighted TPS: output-token-weighted mean — each request's TPS weighted by its output tokens
-  const weightedTps = totalOutput > 0 ? sorted.reduce((s, e) => s + e.data.tps * e.data.tokens.output, 0) / totalOutput : 0;
-  // Simple average TPS: arithmetic mean of per-request TPS values
-  const avgTps = sorted.length > 0 ? sorted.reduce((s, e) => s + e.data.tps, 0) / sorted.length : 0;
+  const effectiveTps = (e: typeof sorted[number]) => computeEffectiveTps(e.data);
+  // Weighted TPS: total output / total effective generation time — gives
+  // the effective rate if the whole conversation were one big request.
+  const totalEffectiveMs = sorted.reduce((s, e) => s + Math.max(e.data.timing.generationMs - e.data.timing.stallMs, 0), 0);
+  const weightedTps = totalEffectiveMs > 0 ? totalOutput / (totalEffectiveMs / 1000) : 0;
+  // Simple average TPS: arithmetic mean of per-request effective TPS values
+  const avgTps = sorted.length > 0 ? sorted.reduce((s, e) => s + effectiveTps(e), 0) / sorted.length : 0;
 
   const ttfts = sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b);
   const avgTtft = ttfts.length > 0 ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length : 0;
@@ -565,8 +607,19 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
     const avgTtft = slice.reduce((s, e) => s + e.data.timing.ttftMs, 0) / slice.length;
     const avgTotal = slice.reduce((s, e) => s + e.data.timing.totalMs, 0) / slice.length;
     const totalOutput = slice.reduce((s, e) => s + e.data.tokens.output, 0);
-    const totalGenerationMs = slice.reduce((s, e) => s + e.data.timing.generationMs, 0);
-    const avgTps = totalGenerationMs > 0 ? totalOutput / (totalGenerationMs / 1000) : 0;
+    // Aggregate TPS: sum outputs / sum time denominator, per-branch.
+    // When bucket's total streamMs is available and stalls don't dominate,
+    // use totalOutput / (totalStreamMs / 1000); otherwise effectiveGenMs.
+    const totalStreamMs = slice.reduce((s, e) => s + (e.data.timing.streamMs ?? 0), 0);
+    const totalStallMs = slice.reduce((s, e) => s + e.data.timing.stallMs, 0);
+    const totalEffectiveStreamMs = totalStreamMs - totalStallMs;
+    let avgTps: number;
+    if (totalStreamMs > 0 && totalStallMs < totalStreamMs && totalEffectiveStreamMs >= MIN_GENERATION_MS && totalStallMs < totalEffectiveStreamMs) {
+      avgTps = totalOutput / (totalEffectiveStreamMs / 1000);
+    } else {
+      const totalEffectiveMs = slice.reduce((s, e) => s + Math.max(e.data.timing.generationMs - e.data.timing.stallMs, 0), 0);
+      avgTps = totalEffectiveMs > 0 ? totalOutput / (totalEffectiveMs / 1000) : 0;
+    }
     const totalTokens = slice.reduce((s, e) => s + e.data.tokens.total, 0);
 
     buckets.push({

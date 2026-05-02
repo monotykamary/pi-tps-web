@@ -21,6 +21,8 @@ export interface TpsPayload {
     ttftMs: number;
     totalMs: number;
     generationMs: number;
+    /** Inter-update span: first streaming update → last streaming update. Null when no streaming updates after TTFT. */
+    streamMs?: number | null;
     stallMs: number;
     stallCount: number;
     messageCount: number;

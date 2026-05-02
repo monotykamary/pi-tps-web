@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Gauge, TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
 import type { TpsEvent, DataThresholds } from '../types';
-import { formatThreshold, formatDuration } from '../lib/parser';
+import { computeEffectiveTps, formatThreshold, formatDuration } from '../lib/parser';
 
 interface Props {
   events: TpsEvent[];
@@ -34,8 +34,8 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
       const avgTtftAbove = above.length ? above.reduce((s, e) => s + e.data.timing.ttftMs, 0) / above.length : 0;
       const avgTtftBelow = below.length ? below.reduce((s, e) => s + e.data.timing.ttftMs, 0) / below.length : 0;
 
-      const avgTpsAbove = above.length ? above.reduce((s, e) => s + e.data.tps, 0) / above.length : 0;
-      const avgTpsBelow = below.length ? below.reduce((s, e) => s + e.data.tps, 0) / below.length : 0;
+      const avgTpsAbove = above.length ? above.reduce((s, e) => s + computeEffectiveTps(e.data), 0) / above.length : 0;
+      const avgTpsBelow = below.length ? below.reduce((s, e) => s + computeEffectiveTps(e.data), 0) / below.length : 0;
 
       const avgCacheRatioAbove = above.length ? above.reduce((s, e) => s + e.data.tokens.cacheRead / e.data.tokens.total, 0) / above.length : 0;
       const avgCacheRatioBelow = below.length ? below.reduce((s, e) => s + e.data.tokens.cacheRead / e.data.tokens.total, 0) / below.length : 0;

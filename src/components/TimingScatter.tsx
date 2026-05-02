@@ -6,7 +6,7 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
-import { formatThreshold, formatDuration } from '../lib/parser';
+import { computeEffectiveTps, formatThreshold, formatDuration } from '../lib/parser';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
@@ -40,7 +40,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
         input: e.data.tokens.input,
         output: e.data.tokens.output,
         cacheRead: e.data.tokens.cacheRead,
-        tps: e.data.tps,
+        tps: computeEffectiveTps(e.data),
         stallCount: e.data.timing.stallCount,
         timestamp: e.timestamp,
       };

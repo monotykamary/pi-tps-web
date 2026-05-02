@@ -15,7 +15,7 @@ const formatFullTimestamp = (ts: string) => {
   return `${datePart} · ${timePart}`;
 };
 import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
-import { formatDuration, formatTps } from '../lib/parser';
+import { computeEffectiveTps, formatDuration, formatTps } from '../lib/parser';
 
 interface Props {
   timeline: TimelineEvent[];
@@ -108,6 +108,9 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
     if (total > thresholds.cacheThreshold && ttft < thresholds.fastTtft && newRatio < thresholds.highNewInputRatio) return { label: 'fast', color: 'text-moss bg-moss/5 border-moss/20' };
     return { label: 'normal', color: 'text-zinc-400 bg-zinc-50/50 dark:bg-white/[0.04] border-zinc-100 dark:border-white/[0.08]' };
   };
+
+  /** Compute effective TPS — delegates to shared logic */
+  const effectiveTps = (e: TpsEvent & { energy?: EnergyPayload }) => computeEffectiveTps(e.data);
 
   /** Short model name: last segment of a slash-separated ID */
   const shortModel = (modelId: string) => modelId.split('/').pop() ?? modelId;
@@ -244,9 +247,14 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                     <TimingPill label="Stall" value={formatDuration(selectedEvent.data.timing.stallMs)} warn={selectedEvent.data.timing.stallMs > 0} />
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${selectedEvent.data.tps > 40 ? 'bg-moss' : selectedEvent.data.tps > 20 ? 'bg-accent' : 'bg-ember'}`} />
-                    <span className="metric-mono text-sm font-bold text-zinc-800 dark:text-zinc-300">{formatTps(selectedEvent.data.tps)}</span>
+                    <div className={`w-2 h-2 rounded-full ${effectiveTps(selectedEvent) > 40 ? 'bg-moss' : effectiveTps(selectedEvent) > 20 ? 'bg-accent' : 'bg-ember'}`} />
+                    <span className="metric-mono text-sm font-bold text-zinc-800 dark:text-zinc-300">{formatTps(effectiveTps(selectedEvent))}</span>
                     <span className="text-xs text-zinc-400 dark:text-zinc-400">tokens/second</span>
+                    {selectedEvent.data.tps !== effectiveTps(selectedEvent) && selectedEvent.data.tps > 0 && (
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1" title="Stored TPS from extension (computed before stall-guard fix, may include inflation)">
+                        (stored {formatTps(selectedEvent.data.tps)})
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -269,7 +277,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                 {sorted.map((e) => {
                   if (isTpsEvent(e)) {
                     const tpsIdx = tpsEvents.findIndex(t => t.id === e.id);
-                    return <TpsRow key={e.id} event={e} tpsIndex={tpsIdx} thresholds={thresholds} selectedRef={selectedId === e.id ? selectedRef : undefined} onSelect={(id: string) => handleSelect(id)} shortModel={shortModel} />;
+                    return <TpsRow key={e.id} event={e} tpsIndex={tpsIdx} thresholds={thresholds} selectedRef={selectedId === e.id ? selectedRef : undefined} onSelect={(id: string) => handleSelect(id)} shortModel={shortModel} effectiveTps={effectiveTps} />;
                   }
                   return <StructuralRow key={e.id} event={e} />;
                 })}
@@ -291,7 +299,8 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
   selectedRef?: React.RefObject<HTMLDivElement | null>;
   onSelect: (id: string) => void;
   shortModel: (modelId: string) => string;
-}>(function TpsRow({ event, tpsIndex, thresholds, selectedRef, onSelect, shortModel }, ref) {
+  effectiveTps: (e: TpsEvent & { energy?: EnergyPayload }) => number;
+}>(function TpsRow({ event, tpsIndex, thresholds, selectedRef, onSelect, shortModel, effectiveTps }, ref) {
   const cat = useMemo(() => {
     const total = event.data.tokens.total;
     const ttft = event.data.timing.ttftMs;
@@ -330,8 +339,8 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
             ttft {formatDuration(event.data.timing.ttftMs)}
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-          <span className={`text-[10px] font-medium ${event.data.tps > 40 ? 'text-moss' : event.data.tps > 20 ? 'text-accent' : 'text-ember'}`}>
-            {formatTps(event.data.tps)} tps
+          <span className={`text-[10px] font-medium ${effectiveTps(event) > 40 ? 'text-moss' : effectiveTps(event) > 20 ? 'text-accent' : 'text-ember'}`}>
+            {formatTps(effectiveTps(event))} tps
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">
