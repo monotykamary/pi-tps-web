@@ -14,11 +14,13 @@ import CacheEfficiency from './components/CacheEfficiency';
 import TimingDistribution from './components/TimingDistribution';
 import ThemeToggle from './components/ThemeToggle';
 
-function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
+function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent = false }: {
   icon: React.ElementType;
   label: string;
   value: string;
   unit?: string;
+  subLabel?: string;
+  subValue?: string;
   accent?: boolean;
 }) {
   return (
@@ -41,9 +43,17 @@ function MetricPill({ icon: Icon, label, value, unit, accent = false }: {
       </div>
       <div className="min-w-0">
         <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
-        <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight mt-0.5">
-          {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
-        </p>
+        <div className="flex items-baseline gap-1.5 mt-0.5">
+          <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
+            {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
+          </p>
+          {subValue && (
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+              {subLabel && <span className="text-zinc-400 dark:text-zinc-500 mr-0.5">{subLabel}</span>}
+              <span className="metric-mono font-medium">{subValue}</span>
+            </span>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -292,7 +302,7 @@ export default function App() {
                 <MetricPill icon={Gauge} label="Avg TPS" value={formatTps(summary.avgTps)} unit="tok/s" />
                 <MetricPill icon={Barbell} label="Wtd TPS" value={formatTps(summary.weightedTps)} unit="tok/s" accent />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} />
-                <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent />
+                <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} />
                 <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} />
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} />
