@@ -169,8 +169,10 @@ export function parseJsonl(raw: string): ParsedEvent[] {
         }
         // Structured format: TurnTelemetry
         // Normalize: cost may be absent (undefined) — coerce to null
+        // Normalize: tps may be null (e.g. generation timing unavailable) — coerce to 0
         const tpsData = rawEvent.data;
         if (tpsData.cost === undefined) tpsData.cost = null;
+        if (tpsData.tps === null || tpsData.tps === undefined) tpsData.tps = 0;
         events.push({
           id: rawEvent.id,
           parentId: rawEvent.parentId,
