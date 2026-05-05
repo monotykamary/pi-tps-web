@@ -729,11 +729,30 @@ export function formatDuration(ms: number): string {
   return `${m}m ${s}s`;
 }
 
-export function formatNumber(n: number | null, decimals = 0): string {
+export function formatNumber(n: number | null, decimals = 1): string {
   if (n === null) return '-';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(decimals)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(decimals)}k`;
-  return n.toFixed(decimals);
+  if (n < 1_000) return String(Math.round(n));
+
+  let value: number;
+  let suffix: string;
+
+  if (n >= 1_000_000_000) {
+    value = n / 1_000_000_000;
+    suffix = 'B';
+  } else if (n >= 1_000_000) {
+    value = n / 1_000_000;
+    suffix = 'M';
+  } else {
+    value = n / 1_000;
+    suffix = 'K';
+  }
+
+  const formatted = value.toFixed(decimals);
+  // Drop trailing ".0" for clean display
+  if (formatted.endsWith('.0')) {
+    return `${value.toFixed(0)}${suffix}`;
+  }
+  return `${formatted}${suffix}`;
 }
 
 export function formatCurrency(n: number | null): string {
