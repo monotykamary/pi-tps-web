@@ -28,7 +28,7 @@ function isTpsEvent(e: TimelineEvent): e is TpsEvent & { energy?: EnergyPayload 
   return e.type === 'tps';
 }
 
-const SPARKLINE_MAX_BARS = 120;
+const SPARKLINE_MAX_BARS = 60;
 
 export default function RequestInspector({ timeline, selectedId, onSelect, thresholds }: Props) {
   const tpsEvents = useMemo(() => timeline.filter(isTpsEvent), [timeline]);
@@ -137,7 +137,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
           </div>
           <span className="metric-mono text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{avgCacheHitRate.toFixed(0)}% avg</span>
         </div>
-        <div className="relative flex -mr-px h-8" title={`Cache hit rate · avg ${avgCacheHitRate.toFixed(0)}%${cacheHitRates.length > SPARKLINE_MAX_BARS ? ` · aggregated into ${sparklineBins.length} bins` : ''}`}>
+        <div className="relative flex h-8 overflow-hidden gap-px" title={`Cache hit rate · avg ${avgCacheHitRate.toFixed(0)}%${cacheHitRates.length > SPARKLINE_MAX_BARS ? ` · aggregated into ${sparklineBins.length} bins` : ''}`}>
           {sparklineBins.map((bin, i) => {
             const h = Math.max(4, (bin.rate / 100) * 100);
             const color = bin.rate >= 80 ? 'bg-moss' : bin.rate >= 50 ? 'bg-accent' : bin.rate >= 20 ? 'bg-amber' : 'bg-ember';
@@ -146,7 +146,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
               <button
                 key={i}
                 onClick={() => handleSelect(tpsEvents[bin.startIndex].id)}
-                className={`flex-1 min-w-[3px] mr-px relative group cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${isActive ? 'z-10' : ''}`}
+                className={`flex-1 relative group cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${isActive ? 'z-10' : ''}`}
                 title={bin.count === 1
                   ? `#${bin.startIndex + 1} · ${bin.rate.toFixed(0)}% cache hit`
                   : `#${bin.startIndex + 1}–${bin.startIndex + bin.count} · avg ${bin.rate.toFixed(0)}% cache hit`}
