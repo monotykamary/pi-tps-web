@@ -78,13 +78,13 @@ function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent
           <Icon weight="bold" size={14} />
         </div>
         <div className="min-w-0">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
+          <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
           <div className="flex items-baseline gap-1.5 mt-0.5">
             <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
               {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
             </p>
             {subValue && (
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-tight">
                 {subLabel && <span className="text-zinc-400 dark:text-zinc-500 mr-0.5">{subLabel}</span>}
                 <span className="metric-mono font-medium">{subValue}</span>
               </span>
