@@ -97,6 +97,8 @@ export interface ConversationSummary {
   totalOutput: number;
   totalCacheRead: number;
   totalCacheWrite: number;
+  /** Wall-clock span from first TPS event to last */
+  wallClockMs: number;
   totalTimeMs: number;
   totalGenerationMs: number;
   totalStallMs: number;

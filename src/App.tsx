@@ -349,7 +349,7 @@ export default function App() {
                 className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2"
               >
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip="Total number of LLM calls in this session." />
-                <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.totalTimeMs)} tooltip="Wall-clock time from the first to the last request." />
+                <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.wallClockMs)} tooltip="Wall-clock time from the first to the last request." />
                 <MetricPill icon={Gauge} label="Avg TPS" value={formatTps(summary.avgTps)} unit="tok/s" tooltip="Simple mean of tokens per second across all requests." />
                 <MetricPill icon={Barbell} label="Wtd TPS" value={formatTps(summary.weightedTps)} unit="tok/s" accent tooltip="Token-weighted average TPS. Longer responses count more heavily, giving a truer sense of overall throughput." />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip="Mean Time To First Token — latency before the first generated token arrives." />

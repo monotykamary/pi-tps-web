@@ -6,6 +6,19 @@ import type { ParsedEvent, TpsEvent, TpsPayload, EnergyEvent, ModelChangeEvent, 
 const MIN_GENERATION_MS = 50;
 
 /**
+ * Divide stallMs by this factor when stalls dominate the generation window.
+ * Prevents a single undetected stall from inflating the denominator and
+ * creating absurd TPS values.
+ */
+const STALL_REDUCTION_DENOM = 2;
+
+/** If effective time is below this, the denominator looks suspicious */
+const ACTIVE_TIME_THRESHOLD_MS = 200;
+
+/** Stall-to-generation ratio above which partial reduction kicks in */
+const STALL_DOMINANCE_RATIO = 0.85;
+
+/**
  * Compute generation TPS for a single TPS event, mirroring the
  * extension's buildTelemetry three-branch logic.
  *
@@ -28,14 +41,26 @@ const MIN_GENERATION_MS = 50;
 export function computeEffectiveTps(data: TpsPayload): number {
   const streamMs = data.timing.streamMs ?? 0;
   const stallMs = data.timing.stallMs;
+
+  // ── Primary branch (stream-based, no TTFT) ──
   const effectiveStreamMs = streamMs - stallMs;
   if (streamMs > 0 && stallMs < streamMs && effectiveStreamMs >= MIN_GENERATION_MS && stallMs < effectiveStreamMs) {
     return data.tokens.output / (effectiveStreamMs / 1000);
   }
+
+  // ── Fallback branch (generationMs–based, includes TTFT) ──
   if (data.timing.generationMs >= MIN_GENERATION_MS) {
-    const effectiveGenMs = Math.max(data.timing.generationMs - stallMs, MIN_GENERATION_MS);
-    return data.tokens.output / (effectiveGenMs / 1000);
+    const effectiveGenMs = data.timing.generationMs - stallMs;
+    const stallsDominate = effectiveGenMs < ACTIVE_TIME_THRESHOLD_MS || stallMs > data.timing.generationMs * STALL_DOMINANCE_RATIO;
+    if (stallsDominate) {
+      // Stalls dominate the effective window: only partially remove them
+      const partialStall = stallMs / STALL_REDUCTION_DENOM;
+      const safeGenMs = Math.max(data.timing.generationMs - partialStall, MIN_GENERATION_MS);
+      return data.tokens.output / (safeGenMs / 1000);
+    }
+    return data.tokens.output / (Math.max(effectiveGenMs, MIN_GENERATION_MS) / 1000);
   }
+
   return 0;
 }
 
@@ -469,6 +494,9 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const totalOutput = sorted.reduce((s, e) => s + e.data.tokens.output, 0);
   const totalCacheRead = sorted.reduce((s, e) => s + e.data.tokens.cacheRead, 0);
   const totalCacheWrite = sorted.reduce((s, e) => s + e.data.tokens.cacheWrite, 0);
+  const wallClockMs = sorted.length
+    ? new Date(last.timestamp).getTime() - new Date(sorted[0].timestamp).getTime()
+    : 0;
   const totalTimeMs = sorted.reduce((s, e) => s + e.data.timing.totalMs, 0);
   const totalGenerationMs = sorted.reduce((s, e) => s + e.data.timing.generationMs, 0);
   const totalStallMs = sorted.reduce((s, e) => s + e.data.timing.stallMs, 0);
@@ -563,6 +591,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     totalOutput,
     totalCacheRead,
     totalCacheWrite,
+    wallClockMs,
     totalTimeMs,
     totalGenerationMs,
     totalStallMs,
@@ -606,20 +635,9 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
 
     const avgTtft = slice.reduce((s, e) => s + e.data.timing.ttftMs, 0) / slice.length;
     const avgTotal = slice.reduce((s, e) => s + e.data.timing.totalMs, 0) / slice.length;
-    const totalOutput = slice.reduce((s, e) => s + e.data.tokens.output, 0);
-    // Aggregate TPS: sum outputs / sum time denominator, per-branch.
-    // When bucket's total streamMs is available and stalls don't dominate,
-    // use totalOutput / (totalStreamMs / 1000); otherwise effectiveGenMs.
-    const totalStreamMs = slice.reduce((s, e) => s + (e.data.timing.streamMs ?? 0), 0);
-    const totalStallMs = slice.reduce((s, e) => s + e.data.timing.stallMs, 0);
-    const totalEffectiveStreamMs = totalStreamMs - totalStallMs;
-    let avgTps: number;
-    if (totalStreamMs > 0 && totalStallMs < totalStreamMs && totalEffectiveStreamMs >= MIN_GENERATION_MS && totalStallMs < totalEffectiveStreamMs) {
-      avgTps = totalOutput / (totalEffectiveStreamMs / 1000);
-    } else {
-      const totalEffectiveMs = slice.reduce((s, e) => s + Math.max(e.data.timing.generationMs - e.data.timing.stallMs, 0), 0);
-      avgTps = totalEffectiveMs > 0 ? totalOutput / (totalEffectiveMs / 1000) : 0;
-    }
+    // Bucket TPS: use capped per-event effective TPS, then average.
+    // This keeps the chart consistent with the summary avgTps metric.
+    const avgTps = slice.reduce((s, e) => s + computeEffectiveTps(e.data), 0) / slice.length;
     const totalTokens = slice.reduce((s, e) => s + e.data.tokens.total, 0);
 
     buckets.push({
@@ -724,8 +742,9 @@ export function formatDuration(ms: number): string {
     const s = ms / 1000;
     return `${Number.isInteger(s) ? s : s.toFixed(1)}s`;
   }
-  const m = Math.floor(ms / 60000);
-  const s = ((ms % 60000) / 1000).toFixed(0);
+  const totalSeconds = Math.round(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
   return `${m}m ${s}s`;
 }
 
