@@ -88,6 +88,14 @@ export interface ModelInfo {
   modelId: string;
   provider: string;
   callCount: number;
+  /** Tokens generated/consumed by this model */
+  totalTokens: number;
+  /** Energy-only cost for this model (neuralwatt). null when no energy data. */
+  energyCostUsd: number | null;
+  /** Blended cost for this model (energy preferred, token-pricing fallback). null when no cost data at all. */
+  blendedCostUsd: number | null;
+  /** Cost attribution source for this model */
+  costSource: 'neuralwatt' | 'tps' | null;
 }
 
 export interface ConversationSummary {

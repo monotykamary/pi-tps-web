@@ -599,20 +599,70 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     ? energyEvents.reduce((s, e) => s + e.data.energy_joules, 0)
     : null;
 
-  // Collect unique models with their call counts
-  const modelMap = new Map<string, { provider: string; count: number }>();
+  // Collect per-model aggregates (calls, tokens, energy cost, blended cost)
+  const modelMap = new Map<string, {
+    provider: string;
+    count: number;
+    totalTokens: number;
+    energyCost: number;
+    blendedCost: number;
+    hasEnergyCost: boolean;
+    hasBlendedCost: boolean;
+  }>();
+
   for (const e of sorted) {
     const key = e.data.model.modelId;
     const existing = modelMap.get(key);
+    const tokens = e.data.tokens.total;
+    const pairedEnergy = energyByParentId.get(e.id);
+
     if (existing) {
       existing.count++;
+      existing.totalTokens += tokens;
+      if (pairedEnergy) {
+        existing.energyCost += pairedEnergy.cost_usd;
+        existing.blendedCost += pairedEnergy.cost_usd;
+        existing.hasEnergyCost = true;
+        existing.hasBlendedCost = true;
+      } else if (e.data.cost) {
+        existing.blendedCost += e.data.cost.total;
+        existing.hasBlendedCost = true;
+      }
     } else {
-      modelMap.set(key, { provider: e.data.model.provider, count: 1 });
+      const energyCost = pairedEnergy ? pairedEnergy.cost_usd : 0;
+      const blendedCost = pairedEnergy ? pairedEnergy.cost_usd : (e.data.cost ? e.data.cost.total : 0);
+      modelMap.set(key, {
+        provider: e.data.model.provider,
+        count: 1,
+        totalTokens: tokens,
+        energyCost,
+        blendedCost,
+        hasEnergyCost: !!pairedEnergy,
+        hasBlendedCost: !!(pairedEnergy || e.data.cost),
+      });
     }
   }
+
   const models = [...modelMap.entries()]
-    .map(([modelId, { provider, count }]) => ({ modelId, provider, callCount: count }))
-    .sort((a, b) => b.callCount - a.callCount);
+    .map(([modelId, m]) => ({
+      modelId,
+      provider: m.provider,
+      callCount: m.count,
+      totalTokens: m.totalTokens,
+      energyCostUsd: m.hasEnergyCost ? m.energyCost : null,
+      blendedCostUsd: m.hasBlendedCost ? m.blendedCost : null,
+      costSource: m.hasEnergyCost ? 'neuralwatt' as const :
+        m.hasBlendedCost ? 'tps' as const : null,
+    }))
+    .sort((a, b) => (b.blendedCostUsd ?? 0) - (a.blendedCostUsd ?? 0));
+
+  // Also collect orphan energy events as a synthetic model row when their
+  // parent model is not in the TPS set (e.g. energy-only measurements).
+  for (const e of energyEvents) {
+    if (tpsIds.has(e.parentId ?? '')) continue; // already paired above
+    // Orphan energy — we have cost but no model context. Skip for now
+    // since we cannot attribute it to a specific model.
+  }
 
   return {
     totalCalls: sorted.length,

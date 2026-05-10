@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info } from '@phosphor-icons/react';
-import type { ParsedEvent, ConversationSummary } from './types';
+import type { ParsedEvent, ConversationSummary, ModelInfo } from './types';
 import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import { SmartTooltip } from './components/SmartTooltip';
@@ -306,7 +306,13 @@ function StallsTooltip({ count, ms, totalTimeMs }: { count: number; ms: number; 
   );
 }
 
-function CostTooltip({ totalCost, costSource }: { totalCost: number | null; costSource: 'neuralwatt' | 'tps' | 'both' | null }) {
+function CostTooltip({ totalCost, energyCost, costSource, models, totalTokens }: {
+  totalCost: number | null;
+  energyCost: number | null;
+  costSource: 'neuralwatt' | 'tps' | 'both' | null;
+  models: ModelInfo[];
+  totalTokens: number;
+}) {
   if (totalCost === null) {
     return (
       <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
@@ -318,13 +324,16 @@ function CostTooltip({ totalCost, costSource }: { totalCost: number | null; cost
       </div>
     );
   }
-  const sourceLabel = {
-    neuralwatt: 'Measured via NeuralWatt energy monitoring.',
-    tps: 'Estimated from provider token pricing.',
-    both: 'Hybrid — NeuralWatt where available, provider pricing as fallback.',
-  }[costSource ?? 'tps'];
+
+  const tpsShare = energyCost !== null && totalCost > 0
+    ? ((totalCost - energyCost) / totalCost) * 100 : 0;
+  const energyShare = energyCost !== null && totalCost > 0
+    ? (energyCost / totalCost) * 100 : 0;
+  const costPer1M = totalTokens > 0 ? (totalCost / (totalTokens / 1_000_000)) : 0;
+
   return (
     <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
+      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Total Cost</p>
         <p className="text-[9px] text-zinc-400 dark:text-zinc-500">USD</p>
@@ -333,11 +342,87 @@ function CostTooltip({ totalCost, costSource }: { totalCost: number | null; cost
         <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(totalCost)}</p>
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{costSource ? `source: ${costSource}` : 'unknown source'}</span>
       </div>
-      <div className="space-y-1 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
-        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          <span className="font-semibold">{sourceLabel}</span>
-        </p>
+
+      {/* Aggregate stats */}
+      <div className="grid grid-cols-3 gap-2 mb-3 mt-2.5">
+        <div className="rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Per 1M tok</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">${costPer1M.toFixed(3)}</p>
+        </div>
+        {energyCost !== null && (
+          <div className="rounded-lg bg-accent/5 dark:bg-accent/10 p-1.5 text-center">
+            <p className="text-[8px] font-semibold uppercase tracking-wider text-accent">Energy</p>
+            <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCurrency(energyCost)}</p>
+          </div>
+        )}
+        {costSource === 'both' && energyCost !== null && (
+          <div className="rounded-lg bg-amber/5 dark:bg-amber/10 p-1.5 text-center">
+            <p className="text-[8px] font-semibold uppercase tracking-wider text-amber">Token est.</p>
+            <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCurrency(Math.max(0, totalCost - energyCost))}</p>
+          </div>
+        )}
       </div>
+
+      {/* Attribution bar */}
+      {costSource === 'both' && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-zinc-400 mb-1">
+            <span>Cost attribution</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full bg-accent" style={{ width: `${energyShare}%` }} />
+            <div className="h-full bg-amber" style={{ width: `${tpsShare}%` }} />
+          </div>
+          <div className="flex items-center gap-3 mt-1">
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span className="text-[9px] text-zinc-400 dark:text-zinc-500">neuralwatt {energyShare.toFixed(0)}%</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber" />
+              <span className="text-[9px] text-zinc-400 dark:text-zinc-500">provider {tpsShare.toFixed(0)}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Per-model breakdown */}
+      {models.length > 0 && models.some(m => m.blendedCostUsd !== null) && (
+        <div className="space-y-1.5 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Per Model</p>
+            <p className="text-[8px] text-zinc-400 dark:text-zinc-500">blended / energy</p>
+          </div>
+          {models.filter(m => m.blendedCostUsd !== null).map(m => {
+            const pct = totalCost > 0 ? ((m.blendedCostUsd ?? 0) / totalCost) * 100 : 0;
+            return (
+              <div key={m.modelId} className="space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-zinc-600 dark:text-zinc-300 font-medium truncate">{m.modelId.split('/').pop()}</span>
+                    <span className="text-zinc-400 dark:text-zinc-500 text-[9px]">{m.callCount} calls</span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5 shrink-0">
+                    <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatCurrency(m.blendedCostUsd)}</span>
+                    {m.energyCostUsd !== null && m.energyCostUsd > 0 && (
+                      <span className="metric-mono text-[9px] text-accent">e: {formatCurrency(m.energyCostUsd)}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+                  <div className="h-full bg-accent/60" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
+        {costSource === 'neuralwatt' && 'All costs measured via NeuralWatt energy profiling.'}
+        {costSource === 'tps' && 'All costs estimated from provider token pricing (input + output + cache).'}
+        {costSource === 'both' && 'Costs are a hybrid — NeuralWatt where energy data was paired, provider token pricing as fallback for unpaired requests.'}
+      </p>
     </div>
   );
 }
@@ -713,7 +798,7 @@ export default function App() {
                 <TpsPill icon={Barbell} label="Wtd TPS" activeTps={summary.weightedTps} wallTps={summary.weightedWallTps} lossPct={summary.weightedTpsLoss} accent mode="weighted" />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip={<TtftTooltip avgTtft={summary.avgTtft} p50={summary.ttftP50} p75={summary.ttftP75} p90={summary.ttftP90} p99={summary.ttftP99} min={summary.minTtft} max={summary.maxTtft} />} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
-                <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} costSource={summary.costSource} />} />
+                <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} energyCost={summary.energyCostUsd} costSource={summary.costSource} models={summary.models} totalTokens={summary.totalTokens} />} />
                 <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} />} />
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} tooltip={<TokensTooltip input={summary.totalInput} output={summary.totalOutput} cacheRead={summary.totalCacheRead} cacheWrite={summary.totalCacheWrite} total={summary.totalTokens} totalCost={summary.totalCostUsd} />} />
               </motion.div>
