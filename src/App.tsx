@@ -342,7 +342,7 @@ function CostTooltip({ totalCost, costSource }: { totalCost: number | null; cost
   );
 }
 
-function EnergyTooltip({ joules, totalCost }: { joules: number | null; totalCost: number | null }) {
+function EnergyTooltip({ joules }: { joules: number | null }) {
   if (joules === null) {
     return (
       <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
@@ -367,12 +367,6 @@ function EnergyTooltip({ joules, totalCost }: { joules: number | null; totalCost
         <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
           Total energy drawn across all tracked LLM requests, measured via NeuralWatt inference profiling.
         </p>
-        {totalCost !== null && (
-          <div className="flex items-center justify-between text-[10px]">
-            <span className="text-zinc-500 dark:text-zinc-400">Est. energy cost</span>
-            <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatCurrency(totalCost)}</span>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -714,7 +708,7 @@ export default function App() {
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip={<TtftTooltip avgTtft={summary.avgTtft} p50={summary.ttftP50} p75={summary.ttftP75} p90={summary.ttftP90} p99={summary.ttftP99} min={summary.minTtft} max={summary.maxTtft} />} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} costSource={summary.costSource} />} />
-                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} totalCost={summary.totalCostUsd} />} />
+                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} />} />
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} tooltip={<TokensTooltip input={summary.totalInput} output={summary.totalOutput} cacheRead={summary.totalCacheRead} cacheWrite={summary.totalCacheWrite} total={summary.totalTokens} totalCost={summary.totalCostUsd} />} />
               </motion.div>
             )}
