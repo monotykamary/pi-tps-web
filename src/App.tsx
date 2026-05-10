@@ -965,7 +965,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             className="flex items-center justify-center min-h-[70dvh] px-6"
           >
-            <div className={`max-w-md w-full text-center p-12 rounded-[2.5rem] border-2 border-dashed transition-colors ${
+            <div className={`max-w-lg w-full text-center p-12 rounded-[2.5rem] border-2 border-dashed transition-colors ${
               dragOver
                 ? 'border-accent bg-accent/5 dark:border-accent dark:bg-accent/10'
                 : 'border-zinc-200 bg-white dark:border-white/[0.06] dark:bg-zinc-800/40'
