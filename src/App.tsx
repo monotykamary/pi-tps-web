@@ -428,9 +428,9 @@ function TokensTooltip({ input, output, cacheRead, cacheWrite, total, totalCost 
         </div>
         {totalCost !== null && (
           <div className="flex items-center justify-between text-[10px]">
-            <span className="text-zinc-500 dark:text-zinc-400">Cost per 1K tokens</span>
+            <span className="text-zinc-500 dark:text-zinc-400">Cost per 1M tokens</span>
             <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">
-              {total > 0 ? `$${((totalCost / (total / 1000))).toFixed(4)}` : '-'}
+              {total > 0 ? `$${((totalCost / (total / 1_000_000))).toFixed(4)}` : '-'}
             </span>
           </div>
         )}
