@@ -551,7 +551,7 @@ function CostTooltip({ totalCost, energyCost, costSource, models, totalTokens }:
                         <span className="metric-mono font-medium text-accent">{formatCurrency(m.energyCostUsd)}</span>
                       ) : (
                         <>
-                          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatCurrency(m.blendedCostUsd)}</span>
+                          <span className="metric-mono font-medium text-amber">{formatCurrency(m.blendedCostUsd)}</span>
                           {m.energyCostUsd !== null && m.energyCostUsd > 0 && (
                             <span className="metric-mono text-[9px] text-accent">e: {formatCurrency(m.energyCostUsd)}</span>
                           )}
@@ -560,7 +560,7 @@ function CostTooltip({ totalCost, energyCost, costSource, models, totalTokens }:
                     </div>
                   </div>
                   <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
-                    <div className="h-full bg-accent/60" style={{ width: `${pct}%` }} />
+                    <div className={`h-full ${pureEnergy ? 'bg-accent/60' : 'bg-amber/60'}`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
