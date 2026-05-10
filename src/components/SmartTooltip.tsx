@@ -9,6 +9,8 @@ interface SmartTooltipProps {
   maxWidth?: number;
 }
 
+const HIDE_DELAY_MS = 120;
+
 /**
  * Viewport-aware tooltip wrapper.
  *
@@ -16,6 +18,9 @@ interface SmartTooltipProps {
  * can never be clipped by an `overflow: hidden` ancestor. Flips vertically if
  * there is not enough room, and nudges horizontally if it would bleed past the
  * left or right edge of the viewport. Hidden on scroll / resize.
+ *
+ * A short hide-delay lets the user move the cursor from the trigger into the
+ * tooltip (across the gap) without the tooltip flickering away.
  */
 export function SmartTooltip({
   children,
@@ -26,12 +31,33 @@ export function SmartTooltip({
   maxWidth = 340,
 }: SmartTooltipProps) {
   const triggerRef = useRef<HTMLDivElement>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [visible, setVisible] = useState(false);
   const [style, setStyle] = useState<CSSProperties>({ opacity: 0, pointerEvents: 'none' });
   const [arrowDir, setArrowDir] = useState<'up' | 'down'>('up');
   const [arrowOffset, setArrowOffset] = useState(0);
 
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const doHide = useCallback(() => {
+    setVisible(false);
+    setStyle({ opacity: 0, pointerEvents: 'none' });
+  }, []);
+
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = setTimeout(() => doHide(), HIDE_DELAY_MS);
+  }, [clearHideTimer, doHide]);
+
   const measureAndShow = useCallback(() => {
+    clearHideTimer();
+
     const trigger = triggerRef.current;
     if (!trigger) return;
 
@@ -80,24 +106,25 @@ export function SmartTooltip({
       pointerEvents: 'auto',
     });
     setVisible(true);
-  }, [preferredPlacement, gap, minWidth, maxWidth]);
+  }, [clearHideTimer, preferredPlacement, gap, minWidth, maxWidth]);
 
-  const hide = useCallback(() => {
-    setVisible(false);
-    setStyle({ opacity: 0, pointerEvents: 'none' });
-  }, []);
-
-  // Hide on scroll / resize so the fixed tooltip doesn't detach from trigger
+  // Hide immediately on scroll / resize so the fixed tooltip never detaches
   useEffect(() => {
     if (!visible) return;
-    const handler = () => hide();
+    const handler = () => {
+      clearHideTimer();
+      doHide();
+    };
     window.addEventListener('scroll', handler, true);
     window.addEventListener('resize', handler);
     return () => {
       window.removeEventListener('scroll', handler, true);
       window.removeEventListener('resize', handler);
     };
-  }, [visible, hide]);
+  }, [visible, doHide, clearHideTimer]);
+
+  // Cleanup timer on unmount
+  useEffect(() => () => clearHideTimer(), [clearHideTimer]);
 
   const arrowClasses =
     arrowDir === 'up'
@@ -109,9 +136,9 @@ export function SmartTooltip({
       ref={triggerRef}
       className="relative inline-block w-full"
       onMouseEnter={measureAndShow}
-      onMouseLeave={hide}
+      onMouseLeave={scheduleHide}
       onFocus={measureAndShow}
-      onBlur={hide}
+      onBlur={scheduleHide}
     >
       {children}
 
@@ -130,8 +157,8 @@ export function SmartTooltip({
         <div
           className="z-[100] transition-opacity duration-200"
           style={style}
-          onMouseEnter={() => setVisible(true)}
-          onMouseLeave={hide}
+          onMouseEnter={clearHideTimer}
+          onMouseLeave={scheduleHide}
         >
           {/* Arrow */}
           <div
