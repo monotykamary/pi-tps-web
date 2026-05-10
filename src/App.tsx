@@ -437,30 +437,42 @@ function CostTooltip({ totalCost, energyCost, costSource, models, totalTokens }:
         <div className="space-y-1.5 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
           <div className="flex items-center justify-between mb-1">
             <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Per Model</p>
-            <p className="text-[8px] text-zinc-400 dark:text-zinc-500">blended / energy</p>
+            {costSource === 'both' && (
+              <p className="text-[8px] text-zinc-400 dark:text-zinc-500">blended / energy</p>
+            )}
           </div>
-          {models.filter(m => m.blendedCostUsd !== null).map(m => {
-            const pct = totalCost > 0 ? ((m.blendedCostUsd ?? 0) / totalCost) * 100 : 0;
-            return (
-              <div key={m.modelId} className="space-y-1">
-                <div className="flex items-center justify-between text-[10px]">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-zinc-600 dark:text-zinc-300 font-medium truncate">{m.modelId.split('/').pop()}</span>
-                    <span className="text-zinc-400 dark:text-zinc-500 text-[9px]">{m.callCount} calls</span>
+          {models
+            .filter(m => m.blendedCostUsd !== null)
+            .sort((a, b) => (b.blendedCostUsd ?? 0) - (a.blendedCostUsd ?? 0))
+            .map(m => {
+              const pct = totalCost > 0 ? ((m.blendedCostUsd ?? 0) / totalCost) * 100 : 0;
+              const pureEnergy = m.energyCostUsd !== null && m.energyCostUsd === m.blendedCostUsd;
+              return (
+                <div key={m.modelId} className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-zinc-600 dark:text-zinc-300 font-medium truncate">{m.modelId.split('/').pop()}</span>
+                      <span className="text-zinc-400 dark:text-zinc-500 text-[9px]">{m.callCount} calls</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 shrink-0">
+                      {pureEnergy ? (
+                        <span className="metric-mono font-medium text-accent">{formatCurrency(m.energyCostUsd)}</span>
+                      ) : (
+                        <>
+                          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatCurrency(m.blendedCostUsd)}</span>
+                          {m.energyCostUsd !== null && m.energyCostUsd > 0 && (
+                            <span className="metric-mono text-[9px] text-accent">e: {formatCurrency(m.energyCostUsd)}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-baseline gap-1.5 shrink-0">
-                    <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatCurrency(m.blendedCostUsd)}</span>
-                    {m.energyCostUsd !== null && m.energyCostUsd > 0 && (
-                      <span className="metric-mono text-[9px] text-accent">e: {formatCurrency(m.energyCostUsd)}</span>
-                    )}
+                  <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+                    <div className="h-full bg-accent/60" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
-                <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
-                  <div className="h-full bg-accent/60" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       )}
 
