@@ -111,7 +111,7 @@ function TpsPill({ icon: Icon, label, activeTps, wallTps, lossPct, accent = fals
       {/* Invisible mouse bridge — keeps group:hover alive across the gap */}
       <div className="absolute top-full left-0 right-0 h-2 z-10" />
       {/* Tooltip — springs DOWN below the pill to avoid cutoff */}
-      <div className="absolute z-50 min-w-[224px] max-w-[280px] w-fit opacity-0 shadow-diffuse-lg transition-all duration-200 delay-75 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2 pointer-events-none group-hover:pointer-events-auto">
+      <div className="absolute z-50 min-w-[240px] max-w-[320px] w-fit opacity-0 shadow-diffuse-lg transition-all duration-200 delay-75 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2 pointer-events-none group-hover:pointer-events-auto">
         <div className="absolute left-1/2 -top-1 h-2 w-2 bg-white dark:bg-zinc-800" style={{ transform: 'translateX(-50%) rotate(45deg)' }} />
         <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
           <div className="flex items-center justify-between mb-2">
@@ -142,19 +142,25 @@ function TpsPill({ icon: Icon, label, activeTps, wallTps, lossPct, accent = fals
               <div className="h-full bg-ember" style={{ width: `${Math.max(0, 100 - wallShare)}%` }} />
             </div>
           </div>
-          {/* Legend */}
-          <div className="flex items-center gap-3 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
-            <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-moss" />
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Generation-only</span>
+          {/* Legend — vertical bullet list */}
+          <div className="space-y-1 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+            <div className="flex items-start gap-2">
+              <div className="w-1 h-1 rounded-full bg-moss mt-1.5 shrink-0" />
+              <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                <span className="font-semibold text-moss">Active</span> — generation-only throughput, excluding stalls and TTFT
+              </p>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Incl. stalls + TTFT</span>
+            <div className="flex items-start gap-2">
+              <div className="w-1 h-1 rounded-full bg-accent mt-1.5 shrink-0" />
+              <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                <span className="font-semibold text-accent">Wall</span> — pooled wall-clock throughput, including stalls and TTFT
+              </p>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-ember" />
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Throughput gap</span>
+            <div className="flex items-start gap-2">
+              <div className="w-1 h-1 rounded-full bg-ember mt-1.5 shrink-0" />
+              <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                <span className="font-semibold text-ember">Loss</span> — percentage of active throughput lost to stalls, TTFT, and gaps
+              </p>
             </div>
           </div>
           <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
