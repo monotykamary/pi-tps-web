@@ -846,9 +846,17 @@ export function formatDuration(ms: number): string {
     const s = ms / 1000;
     return `${Number.isInteger(s) ? s : s.toFixed(1)}s`;
   }
+
   const totalSeconds = Math.round(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
+  const m = Math.floor(totalSeconds / 60) % 60;
+  const h = Math.floor(totalSeconds / 3600) % 24;
+  const d = Math.floor(totalSeconds / 86400) % 7;
+  const w = Math.floor(totalSeconds / 604800);
+
+  if (w > 0) return `${w}w ${d}d`;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
   return `${m}m ${s}s`;
 }
 
