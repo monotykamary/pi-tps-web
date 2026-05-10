@@ -135,6 +135,14 @@ export interface ConversationSummary {
   /** Cost derived strictly from energy events (neuralwatt), excluding provider token-pricing fallbacks. Null when no energy data. */
   energyCostUsd: number | null;
   totalEnergyJoules: number | null;
+  /** Average tokens consumed per LLM call */
+  avgTokensPerCall: number;
+  /** Number of calls that experienced at least one stall */
+  stalledCalls: number;
+  /** Number of calls that read from cache */
+  cachedCalls: number;
+  /** Number of calls with TTFT < 3s */
+  fastCalls: number;
   minTtft: number;
   maxTtft: number;
   model: string;

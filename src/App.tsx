@@ -159,22 +159,114 @@ function TpsTooltip({ activeTps, wallTps, lossPct, mode }: { activeTps: number; 
   );
 }
 
-function RequestsTooltip({ total }: { total: number }) {
+function RequestsTooltip({
+  total,
+  models,
+  avgTokensPerCall,
+  stalledCalls,
+  cachedCalls,
+  fastCalls,
+}: {
+  total: number;
+  models: ModelInfo[];
+  avgTokensPerCall: number;
+  stalledCalls: number;
+  cachedCalls: number;
+  fastCalls: number;
+}) {
+  const stallPct = total > 0 ? (stalledCalls / total) * 100 : 0;
+  const cachePct = total > 0 ? (cachedCalls / total) * 100 : 0;
+  const fastPct = total > 0 ? (fastCalls / total) * 100 : 0;
+
   return (
-    <div className="glass-panel rounded-2xl px-4 py-3 text-xs space-y-2">
-      <div className="flex items-center justify-between">
+    <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Requests</p>
         <p className="text-[9px] text-zinc-400 dark:text-zinc-500">calls</p>
       </div>
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-baseline gap-2 mb-2.5">
         <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatNumber(total, 0)}</p>
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">total LLM calls</span>
       </div>
-      <div className="space-y-1 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
-        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          Each call represents one turn in the conversation. Multiple calls may span model switches or branching.
-        </p>
+
+      {/* Quick stats row */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Avg tok/call</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgTokensPerCall), 0)}</p>
+        </div>
+        <div className="rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Fast TTFT</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{fastCalls}</p>
+        </div>
+        <div className="rounded-lg bg-amber/5 dark:bg-amber/10 p-1.5 text-center">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-amber">Stalled</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{stalledCalls}</p>
+        </div>
       </div>
+
+      {/* Quality bars */}
+      <div className="space-y-1.5 mb-3">
+        <div>
+          <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-zinc-400 mb-0.5">
+            <span>Fast responses (&lt; 3s TTFT)</span>
+            <span className="metric-mono font-medium text-moss">{fastPct.toFixed(0)}%</span>
+          </div>
+          <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full bg-moss" style={{ width: `${fastPct}%` }} />
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-zinc-400 mb-0.5">
+            <span>Cache-aware calls</span>
+            <span className="metric-mono font-medium text-accent">{cachePct.toFixed(0)}%</span>
+          </div>
+          <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full bg-accent" style={{ width: `${cachePct}%` }} />
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-zinc-400 mb-0.5">
+            <span>Stalled calls</span>
+            <span className="metric-mono font-medium text-ember">{stallPct.toFixed(0)}%</span>
+          </div>
+          <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full bg-ember" style={{ width: `${stallPct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Per-model call breakdown */}
+      {models.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Per Model</p>
+            <p className="text-[8px] text-zinc-400 dark:text-zinc-500">calls</p>
+          </div>
+          {models.map(m => {
+            const pct = total > 0 ? (m.callCount / total) * 100 : 0;
+            return (
+              <div key={m.modelId} className="space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-zinc-600 dark:text-zinc-300 font-medium truncate">{m.modelId.split('/').pop()}</span>
+                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{m.provider}</span>
+                  </div>
+                  <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200 shrink-0">{m.callCount}</span>
+                </div>
+                <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+                  <div className="h-full bg-accent/40" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
+        Each LLM call is one assistant turn. Fast responses (&lt; 3s TTFT) felt snappy. Stalled calls experienced at least one idle pause. Cache-aware calls read or wrote prompt cache.
+      </p>
     </div>
   );
 }
@@ -850,7 +942,16 @@ export default function App() {
                 transition={{ delay: 0.1 }}
                 className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2"
               >
-                <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip={<RequestsTooltip total={summary.totalCalls} />} />
+                <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip={
+  <RequestsTooltip
+    total={summary.totalCalls}
+    models={summary.models}
+    avgTokensPerCall={summary.avgTokensPerCall}
+    stalledCalls={summary.stalledCalls}
+    cachedCalls={summary.cachedCalls}
+    fastCalls={summary.fastCalls}
+  />
+} />
                 <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.wallClockMs)} tooltip={<TotalTimeTooltip wallClockMs={summary.wallClockMs} totalTimeMs={summary.totalTimeMs} generationMs={summary.totalGenerationMs} />} />
                 <TpsPill icon={Gauge} label="Avg TPS" activeTps={summary.avgTps} wallTps={summary.avgWallTps} lossPct={summary.tpsLoss} mode="avg" />
                 <TpsPill icon={Barbell} label="Wtd TPS" activeTps={summary.weightedTps} wallTps={summary.weightedWallTps} lossPct={summary.weightedTpsLoss} accent mode="weighted" />
