@@ -182,19 +182,19 @@ export function SmartTooltip({
             key="tooltip"
             initial={{ opacity: 0, scale: 0.96, y: arrowDir === 'up' ? 6 : -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: arrowDir === 'up' ? 4 : -4 }}
+            exit={{ opacity: 0, scale: 0.98, y: arrowDir === 'up' ? 4 : -4, pointerEvents: 'none' }}
             transition={{ type: 'spring', stiffness: 400, damping: 28, mass: 0.8 }}
             className="z-[100]"
             style={style}
             onMouseEnter={clearHideTimer}
             onMouseLeave={scheduleHide}
           >
-            {/* Arrow */}
+            {/* Arrow — opacity-only so CSS rotate(45deg) stays intact */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className={`absolute h-2 w-2 bg-white dark:bg-zinc-800 border-zinc-200/60 dark:border-white/[0.08] ${arrowClasses}`}
               style={{
                 left: arrowOffset,
