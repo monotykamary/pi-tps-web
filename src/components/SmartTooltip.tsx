@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState, useEffect, type CSSProperties, type ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface SmartTooltipProps {
   children: ReactNode;
@@ -175,24 +176,35 @@ export function SmartTooltip({
       </div>
 
       {/* Real tooltip — `fixed` so it can escape any overflow:hidden ancestor */}
-      {visible && (
-        <div
-          className="z-[100] transition-opacity duration-200"
-          style={style}
-          onMouseEnter={clearHideTimer}
-          onMouseLeave={scheduleHide}
-        >
-          {/* Arrow */}
-          <div
-            className={`absolute h-2 w-2 bg-white dark:bg-zinc-800 border-zinc-200/60 dark:border-white/[0.08] ${arrowClasses}`}
-            style={{
-              left: arrowOffset,
-              transform: 'translateX(-50%) rotate(45deg)',
-            }}
-          />
-          {content}
-        </div>
-      )}
+      <AnimatePresence>
+        {visible && (
+          <motion.div
+            key="tooltip"
+            initial={{ opacity: 0, scale: 0.96, y: arrowDir === 'up' ? 6 : -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: arrowDir === 'up' ? 4 : -4 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28, mass: 0.8 }}
+            className="z-[100]"
+            style={style}
+            onMouseEnter={clearHideTimer}
+            onMouseLeave={scheduleHide}
+          >
+            {/* Arrow */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+              className={`absolute h-2 w-2 bg-white dark:bg-zinc-800 border-zinc-200/60 dark:border-white/[0.08] ${arrowClasses}`}
+              style={{
+                left: arrowOffset,
+                transform: 'translateX(-50%) rotate(45deg)',
+              }}
+            />
+            {content}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
