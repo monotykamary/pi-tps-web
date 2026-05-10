@@ -38,14 +38,21 @@ const STALL_DOMINANCE_RATIO = 0.85;
  *            Includes TTFT, underestimates, but never overshoots.
  * Else:      0 — structurally unidentifiable.
  */
-export function computeEffectiveTps(data: TpsPayload): number {
+/**
+ * Compute a trustworthy per-event effective generation denominator (ms).
+ *
+ * Primary branch (stream-based): returns streamMs - stallMs when guards pass.
+ * Fallback branch (generationMs-based): applies partial stall reduction when
+ * stalls dominate the effective window, preventing a tiny denominator.
+ */
+function computeSafeEffectiveMs(data: TpsPayload): number {
   const streamMs = data.timing.streamMs ?? 0;
   const stallMs = data.timing.stallMs;
 
   // ── Primary branch (stream-based, no TTFT) ──
   const effectiveStreamMs = streamMs - stallMs;
   if (streamMs > 0 && stallMs < streamMs && effectiveStreamMs >= MIN_GENERATION_MS && stallMs < effectiveStreamMs) {
-    return data.tokens.output / (effectiveStreamMs / 1000);
+    return effectiveStreamMs;
   }
 
   // ── Fallback branch (generationMs–based, includes TTFT) ──
@@ -53,15 +60,19 @@ export function computeEffectiveTps(data: TpsPayload): number {
     const effectiveGenMs = data.timing.generationMs - stallMs;
     const stallsDominate = effectiveGenMs < ACTIVE_TIME_THRESHOLD_MS || stallMs > data.timing.generationMs * STALL_DOMINANCE_RATIO;
     if (stallsDominate) {
-      // Stalls dominate the effective window: only partially remove them
       const partialStall = stallMs / STALL_REDUCTION_DENOM;
-      const safeGenMs = Math.max(data.timing.generationMs - partialStall, MIN_GENERATION_MS);
-      return data.tokens.output / (safeGenMs / 1000);
+      return Math.max(data.timing.generationMs - partialStall, MIN_GENERATION_MS);
     }
-    return data.tokens.output / (Math.max(effectiveGenMs, MIN_GENERATION_MS) / 1000);
+    return Math.max(effectiveGenMs, MIN_GENERATION_MS);
   }
 
   return 0;
+}
+
+/** Compute per-event generation TPS using the safe effective denominator. */
+export function computeEffectiveTps(data: TpsPayload): number {
+  const denom = computeSafeEffectiveMs(data);
+  return denom > 0 ? data.tokens.output / (denom / 1000) : 0;
 }
 
 /**
@@ -501,12 +512,13 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   const totalGenerationMs = sorted.reduce((s, e) => s + e.data.timing.generationMs, 0);
   const totalStallMs = sorted.reduce((s, e) => s + e.data.timing.stallMs, 0);
   const totalStallCount = sorted.reduce((s, e) => s + e.data.timing.stallCount, 0);
-  const effectiveTps = (e: typeof sorted[number]) => computeEffectiveTps(e.data);
-  // Weighted TPS: total output / total effective generation time — gives
-  // the effective rate if the whole conversation were one big request.
-  const totalEffectiveMs = sorted.reduce((s, e) => s + Math.max(e.data.timing.generationMs - e.data.timing.stallMs, 0), 0);
+  // Weighted TPS: total output / total safe effective generation time.
+  // Uses computeSafeEffectiveMs so outliers with dominating stalls cannot
+  // inflate the aggregate rate via a tiny per-event denominator.
+  const totalEffectiveMs = sorted.reduce((s, e) => s + computeSafeEffectiveMs(e.data), 0);
   const weightedTps = totalEffectiveMs > 0 ? totalOutput / (totalEffectiveMs / 1000) : 0;
   // Simple average TPS: arithmetic mean of per-request effective TPS values
+  const effectiveTps = (e: typeof sorted[number]) => computeEffectiveTps(e.data);
   const avgTps = sorted.length > 0 ? sorted.reduce((s, e) => s + effectiveTps(e), 0) / sorted.length : 0;
 
   const ttfts = sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b);
