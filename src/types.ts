@@ -92,6 +92,8 @@ export interface ModelInfo {
   totalTokens: number;
   /** Energy-only cost for this model (neuralwatt). null when no energy data. */
   energyCostUsd: number | null;
+  /** Energy consumed by this model in joules. null when no energy data. */
+  energyJoules: number | null;
   /** Blended cost for this model (energy preferred, token-pricing fallback). null when no cost data at all. */
   blendedCostUsd: number | null;
   /** Cost attribution source for this model */

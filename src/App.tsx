@@ -577,7 +577,7 @@ function CostTooltip({ totalCost, energyCost, costSource, models, totalTokens }:
   );
 }
 
-function EnergyTooltip({ joules, energyCost }: { joules: number | null; energyCost: number | null }) {
+function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: number | null; energyCost: number | null; models: ModelInfo[]; totalCalls: number }) {
   if (joules === null) {
     return (
       <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
@@ -588,9 +588,20 @@ function EnergyTooltip({ joules, energyCost }: { joules: number | null; energyCo
       </div>
     );
   }
+
   const kwh = joules / 3_600_000;
+  const avgJoulesPerCall = totalCalls > 0 ? joules / totalCalls : 0;
+
+  const energyModels = models.filter(m => m.energyJoules !== null && m.energyJoules > 0);
+  const totalModelJoules = energyModels.reduce((s, m) => s + (m.energyJoules ?? 0), 0);
+
+  // Everyday equivalencies (rough)
+  const smartphoneCharges = joules / 18_000; // ~18kJ per typical phone charge (5Wh)
+  const ledHours = joules / (9 * 3600); // 9W LED bulb
+
   return (
     <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
+      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Energy Consumption</p>
       </div>
@@ -598,17 +609,69 @@ function EnergyTooltip({ joules, energyCost }: { joules: number | null; energyCo
         <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatNumber(joules)}J</p>
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{kwh.toFixed(4)} kWh</span>
       </div>
-      <div className="space-y-1.5 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
-        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          Total energy drawn across all tracked LLM requests, measured via NeuralWatt inference profiling.
-        </p>
+
+      {/* Quick stats row */}
+      <div className="grid grid-cols-3 gap-2 mb-3 mt-2.5">
         {energyCost !== null && (
-          <div className="flex items-center justify-between text-[10px]">
-            <span className="text-zinc-500 dark:text-zinc-400">Est. energy cost</span>
-            <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatCurrency(energyCost)}</span>
+          <div className="rounded-lg bg-accent/5 dark:bg-accent/10 p-1.5 text-center">
+            <p className="text-[8px] font-semibold uppercase tracking-wider text-accent">Energy cost</p>
+            <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCurrency(energyCost)}</p>
           </div>
         )}
+        <div className="rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Joules/call</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgJoulesPerCall), 0)}</p>
+        </div>
+        <div className="rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Smartphone charges</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{smartphoneCharges.toFixed(1)}x</p>
+        </div>
       </div>
+
+      {/* Everyday equivalencies */}
+      <div className="space-y-1 mb-3">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="text-zinc-500 dark:text-zinc-400">LED bulb (9W) runtime</span>
+          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{ledHours.toFixed(1)}h</span>
+        </div>
+      </div>
+
+      {/* Per-model energy breakdown */}
+      {energyModels.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Per Model</p>
+            <p className="text-[8px] text-zinc-400 dark:text-zinc-500">joules</p>
+          </div>
+          {energyModels
+            .sort((a, b) => (b.energyJoules ?? 0) - (a.energyJoules ?? 0))
+            .map(m => {
+              const pct = totalModelJoules > 0 ? ((m.energyJoules ?? 0) / totalModelJoules) * 100 : 0;
+              const mWh = (m.energyJoules ?? 0) / 3.6; // milliwatt-hours
+              return (
+                <div key={m.modelId} className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-zinc-600 dark:text-zinc-300 font-medium truncate">{m.modelId.split('/').pop()}</span>
+                      <span className="text-zinc-400 dark:text-zinc-500 text-[9px]">{m.callCount} calls</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 shrink-0">
+                      <span className="metric-mono font-medium text-accent">{formatNumber(m.energyJoules ?? 0)}J</span>
+                      <span className="metric-mono text-[9px] text-zinc-400">{mWh.toFixed(0)} mWh</span>
+                    </div>
+                  </div>
+                  <div className="h-1 rounded-full overflow-hidden bg-zinc-100 dark:bg-white/[0.06]">
+                    <div className="h-full bg-accent/60" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
+        Energy measured via NeuralWatt inference profiling. Per-model values only include paired energy events — unpaired measurements cannot be attributed to a specific model.
+      </p>
     </div>
   );
 }
@@ -958,7 +1021,7 @@ export default function App() {
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip={<TtftTooltip avgTtft={summary.avgTtft} p50={summary.ttftP50} p75={summary.ttftP75} p90={summary.ttftP90} p99={summary.ttftP99} min={summary.minTtft} max={summary.maxTtft} />} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} energyCost={summary.energyCostUsd} costSource={summary.costSource} models={summary.models} totalTokens={summary.totalTokens} />} />
-                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} />} />
+                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? `${formatNumber(summary.totalEnergyJoules)}J` : '-'} tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} models={summary.models} totalCalls={summary.totalCalls} />} />
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} tooltip={<TokensTooltip input={summary.totalInput} output={summary.totalOutput} cacheRead={summary.totalCacheRead} cacheWrite={summary.totalCacheWrite} total={summary.totalTokens} totalCost={summary.totalCostUsd} />} />
               </motion.div>
             )}

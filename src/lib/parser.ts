@@ -599,12 +599,19 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     ? energyEvents.reduce((s, e) => s + e.data.energy_joules, 0)
     : null;
 
-  // Collect per-model aggregates (calls, tokens, energy cost, blended cost)
+  // Build a map from TPS id → joules so we can attribute energy per model
+  const joulesByParentId = new Map<string, number>();
+  for (const e of energyEvents) {
+    joulesByParentId.set(e.parentId ?? '', e.data.energy_joules);
+  }
+
+  // Collect per-model aggregates (calls, tokens, energy cost, blended cost, joules)
   const modelMap = new Map<string, {
     provider: string;
     count: number;
     totalTokens: number;
     energyCost: number;
+    energyJoules: number;
     blendedCost: number;
     hasEnergyCost: boolean;
     hasBlendedCost: boolean;
@@ -615,12 +622,14 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     const existing = modelMap.get(key);
     const tokens = e.data.tokens.total;
     const pairedEnergy = energyByParentId.get(e.id);
+    const pairedJoules = joulesByParentId.get(e.id) ?? 0;
 
     if (existing) {
       existing.count++;
       existing.totalTokens += tokens;
       if (pairedEnergy) {
         existing.energyCost += pairedEnergy.cost_usd;
+        existing.energyJoules += pairedJoules;
         existing.blendedCost += pairedEnergy.cost_usd;
         existing.hasEnergyCost = true;
         existing.hasBlendedCost = true;
@@ -636,6 +645,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
         count: 1,
         totalTokens: tokens,
         energyCost,
+        energyJoules: pairedJoules,
         blendedCost,
         hasEnergyCost: !!pairedEnergy,
         hasBlendedCost: !!(pairedEnergy || e.data.cost),
@@ -650,6 +660,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
       callCount: m.count,
       totalTokens: m.totalTokens,
       energyCostUsd: m.hasEnergyCost ? m.energyCost : null,
+      energyJoules: m.hasEnergyCost ? m.energyJoules : null,
       blendedCostUsd: m.hasBlendedCost ? m.blendedCost : null,
       costSource: m.hasEnergyCost ? 'neuralwatt' as const :
         m.hasBlendedCost ? 'tps' as const : null,
