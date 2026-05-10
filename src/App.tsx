@@ -193,7 +193,7 @@ function RequestsTooltip({
       {/* Quick stats row */}
       <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
-          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Avg tok/call</p>
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Tok/call</p>
           <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgTokensPerCall), 0)}</p>
         </div>
         <div className="rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
