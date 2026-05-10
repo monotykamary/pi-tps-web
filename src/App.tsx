@@ -108,8 +108,10 @@ function TpsPill({ icon: Icon, label, activeTps, wallTps, lossPct, accent = fals
           </div>
         </div>
       </motion.div>
+      {/* Invisible mouse bridge — keeps group:hover alive across the gap */}
+      <div className="absolute top-full left-0 right-0 h-2 z-10" />
       {/* Tooltip — springs DOWN below the pill to avoid cutoff */}
-      <div className="pointer-events-none absolute z-50 min-w-[224px] max-w-[280px] w-fit opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2">
+      <div className="absolute z-50 min-w-[224px] max-w-[280px] w-fit opacity-0 shadow-diffuse-lg transition-all duration-200 delay-75 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2 pointer-events-none group-hover:pointer-events-auto">
         <div className="absolute left-1/2 -top-1 h-2 w-2 bg-white dark:bg-zinc-800" style={{ transform: 'translateX(-50%) rotate(45deg)' }} />
         <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
           <div className="flex items-center justify-between mb-2">
@@ -140,10 +142,25 @@ function TpsPill({ icon: Icon, label, activeTps, wallTps, lossPct, accent = fals
               <div className="h-full bg-ember" style={{ width: `${Math.max(0, 100 - wallShare)}%` }} />
             </div>
           </div>
-          <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+          {/* Legend */}
+          <div className="flex items-center gap-3 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-moss" />
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Generation-only</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Incl. stalls + TTFT</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-ember" />
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Throughput gap</span>
+            </div>
+          </div>
+          <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
             {mode === 'avg'
-              ? 'Simple mean of per-request generation throughput. Active excludes stalls and TTFT; Wall includes everything.'
-              : 'Token-weighted average throughput. Longer responses count more heavily toward the average. Active excludes stalls and TTFT; Wall includes everything.'}
+              ? 'Simple mean of per-request generation throughput.'
+              : 'Token-weighted average throughput. Longer responses count more heavily.'}
           </p>
         </div>
       </div>
