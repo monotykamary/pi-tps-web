@@ -109,25 +109,25 @@ function TpsPill({ icon: Icon, label, activeTps, wallTps, lossPct, accent = fals
         </div>
       </motion.div>
       {/* Tooltip — springs DOWN below the pill to avoid cutoff */}
-      <div className="pointer-events-none absolute z-50 w-56 opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2">
+      <div className="pointer-events-none absolute z-50 min-w-[224px] max-w-[280px] w-fit opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2">
         <div className="absolute left-1/2 -top-1 h-2 w-2 bg-white dark:bg-zinc-800" style={{ transform: 'translateX(-50%) rotate(45deg)' }} />
         <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{mode === 'avg' ? 'Average' : 'Weighted'} Speed</p>
             <p className="text-[9px] text-zinc-400 dark:text-zinc-500">tok/s</p>
           </div>
-          <div className="flex gap-2 mb-2">
-            <div className="flex-1 rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
+          <div className="flex gap-2 mb-2 min-w-0">
+            <div className="flex-1 min-w-0 rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
               <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Active</p>
-              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{activeTps.toFixed(1)}</p>
+              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 truncate">{formatTps(activeTps)}</p>
             </div>
-            <div className="flex-1 rounded-lg bg-accent/5 dark:bg-accent/10 p-1.5 text-center">
+            <div className="flex-1 min-w-0 rounded-lg bg-accent/5 dark:bg-accent/10 p-1.5 text-center">
               <p className="text-[8px] font-semibold uppercase tracking-wider text-accent">Wall</p>
-              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{wallTps.toFixed(1)}</p>
+              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 truncate">{formatTps(wallTps)}</p>
             </div>
-            <div className="flex-1 rounded-lg bg-ember/5 dark:bg-ember/10 p-1.5 text-center">
+            <div className="flex-1 min-w-0 rounded-lg bg-ember/5 dark:bg-ember/10 p-1.5 text-center">
               <p className="text-[8px] font-semibold uppercase tracking-wider text-ember">Loss</p>
-              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{lossPct.toFixed(1)}%</p>
+              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 truncate">{lossPct.toFixed(1)}%</p>
             </div>
           </div>
           <div>
