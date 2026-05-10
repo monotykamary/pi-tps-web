@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo } from './types';
-import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps } from './lib/parser';
+import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import { SmartTooltip } from './components/SmartTooltip';
 import TimelineChart from './components/TimelineChart';
@@ -596,7 +596,7 @@ function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: num
         <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Energy Consumption</p>
       </div>
       <div className="flex items-baseline gap-2 mb-1">
-        <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatNumber(joules)}J</p>
+        <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatEnergy(joules)}</p>
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{kwh.toFixed(4)} kWh</span>
       </div>
 
@@ -610,7 +610,7 @@ function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: num
         )}
         <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
           <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Energy/call</p>
-          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgJoulesPerCall), 0)}J</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(avgJoulesPerCall)}</p>
         </div>
         <div className="flex-1 min-w-0 rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
           <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Phone charges</p>
@@ -646,7 +646,7 @@ function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: num
                       <span className="text-zinc-400 dark:text-zinc-500 text-[9px]">{m.callCount} calls</span>
                     </div>
                     <div className="flex items-baseline gap-1.5 shrink-0">
-                      <span className="metric-mono font-medium text-accent">{formatNumber(m.energyJoules ?? 0)}J</span>
+                      <span className="metric-mono font-medium text-accent">{formatEnergy(m.energyJoules ?? 0)}</span>
                       <span className="metric-mono text-[9px] text-zinc-400">{mWh.toFixed(0)} mWh</span>
                     </div>
                   </div>

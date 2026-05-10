@@ -898,3 +898,25 @@ export function formatTps(n: number): string {
   if (n >= 1000) return Math.round(n).toString();
   return n.toFixed(1);
 }
+
+/**
+ * Auto-scale energy from joules up through mWh, Wh, kWh — matching NeuralWatt's
+ * footer display: small values stay in J, then scale naturally to the most
+ * readable unit at each threshold.
+ */
+export function formatEnergy(joules: number): string {
+  if (joules === 0) return '0J';
+  if (joules < 3.6) {
+    return joules < 10 ? `${joules.toFixed(1)}J` : `${Math.round(joules)}J`;
+  }
+  const mWh = joules / 3_600;
+  if (mWh < 1000) {
+    return mWh < 10 ? `${mWh.toFixed(1)}mWh` : `${Math.round(mWh)}mWh`;
+  }
+  const wh = mWh / 1_000;
+  if (wh < 1000) {
+    return wh < 10 ? `${wh.toFixed(1)}Wh` : `${Math.round(wh)}Wh`;
+  }
+  const kWh = wh / 1_000;
+  return `${kWh.toFixed(2)}kWh`;
+}
