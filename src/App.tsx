@@ -181,42 +181,88 @@ function RequestsTooltip({ total }: { total: number }) {
 
 function TotalTimeTooltip({ wallClockMs, totalTimeMs, generationMs }: { wallClockMs: number; totalTimeMs: number; generationMs: number }) {
   const overhead = Math.max(0, totalTimeMs - generationMs);
-  const overheadPct = totalTimeMs > 0 ? (overhead / totalTimeMs) * 100 : 0;
+  const idle = Math.max(0, wallClockMs - totalTimeMs);
+  const denominator = Math.max(wallClockMs, totalTimeMs, 1);
+
+  const genPct = (generationMs / denominator) * 100;
+  const overPct = (overhead / denominator) * 100;
+  const idlePct = (idle / denominator) * 100;
+
   return (
     <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
       <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Time Breakdown</p>
       </div>
-      <div className="space-y-1.5 mb-3">
-        <div className="flex items-center justify-between text-[10px]">
-          <span className="text-zinc-500 dark:text-zinc-400">Wall-clock span</span>
-          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatDuration(wallClockMs)}</span>
-        </div>
-        <div className="flex items-center justify-between text-[10px]">
-          <span className="text-zinc-500 dark:text-zinc-400">Sum of call durations</span>
-          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatDuration(totalTimeMs)}</span>
-        </div>
-        <div className="flex items-center justify-between text-[10px]">
-          <span className="text-zinc-500 dark:text-zinc-400">Total generation time</span>
-          <span className="metric-mono font-medium text-moss">{formatDuration(generationMs)}</span>
-        </div>
-        <div className="flex items-center justify-between text-[10px]">
-          <span className="text-zinc-500 dark:text-zinc-400">Overhead (TTFT + stalls)</span>
-          <span className="metric-mono font-medium text-ember">{formatDuration(overhead)}</span>
-        </div>
+
+      {/* Primary metric */}
+      <div className="flex items-baseline gap-2 mb-2.5">
+        <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatDuration(wallClockMs)}</p>
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">wall-clock span</span>
       </div>
-      <div>
-        <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-zinc-400 mb-1">
-          <span>Overhead ratio</span>
-          <span className="metric-mono font-medium">{overheadPct.toFixed(1)}%</span>
+
+      {/* Detail rows */}
+      <div className="space-y-1 mb-3">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-moss" />
+            Generation time
+          </span>
+          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatDuration(generationMs)}</span>
         </div>
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber" />
+            Overhead (TTFT + stalls)
+          </span>
+          <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatDuration(overhead)}</span>
+        </div>
+        {idle > 0 && (
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+              Idle (between requests)
+            </span>
+            <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{formatDuration(idle)}</span>
+          </div>
+        )}
+        {totalTimeMs > wallClockMs && (
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              Parallel overlap
+            </span>
+            <span className="metric-mono font-medium text-accent">{formatDuration(totalTimeMs - wallClockMs)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Stacked bar */}
+      <div className="mb-1">
         <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
-          <div className="h-full bg-moss" style={{ width: `${100 - overheadPct}%` }} />
-          <div className="h-full bg-ember" style={{ width: `${overheadPct}%` }} />
+          <div className="h-full bg-moss" style={{ width: `${genPct}%` }} />
+          <div className="h-full bg-amber" style={{ width: `${overPct}%` }} />
+          {idle > 0 && <div className="h-full bg-zinc-300 dark:bg-zinc-600" style={{ width: `${idlePct}%` }} />}
         </div>
       </div>
-      <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
-        Wall-clock is the real-world span from first to last event. Sum of durations can exceed wall-clock when calls overlap in parallel.
+      <div className="flex items-center gap-3 mb-2">
+        <div className="flex items-center gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-moss" />
+          <span className="text-[9px] text-zinc-400 dark:text-zinc-500">gen {genPct.toFixed(0)}%</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-amber" />
+          <span className="text-[9px] text-zinc-400 dark:text-zinc-500">over {overPct.toFixed(0)}%</span>
+        </div>
+        {idle > 0 && (
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+            <span className="text-[9px] text-zinc-400 dark:text-zinc-500">idle {idlePct.toFixed(0)}%</span>
+          </div>
+        )}
+      </div>
+
+      <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+        Wall-clock is the real-world time from first to last event. It includes idle gaps between user interactions. "Active" time (generation + overhead) is the sum of individual request durations — it can exceed wall-clock when multiple requests execute in parallel.
       </p>
     </div>
   );
