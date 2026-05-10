@@ -609,8 +609,8 @@ function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: num
           </div>
         )}
         <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
-          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Joules/call</p>
-          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgJoulesPerCall), 0)}</p>
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Energy/call</p>
+          <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgJoulesPerCall), 0)}J</p>
         </div>
         <div className="flex-1 min-w-0 rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
           <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Phone charges</p>
