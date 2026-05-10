@@ -623,7 +623,7 @@ function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: num
           <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatNumber(Math.round(avgJoulesPerCall), 0)}</p>
         </div>
         <div className="rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
-          <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Smartphone charges</p>
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Phone charges</p>
           <p className="metric-mono text-[12px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{smartphoneCharges.toFixed(1)}x</p>
         </div>
       </div>
@@ -631,7 +631,7 @@ function EnergyTooltip({ joules, energyCost, models, totalCalls }: { joules: num
       {/* Everyday equivalencies */}
       <div className="space-y-1 mb-3">
         <div className="flex items-center justify-between text-[10px]">
-          <span className="text-zinc-500 dark:text-zinc-400">LED bulb (9W) runtime</span>
+          <span className="text-zinc-500 dark:text-zinc-400">9W LED bulb</span>
           <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{ledHours.toFixed(1)}h</span>
         </div>
       </div>
