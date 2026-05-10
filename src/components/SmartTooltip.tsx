@@ -11,6 +11,9 @@ interface SmartTooltipProps {
 
 const HIDE_DELAY_MS = 120;
 
+/** Holds the hide callback of the currently visible tooltip across instances. */
+let activeHide: (() => void) | null = null;
+
 /**
  * Viewport-aware tooltip wrapper.
  *
@@ -21,6 +24,9 @@ const HIDE_DELAY_MS = 120;
  *
  * A short hide-delay lets the user move the cursor from the trigger into the
  * tooltip (across the gap) without the tooltip flickering away.
+ *
+ * Cross-instance coordination: hovering a new pill immediately dismisses any
+ * other visible tooltip, so only one tooltip is ever shown at a time.
  */
 export function SmartTooltip({
   children,
@@ -32,6 +38,7 @@ export function SmartTooltip({
 }: SmartTooltipProps) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ourHideRef = useRef<(() => void) | null>(null);
 
   const [visible, setVisible] = useState(false);
   const [style, setStyle] = useState<CSSProperties>({ opacity: 0, pointerEvents: 'none' });
@@ -46,9 +53,13 @@ export function SmartTooltip({
   }, []);
 
   const doHide = useCallback(() => {
+    clearHideTimer();
+    if (activeHide === ourHideRef.current) activeHide = null;
     setVisible(false);
     setStyle({ opacity: 0, pointerEvents: 'none' });
-  }, []);
+  }, [clearHideTimer]);
+
+  ourHideRef.current = doHide;
 
   const scheduleHide = useCallback(() => {
     clearHideTimer();
@@ -57,6 +68,12 @@ export function SmartTooltip({
 
   const measureAndShow = useCallback(() => {
     clearHideTimer();
+
+    // If another tooltip is active, hide it immediately (bypass delay).
+    if (activeHide && activeHide !== ourHideRef.current) {
+      activeHide();
+    }
+    activeHide = ourHideRef.current;
 
     const trigger = triggerRef.current;
     if (!trigger) return;
@@ -123,8 +140,13 @@ export function SmartTooltip({
     };
   }, [visible, doHide, clearHideTimer]);
 
-  // Cleanup timer on unmount
-  useEffect(() => () => clearHideTimer(), [clearHideTimer]);
+  // Cleanup timer and active-hide registry on unmount
+  useEffect(() => {
+    return () => {
+      clearHideTimer();
+      if (activeHide === ourHideRef.current) activeHide = null;
+    };
+  }, [clearHideTimer]);
 
   const arrowClasses =
     arrowDir === 'up'
