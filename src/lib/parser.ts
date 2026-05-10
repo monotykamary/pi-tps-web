@@ -920,3 +920,20 @@ export function formatEnergy(joules: number): string {
   const kWh = wh / 1_000;
   return `${kWh.toFixed(2)} kWh`;
 }
+
+export function formatEnergyParts(joules: number): { value: string; unit: string } {
+  if (joules === 0) return { value: '0', unit: 'J' };
+  if (joules < 3.6) {
+    return { value: joules.toFixed(2), unit: 'J' };
+  }
+  const mWh = joules / 3_600;
+  if (mWh < 1000) {
+    return { value: mWh.toFixed(2), unit: 'mWh' };
+  }
+  const wh = mWh / 1_000;
+  if (wh < 1000) {
+    return { value: wh.toFixed(2), unit: 'Wh' };
+  }
+  const kWh = wh / 1_000;
+  return { value: kWh.toFixed(2), unit: 'kWh' };
+}

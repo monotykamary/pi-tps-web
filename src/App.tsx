@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo } from './types';
-import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy } from './lib/parser';
+import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import { SmartTooltip } from './components/SmartTooltip';
 import TimelineChart from './components/TimelineChart';
@@ -45,7 +45,7 @@ function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent =
       <div className="min-w-0 flex-1">
         <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
         <div className="flex items-baseline gap-1.5 mt-0.5">
-          <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
+          <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight whitespace-nowrap">
             {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
           </p>
           {subValue && (
@@ -1057,7 +1057,18 @@ export default function App() {
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip={<TtftTooltip avgTtft={summary.avgTtft} p50={summary.ttftP50} p75={summary.ttftP75} p90={summary.ttftP90} p99={summary.ttftP99} min={summary.minTtft} max={summary.maxTtft} />} />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} energyCost={summary.energyCostUsd} costSource={summary.costSource} models={summary.models} totalTokens={summary.totalTokens} />} />
-                <MetricPill icon={Lightning} label="Energy" value={summary.totalEnergyJoules !== null ? formatEnergy(summary.totalEnergyJoules) : '-'} tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} models={summary.models} totalCalls={summary.totalCalls} />} />
+                {(() => {
+                  const energy = summary.totalEnergyJoules !== null ? formatEnergyParts(summary.totalEnergyJoules) : null;
+                  return (
+                    <MetricPill
+                      icon={Lightning}
+                      label="Energy"
+                      value={energy ? energy.value : '-'}
+                      unit={energy ? energy.unit : undefined}
+                      tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} models={summary.models} totalCalls={summary.totalCalls} />}
+                    />
+                  );
+                })()}
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} tooltip={<TokensTooltip input={summary.totalInput} output={summary.totalOutput} cacheRead={summary.totalCacheRead} cacheWrite={summary.totalCacheWrite} total={summary.totalTokens} totalCost={summary.totalCostUsd} />} />
               </motion.div>
             )}
