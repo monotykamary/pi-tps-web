@@ -24,42 +24,63 @@ function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent
   accent?: boolean;
   tooltip?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [flipY, setFlipY] = useState(false);
-  const [xOffset, setXOffset] = useState(0);
+  return (
+    <div className="group relative">
+      <motion.div
+        layout
+        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
+          accent
+            ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
+            : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
+        }`}
+        whileHover={{ y: -1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      >
+        <div className={`shrink-0 p-1.5 rounded-lg ${
+          accent
+            ? 'bg-accent/10 text-accent dark:bg-accent/15'
+            : 'bg-zinc-100 text-zinc-500 dark:bg-white/[0.04] dark:text-zinc-400'
+        }`}>
+          <Icon weight="bold" size={14} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
+          <div className="flex items-baseline gap-1.5 mt-0.5">
+            <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
+              {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
+            </p>
+            {subValue && (
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                {subLabel && <span className="text-zinc-400 dark:text-zinc-500 mr-0.5">{subLabel}</span>}
+                <span className="metric-mono font-medium">{subValue}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </motion.div>
+      {tooltip && (
+        <div className="pointer-events-none absolute z-50 w-56 rounded-xl bg-zinc-900 dark:bg-zinc-800 px-3.5 py-2.5 text-xs text-zinc-100 opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 bottom-full mb-2 left-1/2 -translate-x-1/2">
+          <div className="absolute left-1/2 -bottom-1 h-2 w-2 bg-zinc-900 dark:bg-zinc-800" style={{ transform: 'translateX(-50%) rotate(45deg)' }} />
+          {tooltip}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  useLayoutEffect(() => {
-    if (!tooltip) return;
-    const el = ref.current;
-    if (!el) return;
-    const w = 224; // w-56
-    const pad = 12;
-    const check = () => {
-      const rect = el.getBoundingClientRect();
-      setFlipY(rect.top < 80);
-      const centerX = rect.left + rect.width / 2;
-      const tipLeft = centerX - w / 2;
-      const tipRight = centerX + w / 2;
-      let offset = 0;
-      if (tipLeft < pad) offset = pad - tipLeft;
-      else if (tipRight > window.innerWidth - pad) offset = window.innerWidth - pad - tipRight;
-      setXOffset(offset);
-    };
-    check();
-    const onScroll = () => check();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', check);
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', check);
-    };
-  }, [tooltip]);
-
-  const tipV = flipY ? 'top-full mt-2' : 'bottom-full mb-2';
-  const arrowV = flipY ? '-top-1' : '-bottom-1';
+function TpsPill({ icon: Icon, label, activeTps, wallTps, lossPct, accent = false, mode }: {
+  icon: React.ElementType;
+  label: string;
+  activeTps: number;
+  wallTps: number;
+  lossPct: number;
+  accent?: boolean;
+  mode: 'avg' | 'weighted';
+}) {
+  const wallShare = activeTps > 0 ? (wallTps / activeTps) * 100 : 0;
 
   return (
-    <div ref={ref} className="group relative">
+    <div className="group relative">
       <motion.div
         layout
         className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
@@ -81,31 +102,51 @@ function MetricPill({ icon: Icon, label, value, unit, subLabel, subValue, accent
           <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400 leading-none">{label}</p>
           <div className="flex items-baseline gap-1.5 mt-0.5">
             <p className="metric-mono text-base font-semibold text-zinc-800 dark:text-zinc-300 leading-tight">
-              {value}{unit && <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">{unit}</span>}
+              {formatTps(activeTps)}
+              <span className="text-xs text-zinc-400 dark:text-zinc-400 ml-0.5">tok/s</span>
             </p>
-            {subValue && (
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-tight">
-                {subLabel && <span className="text-zinc-400 dark:text-zinc-500 mr-0.5">{subLabel}</span>}
-                <span className="metric-mono font-medium">{subValue}</span>
-              </span>
-            )}
           </div>
         </div>
       </motion.div>
-      {tooltip && (
-        <div
-          className={`pointer-events-none absolute z-50 w-56 rounded-xl bg-zinc-900 px-3.5 py-2.5 text-xs text-zinc-100 opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 ${tipV} left-1/2 dark:bg-white dark:text-zinc-900`}
-          style={{ transform: `translateX(calc(-50% + ${xOffset}px))` }}
-        >
-          <div
-            className={`absolute left-1/2 h-2 w-2 bg-zinc-900 dark:bg-white ${arrowV}`}
-            style={{
-              transform: `translateX(calc(-50% - ${xOffset}px)) ${flipY ? 'rotate(225deg)' : 'rotate(45deg)'}`,
-            }}
-          />
-          <p className="relative leading-snug">{tooltip}</p>
+      {/* Tooltip — springs DOWN below the pill to avoid cutoff */}
+      <div className="pointer-events-none absolute z-50 w-56 opacity-0 shadow-diffuse-lg transition-all duration-200 group-hover:opacity-100 top-full mt-2 left-1/2 -translate-x-1/2">
+        <div className="absolute left-1/2 -top-1 h-2 w-2 bg-white dark:bg-zinc-800" style={{ transform: 'translateX(-50%) rotate(45deg)' }} />
+        <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{mode === 'avg' ? 'Average' : 'Weighted'} Speed</p>
+            <p className="text-[9px] text-zinc-400 dark:text-zinc-500">tok/s</p>
+          </div>
+          <div className="flex gap-2 mb-2">
+            <div className="flex-1 rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
+              <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Active</p>
+              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{activeTps.toFixed(1)}</p>
+            </div>
+            <div className="flex-1 rounded-lg bg-accent/5 dark:bg-accent/10 p-1.5 text-center">
+              <p className="text-[8px] font-semibold uppercase tracking-wider text-accent">Wall</p>
+              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{wallTps.toFixed(1)}</p>
+            </div>
+            <div className="flex-1 rounded-lg bg-ember/5 dark:bg-ember/10 p-1.5 text-center">
+              <p className="text-[8px] font-semibold uppercase tracking-wider text-ember">Loss</p>
+              <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{lossPct.toFixed(1)}%</p>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-zinc-400 mb-1">
+              <span>Retention</span>
+              <span className="metric-mono font-medium text-moss">{wallShare.toFixed(0)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+              <div className="h-full bg-moss" style={{ width: `${wallShare}%` }} />
+              <div className="h-full bg-ember" style={{ width: `${Math.max(0, 100 - wallShare)}%` }} />
+            </div>
+          </div>
+          <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+            {mode === 'avg'
+              ? 'Simple mean of per-request generation throughput. Active excludes stalls and TTFT; Wall includes everything.'
+              : 'Token-weighted average throughput. Longer responses count more heavily toward the average. Active excludes stalls and TTFT; Wall includes everything.'}
+          </p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -350,8 +391,8 @@ export default function App() {
               >
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip="Total number of LLM calls in this session." />
                 <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.wallClockMs)} tooltip="Wall-clock time from the first to the last request." />
-                <MetricPill icon={Gauge} label="Avg TPS" value={formatTps(summary.avgTps)} unit="tok/s" tooltip="Simple mean of tokens per second across all requests." />
-                <MetricPill icon={Barbell} label="Wtd TPS" value={formatTps(summary.weightedTps)} unit="tok/s" accent tooltip="Token-weighted average TPS. Longer responses count more heavily, giving a truer sense of overall throughput." />
+                <TpsPill icon={Gauge} label="Avg TPS" activeTps={summary.avgTps} wallTps={summary.avgWallTps} lossPct={summary.tpsLoss} mode="avg" />
+                <TpsPill icon={Barbell} label="Wtd TPS" activeTps={summary.weightedTps} wallTps={summary.weightedWallTps} lossPct={summary.weightedTpsLoss} accent mode="weighted" />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip="Mean Time To First Token — latency before the first generated token arrives." />
                 <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} subLabel="total" subValue={formatDuration(summary.totalStallMs)} accent tooltip="Number of stalls and total time spent stalled waiting for the model or network." />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip="Estimated total cost in USD based on token counts and model pricing." />

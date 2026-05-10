@@ -246,16 +246,59 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                     <TimingPill label="Generation" value={formatDuration(selectedEvent.data.timing.generationMs)} />
                     <TimingPill label="Stall" value={formatDuration(selectedEvent.data.timing.stallMs)} warn={selectedEvent.data.timing.stallMs > 0} />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${effectiveTps(selectedEvent) > 40 ? 'bg-moss' : effectiveTps(selectedEvent) > 20 ? 'bg-accent' : 'bg-ember'}`} />
-                    <span className="metric-mono text-sm font-bold text-zinc-800 dark:text-zinc-300">{formatTps(effectiveTps(selectedEvent))}</span>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-400">tokens/second</span>
-                    {selectedEvent.data.tps !== effectiveTps(selectedEvent) && selectedEvent.data.tps > 0 && (
-                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1" title="Stored TPS from extension (computed before stall-guard fix, may include inflation)">
-                        (stored {formatTps(selectedEvent.data.tps)})
-                      </span>
-                    )}
-                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Speed Breakdown</p>
+                  {(() => {
+                    const activeTps = effectiveTps(selectedEvent);
+                    const wallTps = selectedEvent.data.timing.totalMs > 0 ? selectedEvent.data.tokens.output / (selectedEvent.data.timing.totalMs / 1000) : 0;
+                    const lossTps = activeTps > 0 ? ((activeTps - wallTps) / activeTps) * 100 : 0;
+                    const wallShare = activeTps > 0 ? (wallTps / activeTps) * 100 : 0;
+                    const stallShare = selectedEvent.data.timing.generationMs > 0 ? (selectedEvent.data.timing.stallMs / selectedEvent.data.timing.generationMs) * 100 : 0;
+                    return (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-moss/5 dark:bg-moss/10 rounded-xl px-3 py-2.5 text-center">
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Active</p>
+                            <p className="metric-mono text-sm font-bold text-moss mt-0.5">{formatTps(activeTps)}</p>
+                            <p className="text-[9px] text-zinc-400 dark:text-zinc-500">tok/s</p>
+                          </div>
+                          <div className="bg-accent/5 dark:bg-accent/10 rounded-xl px-3 py-2.5 text-center">
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Wall</p>
+                            <p className="metric-mono text-sm font-bold text-accent mt-0.5">{formatTps(wallTps)}</p>
+                            <p className="text-[9px] text-zinc-400 dark:text-zinc-500">tok/s</p>
+                          </div>
+                          <div className="bg-ember/5 dark:bg-ember/10 rounded-xl px-3 py-2.5 text-center">
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Loss</p>
+                            <p className={`metric-mono text-sm font-bold mt-0.5 ${lossTps > 50 ? 'text-ember' : lossTps > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{lossTps.toFixed(1)}%</p>
+                            <p className="text-[9px] text-zinc-400 dark:text-zinc-500">of active</p>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between text-[10px] mb-1">
+                            <span className="text-zinc-400 dark:text-zinc-400">Throughput retention</span>
+                            <span className="metric-mono text-zinc-500 dark:text-zinc-400">{wallShare.toFixed(0)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+                            <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
+                            <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
+                          </div>
+                        </div>
+                        {selectedEvent.data.timing.stallMs > 0 && (
+                          <div className="flex items-center justify-between text-[10px] bg-amber/5 dark:bg-amber/10 rounded-lg px-3 py-2">
+                            <span className="text-amber">Stalls</span>
+                            <span className="metric-mono text-amber">{selectedEvent.data.timing.stallCount} · {formatDuration(selectedEvent.data.timing.stallMs)} · {stallShare.toFixed(0)}% gen time</span>
+                          </div>
+                        )}
+                        {selectedEvent.data.tps !== activeTps && selectedEvent.data.tps > 0 && (
+                          <p className="text-[10px] text-zinc-400 dark:text-zinc-500" title="Stored TPS from extension (computed before stall-guard fix, may include inflation)">
+                            Stored raw TPS: {formatTps(selectedEvent.data.tps)}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-3">

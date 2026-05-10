@@ -103,10 +103,18 @@ export interface ConversationSummary {
   totalGenerationMs: number;
   totalStallMs: number;
   totalStallCount: number;
-  /** Simple arithmetic mean of per-request TPS values */
+  /** Simple arithmetic mean of per-request TPS values (active/generation rate) */
   avgTps: number;
   /** Output-token-weighted TPS: sum(tps_i × output_i) / sum(output_i) — longer outputs contribute proportionally more */
   weightedTps: number;
+  /** Simple arithmetic mean of per-request wall-clock TPS (includes TTFT and stalls) */
+  avgWallTps: number;
+  /** Output-token-weighted wall-clock TPS: total output / total wall time */
+  weightedWallTps: number;
+  /** Average TPS loss: percentage of active throughput lost to stalls/TTFT/gaps */
+  tpsLoss: number;
+  /** Weighted TPS loss: percentage of weighted active throughput lost */
+  weightedTpsLoss: number;
   avgTtft: number;
   /** TTFT percentiles */
   ttftP50: number;
@@ -166,5 +174,7 @@ export interface TimingBucket {
   avgTtft: number;
   avgTotal: number;
   avgTps: number;
+  avgWallTps: number;
+  avgTpsLoss: number;
   totalTokens: number;
 }

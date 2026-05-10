@@ -41,7 +41,9 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
         output: e.data.tokens.output,
         cacheRead: e.data.tokens.cacheRead,
         tps: computeEffectiveTps(e.data),
+        wallTps: e.data.timing.totalMs > 0 ? e.data.tokens.output / (e.data.timing.totalMs / 1000) : 0,
         stallCount: e.data.timing.stallCount,
+        stallMs: e.data.timing.stallMs,
         timestamp: e.timestamp,
       };
     });
@@ -73,8 +75,10 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
+    const loss = d.tps > 0 ? ((d.tps - d.wallTps) / d.tps) * 100 : 0;
+    const wallShare = d.tps > 0 ? (d.wallTps / d.tps) * 100 : 0;
     return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 200 }}>
+      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 220 }}>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
           Request #{d.index + 1}
         </p>
@@ -95,13 +99,36 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
             <span className="text-zinc-400 dark:text-zinc-400">New input</span>
             <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.input.toLocaleString()}</span>
           </div>
-          {d.stallCount > 0 && (
-            <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
-              <span className="text-ember">Stalls</span>
-              <span className="metric-mono font-semibold text-ember">{d.stallCount}</span>
-            </div>
-          )}
         </div>
+        <div className="mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1.5">Speed</p>
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs whitespace-nowrap">
+              <span className="text-zinc-400 dark:text-zinc-400">Active</span>
+              <span className="metric-mono font-semibold text-moss">{d.tps.toFixed(1)} tok/s</span>
+            </div>
+            <div className="flex justify-between text-xs whitespace-nowrap">
+              <span className="text-zinc-400 dark:text-zinc-400">Wall</span>
+              <span className="metric-mono font-semibold text-accent">{d.wallTps.toFixed(1)} tok/s</span>
+            </div>
+            <div className="flex justify-between text-xs whitespace-nowrap">
+              <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
+              <span className={`metric-mono font-semibold ${loss > 50 ? 'text-ember' : loss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{loss.toFixed(1)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+              <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
+              <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
+            </div>
+          </div>
+        </div>
+        {d.stallCount > 0 && (
+          <div className="mt-1.5 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06]">
+            <div className="flex justify-between text-xs whitespace-nowrap">
+              <span className="text-ember">Stalls</span>
+              <span className="metric-mono font-semibold text-ember">{d.stallCount} · {formatDuration(d.stallMs)}</span>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

@@ -516,10 +516,21 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   // Uses computeSafeEffectiveMs so outliers with dominating stalls cannot
   // inflate the aggregate rate via a tiny per-event denominator.
   const totalEffectiveMs = sorted.reduce((s, e) => s + computeSafeEffectiveMs(e.data), 0);
-  const weightedTps = totalEffectiveMs > 0 ? totalOutput / (totalEffectiveMs / 1000) : 0;
   // Simple average TPS: arithmetic mean of per-request effective TPS values
   const effectiveTps = (e: typeof sorted[number]) => computeEffectiveTps(e.data);
   const avgTps = sorted.length > 0 ? sorted.reduce((s, e) => s + effectiveTps(e), 0) / sorted.length : 0;
+  // Weighted TPS
+  const weightedTps = totalEffectiveMs > 0 ? totalOutput / (totalEffectiveMs / 1000) : 0;
+  // Wall TPS for each event: output / totalMs (includes TTFT and stalls)
+  const computeWallTps = (e: typeof sorted[number]) =>
+    e.data.timing.totalMs > 0 ? e.data.tokens.output / (e.data.timing.totalMs / 1000) : 0;
+  // Simple average wall TPS
+  const avgWallTps = sorted.length > 0 ? sorted.reduce((s, e) => s + computeWallTps(e), 0) / sorted.length : 0;
+  // Weighted wall TPS: total output / total wall time
+  const weightedWallTps = totalTimeMs > 0 ? totalOutput / (totalTimeMs / 1000) : 0;
+  // TPS loss metrics
+  const tpsLoss = avgTps > 0 ? ((avgTps - avgWallTps) / avgTps) * 100 : 0;
+  const weightedTpsLoss = weightedTps > 0 ? ((weightedTps - weightedWallTps) / weightedTps) * 100 : 0;
 
   const ttfts = sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b);
   const avgTtft = ttfts.length > 0 ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length : 0;
@@ -610,6 +621,10 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     totalStallCount,
     avgTps,
     weightedTps,
+    avgWallTps,
+    weightedWallTps,
+    tpsLoss,
+    weightedTpsLoss,
     avgTtft,
     ttftP50,
     ttftP75,
@@ -650,6 +665,8 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
     // Bucket TPS: use capped per-event effective TPS, then average.
     // This keeps the chart consistent with the summary avgTps metric.
     const avgTps = slice.reduce((s, e) => s + computeEffectiveTps(e.data), 0) / slice.length;
+    const avgWallTps = slice.reduce((s, e) => s + (e.data.timing.totalMs > 0 ? e.data.tokens.output / (e.data.timing.totalMs / 1000) : 0), 0) / slice.length;
+    const avgTpsLoss = avgTps > 0 ? ((avgTps - avgWallTps) / avgTps) * 100 : 0;
     const totalTokens = slice.reduce((s, e) => s + e.data.tokens.total, 0);
 
     buckets.push({
@@ -659,6 +676,8 @@ export function computeTimingBuckets(tpsEvents: TpsEvent[]): TimingBucket[] {
       avgTtft: Math.round(avgTtft),
       avgTotal: Math.round(avgTotal),
       avgTps: Math.round(avgTps * 10) / 10,
+      avgWallTps: Math.round(avgWallTps * 10) / 10,
+      avgTpsLoss: Math.round(avgTpsLoss * 10) / 10,
       totalTokens,
     });
   }

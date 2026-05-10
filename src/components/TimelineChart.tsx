@@ -20,12 +20,14 @@ export default function TimelineChart({ buckets }: Props) {
     ttft: b.avgTtft,
     total: b.avgTotal,
     tps: b.avgTps,
+    tpsWall: b.avgWallTps,
+    tpsLoss: b.avgTpsLoss,
   }));
 
   const metricConfig = {
     ttft: { label: 'TTFT', color: '#0891b2', fill: 'rgba(8,145,178,0.08)', unit: 'ms' },
     total: { label: 'Total Time', color: '#dc2626', fill: 'rgba(220,38,38,0.06)', unit: 'ms' },
-    tps: { label: 'Generation Speed', color: '#059669', fill: 'rgba(5,150,105,0.08)', unit: 't/s' },
+    tps: { label: 'Speed', color: '#059669', fill: 'rgba(5,150,105,0.08)', unit: 't/s' },
   };
 
   const config = metricConfig[metric];
@@ -33,14 +35,36 @@ export default function TimelineChart({ buckets }: Props) {
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
     const data = payload[0]?.payload;
+    const isTpsMode = metric === 'tps';
+    const wallShare = data.avgTps > 0 ? (data.avgWallTps / data.avgTps) * 100 : 0;
     return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm">
+      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{data.label}</p>
         <div className="flex items-baseline gap-2">
           <span className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300">{data[metric]}</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-400">{config.unit}</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-400">{config.unit} {isTpsMode ? '· Active TPS' : ''}</span>
         </div>
-        <div className="mt-1.5 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06] grid grid-cols-3 gap-3 text-[11px]">
+        {isTpsMode && (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400 dark:text-zinc-400">Active</span>
+              <span className="metric-mono font-semibold text-moss">{data.avgTps} tok/s</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400 dark:text-zinc-400">Wall</span>
+              <span className="metric-mono font-semibold text-zinc-500 dark:text-zinc-400">{data.tpsWall} tok/s</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
+              <span className={`metric-mono font-semibold ${data.tpsLoss > 50 ? 'text-ember' : data.tpsLoss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{data.tpsLoss.toFixed(1)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+              <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
+              <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
+            </div>
+          </div>
+        )}
+        <div className={`pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06] grid grid-cols-3 gap-3 text-[11px] mt-1.5`}>
           <div>
             <span className="text-zinc-400 dark:text-zinc-400">Calls</span>
             <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{data.count}</p>
