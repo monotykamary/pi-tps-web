@@ -974,9 +974,23 @@ export default function App() {
                 <FileArrowUp size={28} className="text-zinc-300 dark:text-zinc-400" weight="duotone" />
               </div>
               <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop a telemetry or session file</h2>
-              <p className="text-sm text-zinc-400 dark:text-zinc-400 mb-8 leading-relaxed">
+              <p className="text-sm text-zinc-400 dark:text-zinc-400 mb-6 leading-relaxed">
                 Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file from pi — telemetry exports, or raw session files from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">~/.pi/agent/sessions</code> — to inspect tokens-per-second, timing, and cache behavior.
               </p>
+              <a
+                href="https://github.com/monotykamary/pi-tps"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-2.5 text-left px-4 py-3 rounded-xl border border-accent/15 dark:border-accent/20 bg-accent/[0.04] dark:bg-accent/10 hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14] transition-colors mb-8"
+              >
+                <Info size={16} className="text-accent shrink-0 mt-0.5" weight="bold" />
+                <div>
+                  <p className="text-xs font-semibold text-accent leading-snug">Get the most out of your analytics</p>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed mt-0.5">
+                    Use <span className="font-medium text-zinc-700 dark:text-zinc-300">pi-tps</span> to hook into pi and stream rich telemetry — TPS, TTFT, energy, cache hits, and more — straight to this inspector.
+                  </p>
+                </div>
+              </a>
               <button
                 onClick={loadSample}
                 className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-dark transition-colors active:scale-[0.98] active:translate-y-[1px]"
