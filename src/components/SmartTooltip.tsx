@@ -164,11 +164,11 @@ export function SmartTooltip({
     >
       {children}
 
-      {/* Invisible sizer — always rendered so we can read natural size */}
+      {/* Invisible sizer — fixed off-screen so it never affects scroll width */}
       <div
         data-tooltip-sizer
-        className="absolute opacity-0 pointer-events-none"
-        style={{ minWidth, maxWidth, visibility: 'hidden' }}
+        className="fixed opacity-0 pointer-events-none"
+        style={{ minWidth, maxWidth, visibility: 'hidden', left: -9999, top: -9999 }}
         aria-hidden="true"
       >
         {content}
