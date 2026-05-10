@@ -851,10 +851,12 @@ export function formatDuration(ms: number): string {
   const s = totalSeconds % 60;
   const m = Math.floor(totalSeconds / 60) % 60;
   const h = Math.floor(totalSeconds / 3600) % 24;
-  const d = Math.floor(totalSeconds / 86400) % 7;
-  const w = Math.floor(totalSeconds / 604800);
+  const d = Math.floor(totalSeconds / 86400) % 30;
+  const mo = Math.floor(totalSeconds / 2592000) % 12;
+  const y = Math.floor(totalSeconds / 31536000);
 
-  if (w > 0) return `${w}w ${d}d`;
+  if (y > 0) return `${y}y ${mo}mo`;
+  if (mo > 0) return `${mo}mo ${d}d`;
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m ${s}s`;
