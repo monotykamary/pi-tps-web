@@ -206,7 +206,7 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 flex items-center gap-5 text-[11px]">
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px]">
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-moss" />
           <span className="text-zinc-400 dark:text-zinc-400">Fast (cached, &gt;{formatThreshold(cacheThreshold)})</span>

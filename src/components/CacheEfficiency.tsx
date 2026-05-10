@@ -68,7 +68,7 @@ export default function CacheEfficiency({ events }: Props) {
         <h2 className="text-base font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">Cache Efficiency</h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Donut */}
         <div className="relative">
           <ResponsiveContainer width="100%" height={160}>

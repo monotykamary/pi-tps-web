@@ -199,7 +199,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                   {getCategory(selectedEvent).label}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <MetricBox icon={Clock} label="Timestamp" value={formatFullTimestamp(selectedEvent.timestamp)} />
                   <MetricBox icon={Hash} label="ID" value={selectedEvent.id.substring(0, 8)} />
                 </div>
@@ -207,7 +207,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                 {/* Model */}
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Model</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <ModelPill label="Provider" value={selectedEvent.data.model.provider} />
                     <ModelPill label="Model" value={shortModel(selectedEvent.data.model.modelId)} fullValue={selectedEvent.data.model.modelId} />
                   </div>
@@ -215,7 +215,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
 
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Token Breakdown</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <TokenPill label="Total" value={selectedEvent.data.tokens.total} color="bg-zinc-800 dark:bg-zinc-300" />
                     <TokenPill label="New Input" value={selectedEvent.data.tokens.input} color="bg-zinc-600 dark:bg-zinc-400" />
                     <TokenPill label="Cache Read" value={selectedEvent.data.tokens.cacheRead} color="bg-accent" />
@@ -240,7 +240,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
 
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Timing</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <TimingPill label="TTFT" value={formatDuration(selectedEvent.data.timing.ttftMs)} highlight />
                     <TimingPill label="Total" value={formatDuration(selectedEvent.data.timing.totalMs)} />
                     <TimingPill label="Generation" value={formatDuration(selectedEvent.data.timing.generationMs)} />
@@ -259,17 +259,17 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
                     return (
                       <>
                         <div className="grid grid-cols-3 gap-2">
-                          <div className="bg-moss/5 dark:bg-moss/10 rounded-xl px-3 py-2.5 text-center">
+                          <div className="bg-moss/5 dark:bg-moss/10 rounded-xl px-2 sm:px-3 py-2.5 text-center">
                             <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Active</p>
                             <p className="metric-mono text-sm font-bold text-moss mt-0.5">{formatTps(activeTps)}</p>
                             <p className="text-[9px] text-zinc-400 dark:text-zinc-500">tok/s</p>
                           </div>
-                          <div className="bg-accent/5 dark:bg-accent/10 rounded-xl px-3 py-2.5 text-center">
+                          <div className="bg-accent/5 dark:bg-accent/10 rounded-xl px-2 sm:px-3 py-2.5 text-center">
                             <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Wall</p>
                             <p className="metric-mono text-sm font-bold text-accent mt-0.5">{formatTps(wallTps)}</p>
                             <p className="text-[9px] text-zinc-400 dark:text-zinc-500">tok/s</p>
                           </div>
-                          <div className="bg-ember/5 dark:bg-ember/10 rounded-xl px-3 py-2.5 text-center">
+                          <div className="bg-ember/5 dark:bg-ember/10 rounded-xl px-2 sm:px-3 py-2.5 text-center">
                             <p className="text-[9px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Loss</p>
                             <p className={`metric-mono text-sm font-bold mt-0.5 ${lossTps > 50 ? 'text-ember' : lossTps > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{lossTps.toFixed(1)}%</p>
                             <p className="text-[9px] text-zinc-400 dark:text-zinc-500">of active</p>
@@ -303,7 +303,7 @@ export default function RequestInspector({ timeline, selectedId, onSelect, thres
 
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Energy & Cost</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <TimingPill label="Energy" value={selectedEvent.energy ? `${selectedEvent.energy.energy_joules.toFixed(1)}J` : '-'} />
                     <TimingPill label={selectedEvent.data.cost ? 'Cost (est.)' : 'Cost'} value={selectedEvent.energy ? `$${selectedEvent.energy.cost_usd.toFixed(4)}` : selectedEvent.data.cost ? `$${selectedEvent.data.cost.total.toFixed(4)}` : '-'} />
                   </div>

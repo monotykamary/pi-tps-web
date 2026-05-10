@@ -104,7 +104,7 @@ export default function TimingDistribution({ events, thresholds }: Props) {
       </div>
 
       <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06]">
-        <div className="grid grid-cols-4 gap-0 divide-x divide-zinc-100 dark:divide-white/[0.06]">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-zinc-100 dark:divide-white/[0.06]">
           {[
             { label: 'P50', p: 0.50, color: 'text-zinc-700 dark:text-zinc-300' },
             { label: 'P75', p: 0.75, color: 'text-amber' },

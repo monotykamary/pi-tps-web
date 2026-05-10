@@ -866,79 +866,115 @@ export default function App() {
     >
       {/* Header */}
       <header className="sticky top-0 z-40 bg-[#fafafa]/95 dark:bg-[#18181b]/95 backdrop-blur-xl border-b border-zinc-200/60 dark:border-white/[0.08]">
-        <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2">
+          <div className="flex items-center gap-3 shrink-0">
             <div className="p-2 bg-accent/10 dark:bg-accent/15 rounded-xl">
               <Gauge weight="bold" size={22} className="text-accent" />
             </div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-300 leading-none">pi-tps</h1>
               <p className="text-[11px] text-zinc-400 dark:text-zinc-400 font-medium tracking-wide mt-0.5">TELEMETRY INSPECTOR</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-row items-center gap-1.5 min-w-0">
             <ThemeToggle theme={theme} setTheme={setTheme} />
-            <label className="relative cursor-pointer group">
+            <label className="relative cursor-pointer group shrink-0">
               <input
                 type="file"
                 accept=".jsonl,.json"
                 className="sr-only"
                 onChange={handleFileInput}
               />
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
+              <div className="flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
                 <FileArrowUp size={14} weight="bold" />
-                <span>Import JSONL</span>
+                <span className="hidden sm:inline ml-1.5">Import JSONL</span>
               </div>
             </label>
             {sessionSummary && (
-              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white/80 dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-xl">
-                <Pulse size={12} className={selectedModel === null ? 'text-moss' : 'text-zinc-400 dark:text-zinc-500'} weight="fill" />
-                {/* All models button */}
-                <button
-                  onClick={() => setSelectedModel(null)}
-                  className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
-                    selectedModel === null
-                      ? 'bg-accent/10 text-accent dark:bg-accent/15'
-                      : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
-                  }`}
-                >
-                  All
-                </button>
-                {sessionSummary.models.map(m => (
+              <>
+                {/* Desktop: horizontal button strip */}
+                <div className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 bg-white/80 dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-xl overflow-x-auto scrollbar-hide max-w-full">
+                  <Pulse size={12} className={selectedModel === null ? 'text-moss' : 'text-zinc-400 dark:text-zinc-500'} weight="fill" />
                   <button
-                    key={m.modelId}
-                    onClick={() => setSelectedModel(m.modelId === selectedModel ? null : m.modelId)}
-                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
-                      selectedModel === m.modelId
+                    onClick={() => setSelectedModel(null)}
+                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                      selectedModel === null
                         ? 'bg-accent/10 text-accent dark:bg-accent/15'
                         : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
                     }`}
-                    title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
                   >
-                    {m.modelId.split('/').pop()}
-                    <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">{m.callCount}</span>
+                    All
                   </button>
-                ))}
-                {(sessionSummary.modelChangeCount > 0 || sessionSummary.rewindCount > 0) && (
-                  <>
-                    <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-                    <div className="flex items-center gap-1">
+                  {sessionSummary.models.map(m => (
+                    <button
+                      key={m.modelId}
+                      onClick={() => setSelectedModel(m.modelId === selectedModel ? null : m.modelId)}
+                      className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
+                        selectedModel === m.modelId
+                          ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                          : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+                      }`}
+                      title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
+                    >
+                      {m.modelId.split('/').pop()}
+                      <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">{m.callCount}</span>
+                    </button>
+                  ))}
+                  {(sessionSummary.modelChangeCount > 0 || sessionSummary.rewindCount > 0) && (
+                    <>
+                      <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
+                      <div className="flex items-center gap-1">
+                        {sessionSummary.modelChangeCount > 0 && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${sessionSummary.modelChangeCount} model switches`}>
+                            <ArrowsLeftRight size={10} weight="bold" />
+                            {sessionSummary.modelChangeCount}
+                          </span>
+                        )}
+                        {sessionSummary.rewindCount > 0 && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-ember" title={`${sessionSummary.rewindCount} rewinds`}>
+                            <ArrowBendUpLeft size={10} weight="bold" />
+                            {sessionSummary.rewindCount}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {/* Mobile: tiny select + icon-only counters */}
+                <div className="flex sm:hidden items-center gap-1.5 min-w-0">
+                  <div className="relative min-w-0">
+                    <select
+                      value={selectedModel ?? ''}
+                      onChange={(e) => setSelectedModel(e.target.value || null)}
+                      className="appearance-none bg-white dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-lg pl-2 pr-5 py-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[6.5rem] truncate"
+                    >
+                      <option value="">All</option>
+                      {sessionSummary.models.map(m => (
+                        <option key={m.modelId} value={m.modelId}>
+                          {m.modelId.split('/').pop()}
+                        </option>
+                      ))}
+                    </select>
+                    <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                  {(sessionSummary.modelChangeCount > 0 || sessionSummary.rewindCount > 0) && (
+                    <div className="flex items-center gap-1 shrink-0">
                       {sessionSummary.modelChangeCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${sessionSummary.modelChangeCount} model switches`}>
-                          <ArrowsLeftRight size={10} weight="bold" />
-                          {sessionSummary.modelChangeCount}
+                        <span className="flex items-center gap-px text-[10px] text-accent" title={`${sessionSummary.modelChangeCount} model switches`}>
+                          <ArrowsLeftRight size={9} weight="bold" />
+                          <span className="metric-mono">{sessionSummary.modelChangeCount}</span>
                         </span>
                       )}
                       {sessionSummary.rewindCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-ember" title={`${sessionSummary.rewindCount} rewinds`}>
-                          <ArrowBendUpLeft size={10} weight="bold" />
-                          {sessionSummary.rewindCount}
+                        <span className="flex items-center gap-px text-[10px] text-ember" title={`${sessionSummary.rewindCount} rewinds`}>
+                          <ArrowBendUpLeft size={9} weight="bold" />
+                          <span className="metric-mono">{sessionSummary.rewindCount}</span>
                         </span>
                       )}
                     </div>
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -963,7 +999,7 @@ export default function App() {
             key="empty"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-center min-h-[70dvh] px-6"
+            className="flex items-center justify-center min-h-[70dvh] px-4 sm:px-6"
           >
             <div className={`max-w-lg w-full text-center p-12 rounded-[2.5rem] border-2 border-dashed transition-colors ${
               dragOver
@@ -1005,7 +1041,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
-            className={`max-w-[1600px] mx-auto px-6 py-8 space-y-8 rounded-[2rem] border-2 border-dashed transition-colors ${
+            className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8 rounded-[2rem] border-2 border-dashed transition-colors ${
               dragOver
                 ? 'border-accent bg-accent/5 dark:border-accent dark:bg-accent/10'
                 : 'border-transparent'
