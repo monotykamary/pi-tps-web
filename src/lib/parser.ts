@@ -907,15 +907,15 @@ export function formatTps(n: number): string {
 export function formatEnergy(joules: number): string {
   if (joules === 0) return '0 J';
   if (joules < 3.6) {
-    return joules < 10 ? `${joules.toFixed(1)} J` : `${Math.round(joules)} J`;
+    return `${joules.toFixed(2)} J`;
   }
   const mWh = joules / 3_600;
   if (mWh < 1000) {
-    return mWh < 10 ? `${mWh.toFixed(1)} mWh` : `${Math.round(mWh)} mWh`;
+    return `${mWh.toFixed(2)} mWh`;
   }
   const wh = mWh / 1_000;
   if (wh < 1000) {
-    return wh < 10 ? `${wh.toFixed(1)} Wh` : `${Math.round(wh)} Wh`;
+    return `${wh.toFixed(2)} Wh`;
   }
   const kWh = wh / 1_000;
   return `${kWh.toFixed(2)} kWh`;
