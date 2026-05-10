@@ -124,6 +124,8 @@ export interface ConversationSummary {
   totalCostUsd: number | null;
   /** 'neuralwatt' = only energy costs, 'tps' = only token costs, 'both' = mixed (energy preferred where paired), null = no cost data */
   costSource: 'neuralwatt' | 'tps' | 'both' | null;
+  /** Cost derived strictly from energy events (neuralwatt), excluding provider token-pricing fallbacks. Null when no energy data. */
+  energyCostUsd: number | null;
   totalEnergyJoules: number | null;
   minTtft: number;
   maxTtft: number;

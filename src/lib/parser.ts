@@ -555,7 +555,9 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   }
   const tpsIds = new Set(sorted.map(e => e.id));
   let totalCostUsd = 0;
+  let energyCostUsd = 0;
   let hasAnyCost = false;
+  let hasEnergyCost = false;
   let usedNeuralwatt = false;
   let usedTpsCost = false;
 
@@ -564,8 +566,10 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     const pairedEnergy = energyByParentId.get(tps.id);
     if (pairedEnergy) {
       totalCostUsd += pairedEnergy.cost_usd;
+      energyCostUsd += pairedEnergy.cost_usd;
       usedNeuralwatt = true;
       hasAnyCost = true;
+      hasEnergyCost = true;
     } else if (tps.data.cost) {
       totalCostUsd += tps.data.cost.total;
       usedTpsCost = true;
@@ -577,12 +581,15 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   for (const e of energyEvents) {
     if (!tpsIds.has(e.parentId ?? '')) {
       totalCostUsd += e.data.cost_usd;
+      energyCostUsd += e.data.cost_usd;
       usedNeuralwatt = true;
       hasAnyCost = true;
+      hasEnergyCost = true;
     }
   }
 
   const totalCostUsdResult = hasAnyCost ? totalCostUsd : null;
+  const energyCostUsdResult = hasEnergyCost ? energyCostUsd : null;
   const costSource: 'neuralwatt' | 'tps' | 'both' | null =
     usedNeuralwatt && usedTpsCost ? 'both' :
     usedNeuralwatt ? 'neuralwatt' :
@@ -632,6 +639,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     ttftP99,
     totalCostUsd: totalCostUsdResult,
     costSource,
+    energyCostUsd: energyCostUsdResult,
     totalEnergyJoules,
     minTtft: Math.min(...ttfts),
     maxTtft: Math.max(...ttfts),
