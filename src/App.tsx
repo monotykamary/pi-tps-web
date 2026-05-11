@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo } from './types';
 import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
@@ -843,6 +843,25 @@ export default function App() {
     reader.readAsText(file);
   }, []);
 
+  const [pasteFlash, setPasteFlash] = useState(false);
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData('text/plain');
+      if (!text || text.trim()[0] !== '{') return;
+      // Looks like JSONL — try to parse
+      const parsed = parseJsonl(text);
+      if (parsed.length === 0) return;
+      e.preventDefault();
+      setEvents(parsed);
+      setSelectedModel(null);
+      setPasteFlash(true);
+      setTimeout(() => setPasteFlash(false), 600);
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, []);
+
   return (
     <div
       className="min-h-[100dvh] bg-[#fafafa] dark:bg-[#18181b]"
@@ -995,9 +1014,9 @@ export default function App() {
               <div className="w-16 h-16 mx-auto mb-6 bg-zinc-50 dark:bg-white/[0.06] rounded-3xl flex items-center justify-center">
                 <FileArrowUp size={28} className="text-zinc-300 dark:text-zinc-400" weight="duotone" />
               </div>
-              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop a telemetry or session file</h2>
+              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop, paste, or import a telemetry file</h2>
               <p className="text-sm text-zinc-400 dark:text-zinc-400 mb-6 leading-relaxed">
-                Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file from pi — telemetry exports, or raw session files from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">~/.pi/agent/sessions</code> — to inspect tokens-per-second, timing, and cache behavior.
+                Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file, or paste JSONL contents directly (<kbd className="metric-mono text-[11px] bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-zinc-200/60 dark:border-white/[0.06]">⌘V</kbd>). Supports telemetry exports from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">/tps-export</code> and raw session files from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">~/.pi/agent/sessions</code>.
               </p>
               <a
                 href="https://github.com/monotykamary/pi-tps"
@@ -1019,6 +1038,17 @@ export default function App() {
               >
                 Load Sample Data
               </button>
+              {pasteFlash && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 justify-center text-sm text-moss font-medium"
+                >
+                  <ClipboardText size={16} weight="bold" />
+                  Pasted — loading telemetry…
+                </motion.div>
+              )}
             </div>
           </motion.div>
         ) : (
