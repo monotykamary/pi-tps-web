@@ -195,21 +195,49 @@ interface AssistantMsg {
   prevEntryTimestamp: string | null;
 }
 
-export function parseJsonl(raw: string): ParsedEvent[] {
+// ─── Ingest types ─────────────────────────────────────────────────────────────
+// ingestJsonl produces these structures. The raw events are fully typed but
+// have NOT been enriched or synthesized yet — that happens in deriveEvents.
+// This separation means the ingest output can be loaded directly into DuckDB
+// while the graph-based derivation (parentId chain walking, synthesis) stays
+// in JS until DuckDB can handle those patterns.
+
+export interface IngestResult {
+  /** All parsed events from the JSONL, discriminated by type */
+  events: ParsedEvent[];
+  /** Assistant messages collected during ingestion, used by deriveEvents for
+   *  legacy enrichment and synthesis */
+  assistantMessages: AssistantMsg[];
+  /** Whether any custom/tps events were found (controls synthesis) */
+  hasTpsEntries: boolean;
+  /** Whether any legacy-format TPS events were found (controls enrichment) */
+  hasLegacyTpsEntries: boolean;
+  /** Map of entry ID → timestamp, for deriving timing from parent relationships */
+  timestampById: Map<string, string>;
+  /** Counter for generating unique synthetic IDs */
+  synthCounter: number;
+}
+
+/**
+ * Ingest JSONL lines into typed events and bookkeeping structures.
+ *
+ * This is the first stage of the pipeline: it handles line-by-line parsing,
+ * event discrimination, and legacy message parsing. It does NOT perform
+ * graph operations — no parentId chain walking, no enrichment, no synthesis.
+ * Those happen in deriveEvents().
+ *
+ * The returned IngestResult is self-contained: it carries everything needed
+ * for the derivation stage, and the events array is suitable for loading
+ * directly into DuckDB as-is.
+ */
+export function ingestJsonl(raw: string): IngestResult {
   const lines = raw.trim().split('\n');
   const events: ParsedEvent[] = [];
-
-  // Always collect assistant messages — used for:
-  //  1. Synthesizing TpsEvents when no custom/tps entries exist (pre-pi-tps sessions)
-  //  2. Enriching legacy TPS entries with model + cost data from the raw session
   const assistantMessages: AssistantMsg[] = [];
-
   let hasTpsEntries = false;
   let hasLegacyTpsEntries = false;
   let synthCounter = 0;
   let prevEntryTimestamp: string | null = null;
-
-  // Track entry timestamps by ID for deriving approximate timing from parent relationships
   const timestampById = new Map<string, string>();
 
   for (const line of lines) {
@@ -338,18 +366,34 @@ export function parseJsonl(raw: string): ParsedEvent[] {
     }
   }
 
+  return { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter };
+}
+
+/**
+ * Derive enriched/synthetic events from the ingest output.
+ *
+ * This is the second stage of the pipeline. It performs the two graph
+ * operations that cannot be expressed as simple SQL filters:
+ *
+ *  1. Legacy enrichment: walk the parentId chain to fill in model + cost
+ *     on legacy TPS entries parsed from display strings.
+ *  2. Synthesis: when no custom/tps entries exist, synthesize TpsEvents
+ *     from assistant messages using timestamp-gap-derived timing.
+ *
+ * Both operations mutate the events array in-place (enrichment modifies
+ * existing TpsPayload fields; synthesis appends new events).
+ */
+export function deriveEvents(result: IngestResult): ParsedEvent[] {
+  const { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter: baseSynthCounter } = result;
+  let synthCounter = baseSynthCounter;
+
   // ── Enrich legacy TPS entries with model + cost from assistant messages ────
-  // Legacy entries (parsed from display strings) lack model and cost data.
-  // In the session JSONL, each legacy TPS entry's parentId chains back to an
-  // assistant message. Walk the parentId chain to find the nearest assistant
-  // message with matching output tokens, then fill in model + cost.
   if (hasLegacyTpsEntries && assistantMessages.length > 0) {
     const assistantById = new Map<string, AssistantMsg>();
     for (const m of assistantMessages) {
       if (m.id) assistantById.set(m.id, m);
     }
 
-    // Also index assistant messages by output token count for fallback matching
     const assistantByOutput = new Map<number, AssistantMsg[]>();
     for (const m of assistantMessages) {
       const list = assistantByOutput.get(m.usage.output) ?? [];
@@ -357,9 +401,7 @@ export function parseJsonl(raw: string): ParsedEvent[] {
       assistantByOutput.set(m.usage.output, list);
     }
 
-    // Walk parentId chain up to 5 hops looking for an assistant message
     const findAssistant = (parentId: string | null, output: number): AssistantMsg | null => {
-      // Direct match via parentId chain
       let current = parentId;
       for (let hop = 0; hop < 5 && current; hop++) {
         const m = assistantById.get(current);
@@ -367,7 +409,6 @@ export function parseJsonl(raw: string): ParsedEvent[] {
         const parentEntry = events.find(e => e.id === current);
         current = parentEntry?.parentId ?? null;
       }
-      // Fallback: match by output token count + chronological proximity
       const candidates = assistantByOutput.get(output);
       if (candidates && candidates.length > 0) return candidates[0];
       return null;
@@ -376,7 +417,7 @@ export function parseJsonl(raw: string): ParsedEvent[] {
     for (const event of events) {
       if (event.type !== 'tps') continue;
       const data = event.data as TpsPayload;
-      if (data.model.modelId !== 'unknown') continue; // already enriched or structured
+      if (data.model.modelId !== 'unknown') continue;
 
       const assistant = findAssistant(event.parentId, data.tokens.output);
       if (!assistant) continue;
@@ -389,14 +430,8 @@ export function parseJsonl(raw: string): ParsedEvent[] {
   }
 
   // ── Synthesize TpsEvent entries when no custom/tps entries exist ─────────
-  // This enables the inspector to work with raw pi session JSONL files
-  // that predate pi-tps. Timing is derived from the gap between the
-  // assistant message and its preceding entry (parentId-based for versioned
-  // sessions, sequential fallback for older sessions). TTFT, stall detection,
-  // and true generation TPS are unavailable without pi-tps.
   if (!hasTpsEntries) {
     for (const msg of assistantMessages) {
-      // Derive approximate totalMs from the gap to the predecessor entry
       let totalMs = 0;
       if (msg.parentId) {
         const parentTs = timestampById.get(msg.parentId);
@@ -404,12 +439,10 @@ export function parseJsonl(raw: string): ParsedEvent[] {
           totalMs = Math.max(0, new Date(msg.entryTimestamp).getTime() - new Date(parentTs).getTime());
         }
       }
-      // Fall back to sequential gap (for older sessions without parentId)
       if (totalMs === 0 && msg.prevEntryTimestamp && msg.entryTimestamp) {
         totalMs = Math.max(0, new Date(msg.entryTimestamp).getTime() - new Date(msg.prevEntryTimestamp).getTime());
       }
 
-      // Wall-clock TPS: output / totalSeconds (lower bound — includes TTFT and stalls)
       const tps = totalMs > 0
         ? Math.round((msg.usage.output / (totalMs / 1000)) * 10) / 10
         : 0;
@@ -439,6 +472,20 @@ export function parseJsonl(raw: string): ParsedEvent[] {
   }
 
   return events;
+}
+
+/**
+ * Parse JSONL into fully enriched ParsedEvents.
+ *
+ * This is the convenience wrapper that combines ingest + derive in one call.
+ * It preserves the original parseJsonl API — all existing callers continue
+ * to work unchanged.
+ *
+ * For the two-stage pipeline (e.g. loading into DuckDB between stages),
+ * use ingestJsonl() and deriveEvents() directly.
+ */
+export function parseJsonl(raw: string): ParsedEvent[] {
+  return deriveEvents(ingestJsonl(raw));
 }
 
 export function getTpsEvents(events: ParsedEvent[]): TpsEvent[] {
