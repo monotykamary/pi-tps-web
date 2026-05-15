@@ -155,6 +155,9 @@ function TpsTooltip({ activeTps, wallTps, lossPct, mode }: { activeTps: number; 
       <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
         {mode === 'avg' ? 'Simple mean of per-request generation throughput.' : 'Token-weighted average throughput. Longer responses count more heavily.'}
       </p>
+      <p className="text-[9px] leading-relaxed text-zinc-300 dark:text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-200/30 dark:border-white/[0.04]">
+        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Standard term:</span> Output speed (tokens/s) — measures the <strong>decode</strong> stage (token-by-token generation). Also called generation throughput or output token rate.
+      </p>
     </div>
   );
 }
@@ -267,6 +270,9 @@ function RequestsTooltip({
       <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
         Each LLM call is one assistant turn. Fast responses (&lt; 3s TTFT) felt snappy. Stalled calls experienced at least one idle pause. Cache-aware calls read or wrote prompt cache.
       </p>
+      <p className="text-[9px] leading-relaxed text-zinc-300 dark:text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-200/30 dark:border-white/[0.04]">
+        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Standard term:</span> Requests per second (RPS) — system throughput across all concurrent requests. Primarily emphasized for batch or high-throughput serving scenarios.
+      </p>
     </div>
   );
 }
@@ -356,6 +362,9 @@ function TotalTimeTooltip({ wallClockMs, totalTimeMs, generationMs }: { wallCloc
       <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
         Wall-clock is the real-world time from first to last event. It includes idle gaps between user interactions. "Active" time (generation + overhead) is the sum of individual request durations — it can exceed wall-clock when multiple requests execute in parallel.
       </p>
+      <p className="text-[9px] leading-relaxed text-zinc-300 dark:text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-200/30 dark:border-white/[0.04]">
+        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Standard term:</span> End-to-end latency — total wall-clock time from request submission to final token. Breaks down as TTFT + (ITL × output tokens).
+      </p>
     </div>
   );
 }
@@ -400,6 +409,9 @@ function TtftTooltip({ avgTtft, p50, p75, p90, p99, min, max }: { avgTtft: numbe
       <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
         TTFT measures the delay from sending the prompt to receiving the first token. High P99 values often indicate cold starts or queueing.
       </p>
+      <p className="text-[9px] leading-relaxed text-zinc-300 dark:text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-200/30 dark:border-white/[0.04]">
+        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Standard term:</span> Time to First Token (TTFT) — measures the <strong>prefill</strong> stage (prompt processing before generation begins). For reasoning models, Time to First Answer Token (TTFAT) is the operationally relevant variant.
+      </p>
     </div>
   );
 }
@@ -439,6 +451,9 @@ function StallsTooltip({ count, ms, totalTimeMs }: { count: number; ms: number; 
       </div>
       <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 mt-2">
         Stalls are pauses where the model is idle — waiting for tokens to arrive, network hiccups, or queueing delays.
+      </p>
+      <p className="text-[9px] leading-relaxed text-zinc-300 dark:text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-200/30 dark:border-white/[0.04]">
+        <span className="font-semibold text-zinc-500 dark:text-zinc-400">Standard term:</span> Inter-token Latency (ITL) — the time between consecutive output tokens. Also called Time Per Output Token (TPOT) when referring to the mean. Variable ITL causes perceptible stuttering even when average output speed looks acceptable.
       </p>
     </div>
   );
@@ -1085,7 +1100,7 @@ export default function App() {
                 <TpsPill icon={Gauge} label="Avg TPS" activeTps={summary.avgTps} wallTps={summary.avgWallTps} lossPct={summary.tpsLoss} mode="avg" />
                 <TpsPill icon={Barbell} label="Wtd TPS" activeTps={summary.weightedTps} wallTps={summary.weightedWallTps} lossPct={summary.weightedTpsLoss} accent mode="weighted" />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip={<TtftTooltip avgTtft={summary.avgTtft} p50={summary.ttftP50} p75={summary.ttftP75} p90={summary.ttftP90} p99={summary.ttftP99} min={summary.minTtft} max={summary.maxTtft} />} />
-                <MetricPill icon={Flame} label="Stalls" value={formatNumber(summary.totalStallCount)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
+                <MetricPill icon={Flame} label="Stalls (ITL)" value={formatNumber(summary.totalStallCount)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
                 <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} energyCost={summary.energyCostUsd} costSource={summary.costSource} models={summary.models} totalTokens={summary.totalTokens} />} />
                 {(() => {
                   const energy = summary.totalEnergyJoules !== null ? formatEnergyParts(summary.totalEnergyJoules) : null;
