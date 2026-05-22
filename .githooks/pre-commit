@@ -1,0 +1,3 @@
+#!/bin/sh
+# Pre-commit hook — run typecheck before every commit
+exec npm run typecheck
