@@ -9,6 +9,7 @@ import {
   Table,
   CaretDown,
   Database,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
@@ -417,7 +418,11 @@ const cmLightTheme = EditorView.theme({
 const cmLightHighlight = syntaxHighlighting(defaultHighlightStyle, { fallback: true });
 const cmDarkHighlight = syntaxHighlighting(oneDarkHighlightStyle);
 
-export default function SqlPlayground() {
+interface SqlPlaygroundProps {
+  dbVersion: number;
+}
+
+export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
   const { theme } = useTheme();
   const [sql, setSql] = useState('');
   const [originalSql, setOriginalSql] = useState('');
@@ -510,6 +515,15 @@ export default function SqlPlayground() {
   useEffect(() => {
     runCallbackRef.current = handleRun;
   }, [handleRun]);
+
+  // Re-run the current query when the underlying DB data changes (session add/remove)
+  useEffect(() => {
+    if (dbVersion > 0 && result && sql.trim()) {
+      runQueryInternal(sql);
+    }
+  // Only trigger on dbVersion changes, not on sql/result changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbVersion]);
 
   const runPivotQuery = useCallback(
     async (cols: string[]) => {
@@ -793,6 +807,29 @@ export default function SqlPlayground() {
       }
     }
   }
+
+  const handleDownloadCsv = useCallback(() => {
+    if (!result) return;
+    const cols = detailColsMemo;
+    const header = cols.map(fmtHeader).join(',');
+    const csvRows = result.rows.map((row) =>
+      cols.map((col) => {
+        const idx = result.columns.indexOf(col);
+        const val = idx !== -1 ? row[idx] : null;
+        const s = val === null || val === undefined ? '' : String(val);
+        // Escape CSV: quote if contains comma, quote, or newline
+        return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(',')
+    );
+    const csv = [header, ...csvRows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `query-result-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [result, detailColsMemo]);
 
   const clearAll = useCallback(() => {
     setSql('');
@@ -1093,7 +1130,7 @@ export default function SqlPlayground() {
               <colgroup>
                 {displayColumns.map((col, j) => {
                   const w = colWidths[j];
-                  return <col key={col} style={{ width: w + 'px', minWidth: w + 'px' }} />;
+                  return <col key={col} style={{ width: w + 'px', minWidth: w + 'px', transition: j === 0 ? 'width 0.15s ease' : undefined }} />;
                 })}
               </colgroup>
               <thead ref={theadRef} className="sticky top-0 z-30 bg-white dark:bg-zinc-800">
@@ -1327,6 +1364,14 @@ export default function SqlPlayground() {
                 {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? (' \u00B7 ' + groupByCols.length + ' level' + (groupByCols.length > 1 ? 's' : '')) : ''}
               </span>
               <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">Drag headers to group bar</span>
+              <button
+                onClick={handleDownloadCsv}
+                className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-1"
+                title="Download current result as CSV"
+              >
+                <DownloadSimple size={10} weight="bold" />
+                CSV
+              </button>
             </div>
           </div>
         </motion.div>

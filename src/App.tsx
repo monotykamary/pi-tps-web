@@ -1229,14 +1229,6 @@ export default function App() {
             </div>
             <div className="shrink-0 flex items-center gap-1.5 py-2 border-l border-zinc-200/40 dark:border-white/[0.06] pl-3 ml-1">
             <button
-              onClick={handleExportCsv}
-              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-1"
-              title="Export per-session stats as CSV"
-            >
-              <DownloadSimple size={10} weight="bold" />
-              CSV
-            </button>
-            <button
               onClick={clearSessions}
               className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-ember hover:bg-ember/5 dark:hover:bg-ember/10 transition-colors"
             >
@@ -1251,7 +1243,7 @@ export default function App() {
       <div
         className={`flex-1 min-h-0 flex flex-col px-4 sm:px-6 py-6 ${viewTab === 'sql' && sessions.size > 0 ? '' : 'hidden'}`}
       >
-          <SqlPlayground />
+          <SqlPlayground dbVersion={dbVersion} />
       </div>
 
       {/* Dashboard — hidden when on SQL tab, kept in DOM to preserve state */}
@@ -1373,6 +1365,14 @@ export default function App() {
                   <Rows size={14} className="text-accent" weight="bold" />
                   <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300">Sessions Overview</h2>
                   <span className="ml-auto text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">{multiSummary.sessionCount} sessions · {formatNumber(multiSummary.totalCalls)} requests</span>
+                  <button
+                    onClick={handleExportCsv}
+                    className="shrink-0 ml-2 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-1"
+                    title="Export per-session stats as CSV"
+                  >
+                    <DownloadSimple size={10} weight="bold" />
+                    CSV
+                  </button>
                 </div>
                 <div className="overflow-x-auto" style={{ contain: 'content' }}>
                   <table className="w-full text-[11px]">
