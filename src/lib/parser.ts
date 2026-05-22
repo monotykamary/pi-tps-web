@@ -1,4 +1,4 @@
-import type { ParsedEvent, TpsEvent, TpsPayload, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
+import type { ParsedEvent, TpsEvent, TpsPayload, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, SessionSummary, MultiSessionSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
 
 // ─── Shared TPS computation ───────────────────────────────────────────────────
 
@@ -818,6 +818,164 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     },
     rewindCount: rewindEvents.length,
     modelChangeCount: modelChanges.length,
+  };
+}
+
+export function computeSessionSummary(
+  tpsEvents: TpsEvent[],
+  energyEvents: EnergyEvent[],
+  sessionId: string,
+  fileName: string | null,
+): SessionSummary {
+  const summary = computeSummary(tpsEvents, energyEvents);
+  return {
+    sessionId,
+    fileName,
+    totalCalls: summary.totalCalls,
+    totalTokens: summary.totalTokens,
+    totalOutput: summary.totalOutput,
+    wallClockMs: summary.wallClockMs,
+    avgTps: summary.avgTps,
+    weightedTps: summary.weightedTps,
+    avgTtft: summary.avgTtft,
+    totalCostUsd: summary.totalCostUsd,
+    totalEnergyJoules: summary.totalEnergyJoules,
+    model: summary.model,
+    provider: summary.provider,
+    models: summary.models,
+    timeRange: summary.timeRange,
+    stalledCalls: summary.stalledCalls,
+  };
+}
+
+/**
+ * Compute a cross-session aggregate from per-session event arrays.
+ *
+ * Takes a "sessions" map of sessionId → { tpsEvents, energyEvents, fileName },
+ * computes lightweight per-session summaries, then rolls up across sessions.
+ *
+ * The per-model breakdown is recomputed across all sessions combined so that
+ * models used in multiple sessions are properly aggregated.
+ */
+export function computeMultiSessionSummary(
+  sessionData: Array<{ sessionId: string; tpsEvents: TpsEvent[]; energyEvents: EnergyEvent[]; fileName: string | null }>,
+): MultiSessionSummary {
+  if (sessionData.length === 0) {
+    return {
+      sessionCount: 0,
+      totalCalls: 0,
+      totalTokens: 0,
+      totalOutput: 0,
+      totalCostUsd: null,
+      totalEnergyJoules: null,
+      sessions: [],
+      models: [],
+      avgTps: 0,
+      weightedTps: 0,
+      avgTtft: 0,
+      timeRange: { start: '', end: '' },
+    };
+  }
+
+  // Per-session summaries
+  const perSession = sessionData.map(s =>
+    computeSessionSummary(s.tpsEvents, s.energyEvents, s.sessionId, s.fileName)
+  );
+
+  // Sort by timeRange.start
+  perSession.sort((a, b) =>
+    a.timeRange.start.localeCompare(b.timeRange.start)
+  );
+
+  // Aggregate across sessions
+  let totalCalls = 0;
+  let totalTokens = 0;
+  let totalOutput = 0;
+  let totalWeightedTpsNum = 0;
+  let totalWeightedTpsDen = 0;
+  let totalAvgTpsSum = 0;
+  let totalTtftSum = 0;
+  let totalTtftCount = 0;
+  let totalCostUsd: number | null = null;
+  let totalEnergyJoules: number | null = null;
+  let hasCost = false;
+  let hasEnergy = false;
+  let costAccum = 0;
+  let energyAccum = 0;
+  let globalStart = '';
+  let globalEnd = '';
+
+  // Per-model aggregation across sessions
+  const modelMap = new Map<string, {
+    provider: string;
+    count: number;
+    totalTokens: number;
+    energyCost: number;
+    energyJoules: number;
+    blendedCost: number;
+    hasEnergyCost: boolean;
+    hasBlendedCost: boolean;
+  }>();
+
+  // We need all TPS + energy events combined for the model rollup
+  const allTps: TpsEvent[] = [];
+  const allEnergy: EnergyEvent[] = [];
+  for (const s of sessionData) {
+    allTps.push(...s.tpsEvents);
+    allEnergy.push(...s.energyEvents);
+  }
+
+  // Reuse computeSummary's model-aggregation logic by running it on the
+  // combined set, then extract just the models array.
+  const combinedSummary = computeSummary(allTps, allEnergy);
+
+  for (const s of perSession) {
+    totalCalls += s.totalCalls;
+    totalTokens += s.totalTokens;
+    totalOutput += s.totalOutput;
+    totalAvgTpsSum += s.avgTps * s.totalCalls;
+    totalWeightedTpsNum += s.weightedTps * s.totalOutput;
+    totalWeightedTpsDen += s.totalOutput;
+    totalTtftSum += s.avgTtft * s.totalCalls;
+    totalTtftCount += s.totalCalls;
+
+    if (s.totalCostUsd !== null) {
+      costAccum += s.totalCostUsd;
+      hasCost = true;
+    }
+    if (s.totalEnergyJoules !== null) {
+      energyAccum += s.totalEnergyJoules;
+      hasEnergy = true;
+    }
+
+    if (s.timeRange.start && (!globalStart || s.timeRange.start < globalStart)) {
+      globalStart = s.timeRange.start;
+    }
+    if (s.timeRange.end && (!globalEnd || s.timeRange.end > globalEnd)) {
+      globalEnd = s.timeRange.end;
+    }
+  }
+
+  totalCostUsd = hasCost ? costAccum : null;
+  totalEnergyJoules = hasEnergy ? energyAccum : null;
+
+  const avgTps = totalCalls > 0 ? totalAvgTpsSum / totalCalls : 0;
+  const weightedTps = totalWeightedTpsDen > 0 ? totalWeightedTpsNum / totalWeightedTpsDen : 0;
+  const avgTtft = totalTtftCount > 0 ? totalTtftSum / totalTtftCount : 0;
+
+  return {
+    sessionCount: perSession.length,
+    totalCalls,
+    totalTokens,
+    totalOutput,
+    totalCostUsd,
+    totalEnergyJoules,
+    sessions: perSession,
+    models: combinedSummary.models,
+    avgTps,
+    weightedTps,
+    avgTtft,
+    timeRange: { start: globalStart, end: globalEnd },
   };
 }
 

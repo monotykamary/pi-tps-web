@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen } from '@phosphor-icons/react';
-import type { ParsedEvent, ConversationSummary, ModelInfo } from './types';
-import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows } from '@phosphor-icons/react';
+import type { ParsedEvent, ConversationSummary, ModelInfo, MultiSessionSummary } from './types';
+import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeMultiSessionSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
 import type { IngestResult } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import { SmartTooltip } from './components/SmartTooltip';
@@ -829,6 +829,17 @@ export default function App() {
     () => tpsEvents.length > 0 ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null,
     [tpsEvents, energyEvents, modelChanges, rewindEvents]
   );
+  // Multi-session summary for per-session breakdowns
+  const multiSummary: MultiSessionSummary | null = useMemo(() => {
+    if (sessions.size <= 1 || activeSessionId) return null;
+    const sessionData = Array.from(sessions.entries()).map(([sessionId, s]) => ({
+      sessionId,
+      tpsEvents: getTpsEvents(s.events),
+      energyEvents: getEnergyEvents(s.events),
+      fileName: s.fileName ?? null,
+    }));
+    return computeMultiSessionSummary(sessionData);
+  }, [sessions, activeSessionId]);
   const buckets = useMemo(() => computeTimingBuckets(tpsEvents), [tpsEvents]);
   const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
@@ -1229,6 +1240,75 @@ export default function App() {
                   );
                 })()}
                 <MetricPill icon={Hash} label="Tokens" value={formatNumber(summary.totalTokens)} tooltip={<TokensTooltip input={summary.totalInput} output={summary.totalOutput} cacheRead={summary.totalCacheRead} cacheWrite={summary.totalCacheWrite} total={summary.totalTokens} totalCost={summary.totalCostUsd} />} />
+              </motion.div>
+            )}
+
+            {/* Per-Session Breakdown — only in "All sessions" merged view */}
+            {multiSummary && multiSummary.sessionCount > 1 && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden"
+              >
+                <div className="px-4 py-3 border-b border-zinc-200/40 dark:border-white/[0.06] flex items-center gap-2">
+                  <Rows size={14} className="text-accent" weight="bold" />
+                  <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300">Sessions Overview</h2>
+                  <span className="ml-auto text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">{multiSummary.sessionCount} sessions · {formatNumber(multiSummary.totalCalls)} requests</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b border-zinc-200/30 dark:border-white/[0.04]">
+                        <th className="text-left px-4 py-2 font-medium">Session</th>
+                        <th className="text-right px-3 py-2 font-medium">Requests</th>
+                        <th className="text-right px-3 py-2 font-medium">Tokens</th>
+                        <th className="text-right px-3 py-2 font-medium">Avg TPS</th>
+                        <th className="text-right px-3 py-2 font-medium">Wtd TPS</th>
+                        <th className="text-right px-3 py-2 font-medium">Avg TTFT</th>
+                        <th className="text-right px-3 py-2 font-medium">Cost</th>
+                        <th className="text-right px-3 py-2 font-medium">Energy</th>
+                        <th className="text-right px-3 py-2 font-medium">Model</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {multiSummary.sessions.map((s, i) => (
+                        <tr
+                          key={s.sessionId}
+                          className={`border-b border-zinc-200/20 dark:border-white/[0.03] hover:bg-zinc-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors ${
+                            i % 2 === 0 ? 'bg-zinc-50/30 dark:bg-white/[0.01]' : ''
+                          }`}
+                          onClick={() => setActiveSessionId(s.sessionId)}
+                        >
+                          <td className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300 max-w-[16rem] truncate">
+                            {s.fileName || s.sessionId.length > 20 ? (s.fileName || s.sessionId.slice(0, 20) + '…') : s.sessionId}
+                          </td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(s.totalCalls, 0)}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(s.totalTokens)}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatTps(s.avgTps)}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-accent font-medium">{formatTps(s.weightedTps)}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatDuration(Math.round(s.avgTtft))}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatCurrency(s.totalCostUsd)}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{s.totalEnergyJoules !== null ? formatEnergy(s.totalEnergyJoules) : '-'}</td>
+                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 max-w-[8rem] truncate">{s.model.split('/').pop()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-zinc-200/50 dark:border-white/[0.06] font-semibold text-zinc-800 dark:text-zinc-200 bg-zinc-100/40 dark:bg-white/[0.03]">
+                        <td className="px-4 py-2.5">Total ({multiSummary.sessionCount})</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{formatNumber(multiSummary.totalCalls, 0)}</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{formatNumber(multiSummary.totalTokens)}</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{formatTps(multiSummary.avgTps)}</td>
+                        <td className="px-3 py-2.5 text-right metric-mono text-accent">{formatTps(multiSummary.weightedTps)}</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{formatDuration(Math.round(multiSummary.avgTtft))}</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{formatCurrency(multiSummary.totalCostUsd)}</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{multiSummary.totalEnergyJoules !== null ? formatEnergy(multiSummary.totalEnergyJoules) : '-'}</td>
+                        <td className="px-3 py-2.5 text-right">—</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </motion.div>
             )}
 

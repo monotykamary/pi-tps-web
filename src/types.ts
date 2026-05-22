@@ -162,6 +162,50 @@ export interface ConversationSummary {
   modelChangeCount: number;
 }
 
+export interface SessionSummary {
+  sessionId: string;
+  fileName: string | null;
+  totalCalls: number;
+  totalTokens: number;
+  totalOutput: number;
+  wallClockMs: number;
+  avgTps: number;
+  weightedTps: number;
+  avgTtft: number;
+  totalCostUsd: number | null;
+  totalEnergyJoules: number | null;
+  model: string;
+  provider: string;
+  models: ModelInfo[];
+  timeRange: {
+    start: string;
+    end: string;
+  };
+  stalledCalls: number;
+}
+
+export interface MultiSessionSummary {
+  sessionCount: number;
+  totalCalls: number;
+  totalTokens: number;
+  totalOutput: number;
+  totalCostUsd: number | null;
+  totalEnergyJoules: number | null;
+  /** Per-session breakdowns, sorted by timeRange.start */
+  sessions: SessionSummary[];
+  /** Per-model aggregates across all sessions */
+  models: ModelInfo[];
+  /** Cross-session TPS stats */
+  avgTps: number;
+  weightedTps: number;
+  avgTtft: number;
+  /** Time span across all sessions */
+  timeRange: {
+    start: string;
+    end: string;
+  };
+}
+
 export interface DataThresholds {
   /** Token count at which cache efficiency meaningfully improves */
   cacheThreshold: number;
