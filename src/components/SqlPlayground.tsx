@@ -840,7 +840,7 @@ export default function SqlPlayground() {
   }, [result, displayColumns, tree, groupByCols, isTrivialTree]);
 
   return (
-    <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-0 flex-1">
+    <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-0 h-full">
       {/* Header — title + collapsed query + collapse toggle */}
       <div
         onClick={() => editorCollapsed ? expandEditor() : (result ? collapseEditor() : undefined)}

@@ -1227,22 +1227,14 @@ export default function App() {
         </div>
       )}
 
-      <AnimatePresence mode="wait">
-        {viewTab === 'sql' && sessions.size > 0 ? (
-          <motion.div
-            key="sql-playground"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            className="flex-1 min-h-0 flex flex-col"
-          >
-            <div className="px-4 sm:px-6 py-6 flex-1 min-h-0 flex flex-col">
+      {viewTab === 'sql' && sessions.size > 0 ? (
+          <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 py-6">
               <SqlPlayground />
-            </div>
-          </motion.div>
-        ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto">
-        {loading && !summary ? (
+          </div>
+      ) : (
+      <div className="flex-1 min-h-0 overflow-y-auto">
+      <AnimatePresence mode="wait">
+      {loading && !summary ? (
           <motion.div
             key="loader"
             initial={{ opacity: 0 }}
@@ -1466,9 +1458,9 @@ export default function App() {
             </div>
           </motion.div>
         )}
-        </div>
-        )}
       </AnimatePresence>
+      </div>
+      )}
     </div>
   );
 }
