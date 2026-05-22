@@ -1258,6 +1258,12 @@ export default function SqlPlayground() {
               if (!node) return null;
               const hasChildren = node.children.length > 0;
               const isExpanded = expandedPaths.has(node.id) || detailExpandedPaths.has(node.id);
+              // Build breadcrumb: path of ancestor group values from root to pinned node
+              const pathParts = node.path.split(PATH_SEP);
+              const breadcrumbs = pathParts.map((val: string, i: number) => ({
+                value: val || null,
+                depth: i,
+              }));
               return (
                 <motion.div
                   key={pinnedGroup.nodeId}
@@ -1278,13 +1284,34 @@ export default function SqlPlayground() {
                         <CaretRight size={12} className="text-zinc-400 dark:text-zinc-500" />
                       </div>
                     </div>
-                    <div className="text-xs font-medium truncate text-zinc-600 dark:text-zinc-300 min-w-0">
-                      {node.value === null ? (
-                        <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
-                      ) : (
-                        String(node.value)
-                      )}
-                    </div>
+                    {breadcrumbs.length > 1 ? (
+                      <div className="flex items-center gap-1 min-w-0 text-xs font-medium truncate">
+                        {breadcrumbs.map((crumb, i) => (
+                          <span key={i} className="contents">
+                            {i > 0 && <CaretRight size={8} className="text-zinc-300 dark:text-zinc-600 shrink-0" />}
+                            <span
+                              className={i === breadcrumbs.length - 1
+                                ? 'text-zinc-600 dark:text-zinc-300'
+                                : 'text-zinc-400 dark:text-zinc-500'
+                              }
+                            >
+                              {crumb.value === null
+                                ? <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                                : String(crumb.value)
+                              }
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs font-medium truncate text-zinc-600 dark:text-zinc-300 min-w-0">
+                        {node.value === null ? (
+                          <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                        ) : (
+                          String(node.value)
+                        )}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               );
