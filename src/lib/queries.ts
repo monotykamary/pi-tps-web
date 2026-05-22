@@ -1,6 +1,30 @@
 import { runQuery } from './duckdb';
 import type { QueryResult } from './duckdb';
 
+// ─── Shared filter builder ────────────────────────────────────────────────────
+
+/** SQL-escape a string for use in WHERE clauses */
+function escSql(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+/**
+ * Build a WHERE clause fragment from optional session and model filters.
+ * Returns the full WHERE clause including the WHERE keyword, or '' if no filters.
+ * If `prefix` is provided, it's used instead of 'WHERE' (e.g. 'AND' for subclauses).
+ */
+function buildWhere(
+  sessionFilter?: string | null,
+  modelFilter?: string | null,
+  prefix = 'WHERE',
+): string {
+  const conds: string[] = [];
+  if (sessionFilter) conds.push(`session_id = '${escSql(sessionFilter)}'`);
+  if (modelFilter) conds.push(`model_id = '${escSql(modelFilter)}'`);
+  if (conds.length === 0) return '';
+  return `${prefix} ${conds.join(' AND ')}`;
+}
+
 // ─── Row mappers: convert QueryResult rows → typed objects ──────────────────
 
 function col(results: QueryResult, row: number, colName: string): unknown {
@@ -231,8 +255,8 @@ export interface DataThresholdsRow {
  * Main summary — replaces computeSummary() entirely with SQL.
  * Uses the enriched tps_paired view for cost attribution.
  */
-export async function querySummary(modelFilter?: string | null): Promise<ConversationSummaryRow | null> {
-  const where = modelFilter ? `WHERE model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+export async function querySummary(sessionFilter?: string | null, modelFilter?: string | null): Promise<ConversationSummaryRow | null> {
+  const where = buildWhere(sessionFilter, modelFilter);
 
   const sql = `
     WITH tps AS (
@@ -396,8 +420,8 @@ export async function querySummary(modelFilter?: string | null): Promise<Convers
 /**
  * Per-model breakdown from the tps_paired view.
  */
-export async function queryModels(modelFilter?: string | null): Promise<ModelInfoRow[]> {
-  const where = modelFilter ? `WHERE model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+export async function queryModels(sessionFilter?: string | null, modelFilter?: string | null): Promise<ModelInfoRow[]> {
+  const where = buildWhere(sessionFilter, modelFilter);
   const sql = `
     SELECT
       model_id,
@@ -442,9 +466,10 @@ export async function queryModels(modelFilter?: string | null): Promise<ModelInf
  */
 export async function queryScatter(
   thresholds: DataThresholdsRow,
+  sessionFilter?: string | null,
   modelFilter?: string | null,
 ): Promise<ScatterPoint[]> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
   const sql = `
     SELECT
       id,
@@ -505,8 +530,8 @@ export async function queryScatter(
 /**
  * Timing buckets for the timeline chart — replaces computeTimingBuckets().
  */
-export async function queryTimingBuckets(modelFilter?: string | null): Promise<TimingBucketRow[]> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+export async function queryTimingBuckets(sessionFilter?: string | null, modelFilter?: string | null): Promise<TimingBucketRow[]> {
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
   const sql = `
     WITH ranked AS (
       SELECT *,
@@ -552,8 +577,8 @@ export async function queryTimingBuckets(modelFilter?: string | null): Promise<T
 /**
  * Token composition for the stacked bar chart — last 30 requests.
  */
-export async function queryTokenComposition(modelFilter?: string | null): Promise<TokenCompositionRow[]> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+export async function queryTokenComposition(sessionFilter?: string | null, modelFilter?: string | null): Promise<TokenCompositionRow[]> {
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
   const sql = `
     SELECT
       tokens_input  AS input,
@@ -587,12 +612,12 @@ export async function queryTokenComposition(modelFilter?: string | null): Promis
 /**
  * Cache efficiency data — overall pie + over-time bars.
  */
-export async function queryCacheEfficiency(modelFilter?: string | null): Promise<{
+export async function queryCacheEfficiency(sessionFilter?: string | null, modelFilter?: string | null): Promise<{
   overall: CacheOverallSlice[];
   overTime: CacheOverTimeInterval[];
   hitRate: number;
 }> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
 
   // Overall totals
   const overallSql = `
@@ -677,13 +702,13 @@ export async function queryCacheEfficiency(modelFilter?: string | null): Promise
 /**
  * TTFT distribution bins — replaces TimingDistribution's useMemo.
  */
-export async function queryTtftDistribution(modelFilter?: string | null): Promise<{
+export async function queryTtftDistribution(sessionFilter?: string | null, modelFilter?: string | null): Promise<{
   bins: TtftBinRow[];
   fastCount: number;
   slowCount: number;
   percentiles: { label: string; value: number }[];
 }> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
 
   // Bin counts
   const binSql = `
@@ -766,9 +791,10 @@ export async function queryTtftDistribution(modelFilter?: string | null): Promis
  */
 export async function queryThresholdCrossings(
   thresholds: DataThresholdsRow,
+  sessionFilter?: string | null,
   modelFilter?: string | null,
 ): Promise<ThresholdStat[]> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
   const maxTokensSql = `SELECT COALESCE(max(tokens_total), 80000) AS max_tokens FROM tps_paired WHERE 1=1 ${where}`;
   const maxResult = await runQuery(maxTokensSql);
   const maxTokens = num(maxResult, 0, 'max_tokens');
@@ -825,8 +851,8 @@ export async function queryThresholdCrossings(
 /**
  * Adaptive data thresholds — replaces deriveDataThresholds().
  */
-export async function queryDataThresholds(modelFilter?: string | null): Promise<DataThresholdsRow> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+export async function queryDataThresholds(sessionFilter?: string | null, modelFilter?: string | null): Promise<DataThresholdsRow> {
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
 
   const sql = `
     WITH stats AS (
@@ -890,9 +916,10 @@ export async function queryDataThresholds(modelFilter?: string | null): Promise<
  */
 export async function queryAnomalies(
   thresholds: DataThresholdsRow,
+  sessionFilter?: string | null,
   modelFilter?: string | null,
 ): Promise<AnomalyRow[]> {
-  const where = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+  const where = buildWhere(sessionFilter, modelFilter, "AND");
   const {
     slowTtft, cacheThreshold, cacheDropMinTotal, cacheDropMinInput,
     highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity,
@@ -994,8 +1021,8 @@ export async function queryAnomalies(
 /**
  * Full timeline — merged TPS + structural events for the Request Inspector.
  */
-export async function queryTimeline(modelFilter?: string | null): Promise<TimelineEventRow[]> {
-  const tpsWhere = modelFilter ? `AND model_id = '${modelFilter.replace(/'/g, "''")}'` : '';
+export async function queryTimeline(sessionFilter?: string | null, modelFilter?: string | null): Promise<TimelineEventRow[]> {
+  const tpsWhere = buildWhere(sessionFilter, modelFilter, "AND");
   const sql = `
     SELECT
       id, session_id, timestamp, 'tps' AS type,
@@ -1060,8 +1087,8 @@ export async function queryTimeline(modelFilter?: string | null): Promise<Timeli
 /**
  * Model list for the header dropdown.
  */
-export async function queryModelList(): Promise<{ modelId: string; callCount: number }[]> {
-  const sql = `SELECT model_id, count(*) AS call_count FROM tps_paired GROUP BY model_id ORDER BY model_id`;
+export async function queryModelList(sessionFilter?: string | null): Promise<{ modelId: string; callCount: number }[]> {
+  const sql = `SELECT model_id, count(*) AS call_count FROM tps_paired ${buildWhere(sessionFilter, null)} GROUP BY model_id ORDER BY model_id`;
   const result = await runQuery(sql);
   const rows: { modelId: string; callCount: number }[] = [];
   for (let i = 0; i < result.rowCount; i++) {

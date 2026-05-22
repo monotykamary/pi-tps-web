@@ -859,14 +859,14 @@ export default function App() {
 
   // Summary metrics — replaces computeSummary()
   const { data: summary } = useDuckQuery<ConversationSummaryRow>(
-    () => querySummary(selectedModel),
-    [dbVersion, selectedModel]
+    () => querySummary(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel]
   );
 
   // Models for header dropdown + tooltip breakdown
   const { data: queryModelsResult } = useDuckQuery<ModelInfoRow[]>(
-    () => queryModels(),
-    [dbVersion]
+    () => queryModels(activeSessionId),
+    [dbVersion, activeSessionId]
   );
 
   // Per-model list for header dropdown
@@ -886,8 +886,8 @@ export default function App() {
 
   // Thresholds — replaces deriveDataThresholds()
   const { data: dataThresholds } = useDuckQuery<DataThresholdsRow>(
-    () => queryDataThresholds(selectedModel),
-    [dbVersion, selectedModel]
+    () => queryDataThresholds(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel]
   );
 
   // Adapt DataThresholdsRow → DataThresholds for components still using JS types
@@ -908,32 +908,32 @@ export default function App() {
 
   // Timing buckets — replaces computeTimingBuckets()
   const { data: buckets } = useDuckQuery<TimingBucketRow[]>(
-    () => queryTimingBuckets(selectedModel),
-    [dbVersion, selectedModel]
+    () => queryTimingBuckets(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel]
   );
 
   // Scatter points — replaces pairEnergyWithTps() + TimingScatter useMemo
   const { data: scatterPoints } = useDuckQuery<ScatterPoint[]>(
-    () => dataThresholds ? queryScatter(dataThresholds, selectedModel) : Promise.resolve([]),
-    [dbVersion, selectedModel, dataThresholds]
+    () => dataThresholds ? queryScatter(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
+    [dbVersion, activeSessionId, selectedModel, dataThresholds]
   );
 
   // Threshold crossings — replaces ThresholdAnalysis useMemo
   const { data: thresholdStats } = useDuckQuery<ThresholdStat[]>(
-    () => dataThresholds ? queryThresholdCrossings(dataThresholds, selectedModel) : Promise.resolve([]),
-    [dbVersion, selectedModel, dataThresholds]
+    () => dataThresholds ? queryThresholdCrossings(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
+    [dbVersion, activeSessionId, selectedModel, dataThresholds]
   );
 
   // Anomalies — replaces AnomalyDetector useMemo
   const { data: anomalies } = useDuckQuery<AnomalyRow[]>(
-    () => dataThresholds ? queryAnomalies(dataThresholds, selectedModel) : Promise.resolve([]),
-    [dbVersion, selectedModel, dataThresholds]
+    () => dataThresholds ? queryAnomalies(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
+    [dbVersion, activeSessionId, selectedModel, dataThresholds]
   );
 
   // Timeline — replaces buildTimeline()
   const { data: timelineRows } = useDuckQuery<TimelineEventRow[]>(
-    () => queryTimeline(selectedModel),
-    [dbVersion, selectedModel]
+    () => queryTimeline(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel]
   );
 
   // Multi-session summary — replaces computeMultiSessionSummary()
