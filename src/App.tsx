@@ -1236,7 +1236,7 @@ export default function App() {
             exit={{ opacity: 0, y: -12 }}
             className="flex-1 min-h-0 flex flex-col"
           >
-            <div className="px-4 sm:px-6 py-6 flex-1 min-h-0 flex">
+            <div className="px-4 sm:px-6 py-6 flex-1 min-h-0 flex flex-col">
               <SqlPlayground />
             </div>
           </motion.div>
