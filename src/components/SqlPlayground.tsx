@@ -180,10 +180,13 @@ function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
   const charWidth = 7;
   const padding = 24;
   const maxCellW = 300;
+  // Sample at most 500 rows to avoid blocking the main thread on large results
+  const sampleSize = 500;
+  const step = allRows.length <= sampleSize ? 1 : Math.ceil(allRows.length / sampleSize);
   return columns.map((col, j) => {
     let maxW = col.length * charWidth + padding;
-    for (const row of allRows) {
-      const v = row[j];
+    for (let i = 0; i < allRows.length; i += step) {
+      const v = allRows[i][j];
       const s = v === null || v === undefined ? 'NULL' : String(v);
       maxW = Math.max(maxW, Math.min(s.length * charWidth + padding, maxCellW));
     }
@@ -457,7 +460,11 @@ export default function SqlPlayground() {
       try {
         await ensureDb();
         const c = await getSqlConn();
-        const raw = await c.query(sqlToRun);
+        // Wrap user query with a limit to avoid pulling millions of rows into the UI.
+        // If the user already has LIMIT, the inner LIMIT applies first,
+        // and the outer LIMIT is a no-op.
+        const limitedSql = `SELECT * FROM (${sqlToRun.replace(/;+\s*$/, '')}) AS _q LIMIT 50000`;
+        const raw = await c.query(limitedSql);
         const columns = raw.schema.fields.map((f: { name: string }) => f.name);
         const rows: unknown[][] = [];
         for (const batch of raw.batches) {
@@ -518,7 +525,7 @@ export default function SqlPlayground() {
       try {
         await ensureDb();
         const c = await getSqlConn();
-        const raw = await c.query(pivotSql);
+        const raw = await c.query(`SELECT * FROM (${pivotSql}) AS _q LIMIT 50000`);
         const columns = raw.schema.fields.map((f: { name: string }) => f.name);
         const rows: unknown[][] = [];
         for (const batch of raw.batches) {
@@ -805,10 +812,14 @@ export default function SqlPlayground() {
 
   const colWidths = useMemo(() => {
     if (!result) return [];
-    const mapped = result.rows.map((row) =>
-      displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? row[idx] : null; })
-    );
-    const widths = measureColWidths(displayColumns, mapped);
+    // Build sampled rows directly to avoid O(N*cols) full copy
+    const sampleSize = 500;
+    const step = result.rows.length <= sampleSize ? 1 : Math.ceil(result.rows.length / sampleSize);
+    const sampled: unknown[][] = [];
+    for (let i = 0; i < result.rows.length; i += step) {
+      sampled.push(displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? result.rows[i][idx] : null; }));
+    }
+    const widths = measureColWidths(displayColumns, sampled);
     // Widen first column for tree indentation + caret + count badge
     if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
       const maxDepth = (() => {
