@@ -250,14 +250,23 @@ export default function App() {
 
   const handleExportCsv = useCallback(() => {
     if (!multiSummary) return;
-    const csv = exportMultiSessionCsv(multiSummary as unknown as MultiSessionSummary);
+    // Transform DuckDB result shape (timeRangeStart/timeRangeEnd) to expected shape (timeRange.start/timeRange.end)
+    const adapted: MultiSessionSummary = {
+      ...multiSummary,
+      sessions: multiSummary.sessions.map(s => ({
+        ...s,
+        timeRange: { start: s.timeRangeStart, end: s.timeRangeEnd },
+      })),
+      timeRange: { start: multiSummary.timeRangeStart, end: multiSummary.timeRangeEnd },
+    };
+    const csv = exportMultiSessionCsv(adapted);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `pi-tps-sessions-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [multiSummary]);
 
   const handlePointClick = useCallback((id: string | null) => { if (id) setSelectedTpsId(id); }, []);
