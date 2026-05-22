@@ -426,6 +426,13 @@ export default function SqlPlayground() {
   const [dbReady, setDbReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
+  // Pending groupBy cols: updated immediately for the drag zone UI,
+  // but the tree/table only switches when the pivot query result arrives.
+  // This prevents the flash of the flat table between drag and query result.
+  const [pendingGroupByCols, setPendingGroupByCols] = useState<string[]>([]);
+  // The groupByCols used for rendering: prefer pending when a query is in flight,
+  // fall back to the committed groupByCols.
+  const effectiveGroupByCols = running && pendingGroupByCols.length > 0 ? pendingGroupByCols : groupByCols;
   const [expandedPaths, setExpandedPaths] = useState<Set<number>>(new Set());
   const [detailExpandedPaths, setDetailExpandedPaths] = useState<Set<number>>(new Set());
   const [dragOverZone, setDragOverZone] = useState(false);
@@ -509,6 +516,7 @@ export default function SqlPlayground() {
     async (cols: string[]) => {
       if (!originalSql.trim()) return;
       if (cols.length === 0) {
+        setPendingGroupByCols([]);
         setSql(originalSql);
         if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: originalSql } });
         runQueryInternal(originalSql);
@@ -518,6 +526,7 @@ export default function SqlPlayground() {
       if (!pivotSql) return;
       setSql(pivotSql);
       if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: pivotSql } });
+      setPendingGroupByCols(cols);
       setRunning(true);
       setError(null);
       setExpandedPaths(new Set());
@@ -539,9 +548,14 @@ export default function SqlPlayground() {
           }
         }
         const r: QueryResult = { columns, rows, rowCount: rows.length };
-        if (r.rowCount > 0 || columns.length > 0) setResult(r);
+        if (r.rowCount > 0 || columns.length > 0) {
+          setResult(r);
+          setGroupByCols(cols);
+          setPendingGroupByCols([]);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Pivot query failed');
+        setPendingGroupByCols([]);
       } finally {
         setRunning(false);
       }
@@ -655,7 +669,6 @@ export default function SqlPlayground() {
       const col = e.dataTransfer.getData('text/plain');
       if (!col || groupByCols.includes(col)) return;
       const newGroupBy = [...groupByCols, col];
-      setGroupByCols(newGroupBy);
       runPivotQuery(newGroupBy);
       setDraggedCol(null);
     },
@@ -665,7 +678,6 @@ export default function SqlPlayground() {
   const removeGroupBy = useCallback(
     (col: string) => {
       const newGroupBy = groupByCols.filter((c) => c !== col);
-      setGroupByCols(newGroupBy);
       runPivotQuery(newGroupBy);
     },
     [groupByCols, runPivotQuery],
@@ -680,8 +692,8 @@ export default function SqlPlayground() {
   }, []);
 
   const tree = useMemo(
-    () => result && groupByCols.length > 0 && result.rows.length > 0 ? buildTree(result.rows, result.columns, groupByCols) : null,
-    [result, groupByCols],
+    () => result && effectiveGroupByCols.length > 0 && result.rows.length > 0 ? buildTree(result.rows, result.columns, effectiveGroupByCols) : null,
+    [result, effectiveGroupByCols],
   );
 
   const isTrivialTree = useMemo(() => {
@@ -702,8 +714,8 @@ export default function SqlPlayground() {
   );
 
   const detailIndex = useMemo(
-    () => result && groupByCols.length > 0 ? buildDetailIndex(groupByCols, result.columns, result.rows) : new Map<string, number[]>(),
-    [result, groupByCols],
+    () => result && effectiveGroupByCols.length > 0 ? buildDetailIndex(effectiveGroupByCols, result.columns, result.rows) : new Map<string, number[]>(),
+    [result, effectiveGroupByCols],
   );
 
   const nodeMap = useMemo(() => {
@@ -720,14 +732,14 @@ export default function SqlPlayground() {
   }, [tree]);
 
   const virtualRows = useMemo(() => {
-    if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree) {
+    if (tree && tree.length > 0 && effectiveGroupByCols.length > 0 && !isTrivialTree) {
       return flattenTree(tree, expandedPaths, detailExpandedPaths, detailIndex, 0);
     }
     if (result) {
       return result.rows.map((_, i): VirtualRow => ({ type: 'flat', rowIndex: i }));
     }
     return [] as VirtualRow[];
-  }, [tree, groupByCols, isTrivialTree, expandedPaths, detailExpandedPaths, detailIndex, result]);
+  }, [tree, effectiveGroupByCols, isTrivialTree, expandedPaths, detailExpandedPaths, detailIndex, result]);
 
   const detailColsMemo = useMemo(() => result ? detailColumns(result.columns) : [], [result]);
   const detailColIndicesMemo = useMemo(() => detailColsMemo.map((c) => result ? result.columns.indexOf(c) : -1), [detailColsMemo, result]);
@@ -752,7 +764,7 @@ export default function SqlPlayground() {
   const _scrollOff = rowVirtualizer.scrollOffset ?? 0;
   const _viewEnd = _scrollOff + (rowVirtualizer.getTotalSize ? rowVirtualizer.getTotalSize() : 0);
   let pinnedGroup: { nodeId: number; depth: number } | null = null;
-  if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && _vi.length > 0) {
+  if (tree && tree.length > 0 && effectiveGroupByCols.length > 0 && !isTrivialTree && _vi.length > 0) {
     // Find the first visible row that isn't a group — its parent group is the one to pin
     let firstVisibleChildIdx = -1;
     for (const vi of _vi) {
@@ -821,7 +833,7 @@ export default function SqlPlayground() {
     }
     const widths = measureColWidths(displayColumns, sampled);
     // Widen first column for tree indentation + caret + count badge
-    if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
+    if (tree && tree.length > 0 && effectiveGroupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
       const maxDepth = (() => {
         let d = 0;
         function walk(nodes: TreeNode[], depth: number) {
@@ -837,7 +849,7 @@ export default function SqlPlayground() {
       widths[0] = Math.max(widths[0], treeOverhead);
     }
     return widths;
-  }, [result, displayColumns, tree, groupByCols, isTrivialTree]);
+  }, [result, displayColumns, tree, effectiveGroupByCols, isTrivialTree]);
 
   return (
     <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-0 h-full">
@@ -1286,7 +1298,7 @@ export default function SqlPlayground() {
               <span className="text-[10px] tabular-nums flex items-center gap-1.5 metric-mono text-zinc-400 dark:text-zinc-500">
                 {running && <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />}
                 {result.rowCount.toLocaleString()} rows
-                {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? (' \u00B7 ' + groupByCols.length + ' level' + (groupByCols.length > 1 ? 's' : '')) : ''}
+                {tree && tree.length > 0 && effectiveGroupByCols.length > 0 && !isTrivialTree ? (' \u00B7 ' + effectiveGroupByCols.length + ' level' + (effectiveGroupByCols.length > 1 ? 's' : '')) : ''}
               </span>
               <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">Drag headers to group bar</span>
             </div>
