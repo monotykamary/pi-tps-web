@@ -998,7 +998,7 @@ export default function App() {
 
   return (
     <div
-      className="min-h-[100dvh] bg-[#fafafa] dark:bg-[#18181b]"
+      className="h-dvh flex flex-col overflow-hidden bg-[#fafafa] dark:bg-[#18181b]"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -1135,14 +1135,9 @@ export default function App() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
-            className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 min-h-[70dvh]"
+            className="flex-1 min-h-0 flex flex-col"
           >
-            <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden p-4 flex flex-col min-h-[70dvh] max-h-[85dvh]">
-              <div className="flex items-center gap-2 mb-3 shrink-0">
-                <Database size={16} className="text-accent" weight="bold" />
-                <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300">SQL Playground</h2>
-                <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">DuckDB WASM · in-browser</span>
-              </div>
+            <div className="px-4 sm:px-6 py-6 flex-1 min-h-0 flex">
               <SqlPlayground />
             </div>
           </motion.div>

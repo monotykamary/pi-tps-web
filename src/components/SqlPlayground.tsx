@@ -6,6 +6,8 @@ import {
   DotsSixVertical,
   X,
   Table,
+  CaretDown,
+  Database,
 } from '@phosphor-icons/react';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
@@ -532,6 +534,7 @@ export default function SqlPlayground() {
   const [dragOverZone, setDragOverZone] = useState(false);
   const [draggedCol, setDraggedCol] = useState<string | null>(null);
   const [lineCount, setLineCount] = useState(1);
+  const [editorCollapsed, setEditorCollapsed] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -562,6 +565,7 @@ export default function SqlPlayground() {
           setResult(r);
           const detected = detectGroupByCols(sqlToRun, r.columns);
           setGroupByCols(detected);
+          setEditorCollapsed(true);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Query failed');
@@ -762,6 +766,7 @@ export default function SqlPlayground() {
     setExpandedPaths(new Set());
     setDetailExpandedPaths(new Set());
     setLineCount(1);
+    setEditorCollapsed(false);
     if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: '' } });
   }, []);
 
@@ -770,130 +775,229 @@ export default function SqlPlayground() {
     if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: newSql } });
   }, []);
 
+  const sqlPreview = useMemo(() => {
+    if (!sql.trim()) return '';
+    const condensed = sql.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+    return condensed.length > 80 ? condensed.slice(0, 77) + '...' : condensed;
+  }, [sql]);
+
+  const expandEditor = useCallback(() => setEditorCollapsed(false), []);
+  const collapseEditor = useCallback(() => setEditorCollapsed(true), []);
+
+  const colWidths = useMemo(() => {
+    if (!result) return [];
+    const mapped = result.rows.map((row) =>
+      displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? row[idx] : null; })
+    );
+    return measureColWidths(displayColumns, mapped);
+  }, [result, displayColumns]);
+
   return (
-    <div className="flex flex-col gap-3 flex-1 min-h-0">
-      {/* SQL editor */}
-      <div className="relative shrink-0 rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 overflow-hidden transition-colors focus-within:border-accent/40 dark:focus-within:border-accent/40">
-        <div ref={editorRef} className="min-h-[144px] max-h-[360px] overflow-auto" />
-        {/* Bottom bar with padding to match run button area */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-100 dark:border-white/[0.04]">
-          <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">
-            {lineCount}L
-          </span>
-          <div className="flex items-center gap-1.5">
-            {sql.trim() && (
-              <button
-                onClick={clearAll}
-                className="p-1.5 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-white/[0.06] active:scale-[0.97] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                title="Clear"
-              >
-                <X size={12} />
-              </button>
-            )}
+    <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-0 flex-1">
+      {/* Header — title + collapsed query + collapse toggle */}
+      <div
+        className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200/60 dark:border-white/[0.06] shrink-0"
+      >
+        <Database size={16} className="text-accent shrink-0" weight="bold" />
+        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300 shrink-0">SQL Playground</h2>
+        <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500 shrink-0">DuckDB WASM · in-browser</span>
+        {editorCollapsed && sqlPreview && (
+          <>
+            <span className="text-zinc-300 dark:text-zinc-600 shrink-0">·</span>
+            <code className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 cursor-pointer" onClick={expandEditor}>{sqlPreview}</code>
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {editorCollapsed && (
             <button
-              onClick={() => runCallbackRef.current()}
-              disabled={running || !sql.trim()}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all duration-200 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed bg-accent text-white hover:bg-accent/90"
+              onClick={expandEditor}
+              className="p-1 rounded-md transition-colors hover:bg-zinc-100 dark:hover:bg-white/[0.06] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              title="Expand editor"
             >
-              {running ? (
-                <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-              ) : (
-                <Play size={12} weight="fill" />
-              )}
-              Run
+              <CaretDown size={14} />
             </button>
-            <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500 ml-1">⌘↵</span>
-          </div>
+          )}
+          {!editorCollapsed && result && (
+            <button
+              onClick={collapseEditor}
+              className="p-1 rounded-md transition-colors hover:bg-zinc-100 dark:hover:bg-white/[0.06] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              title="Collapse editor"
+            >
+              <CaretDown size={14} className="rotate-180" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Example pills */}
-      <div className="flex flex-wrap gap-1.5 shrink-0">
-        {EXAMPLE_QUERIES.map((eq) => (
-          <button
-            key={eq.label}
-            onClick={() => {
-              setEditorSql(eq.sql);
-              setOriginalSql(eq.sql);
-              setGroupByCols([]);
-              setExpandedPaths(new Set());
-              setDetailExpandedPaths(new Set());
-              setError(null);
-              runQueryInternal(eq.sql);
-            }}
-            className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 text-zinc-500 dark:text-zinc-400 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all duration-200 active:scale-[0.97]"
-          >
-            {eq.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Group-by drop zone */}
+      {/* Editor area — hidden via CSS to preserve CodeMirror */}
       <div
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!dragOverZone) setDragOverZone(true); }}
-        onDragLeave={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
-            setDragOverZone(false);
-        }}
-        onDrop={handleDrop}
-        className={`rounded-xl border-2 border-dashed transition-all duration-200 shrink-0 ${dragOverZone ? 'scale-[1.005]' : ''} ${
-          groupByCols.length > 0 || dragOverZone
-            ? 'border-accent/40 bg-accent/5 dark:bg-accent/10'
-            : 'border-zinc-200/60 dark:border-white/[0.06] bg-white/40 dark:bg-zinc-800/20'
-        }`}
+        style={{ display: editorCollapsed ? 'none' : undefined }}
+        className="shrink-0 px-4 pt-3 space-y-2"
       >
-        {groupByCols.length > 0 ? (
-          <div className="flex items-center gap-2 px-3 py-1.5">
-            <DotsSixVertical size={12} className="text-accent/60" />
-            <span className="text-[10px] font-medium shrink-0 text-accent">Grouped by</span>
-            <AnimatePresence>
-              {groupByCols.map((col) => (
-                <motion.span
-                  key={col}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-accent/30 bg-accent/10 text-accent font-mono"
-                >
-                  {fmtHeader(col)}
-                  <button onClick={() => removeGroupBy(col)} className="rounded p-0.5 opacity-50 hover:opacity-100 transition-opacity">
-                    <X size={10} />
-                  </button>
-                </motion.span>
-              ))}
-            </AnimatePresence>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 px-3 py-1.5">
-            <DotsSixVertical size={12} className="text-zinc-400 dark:text-zinc-500 opacity-40" />
-            <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-              {result ? 'Drag column headers here to group and aggregate' : 'Run a query, then drag column headers into this zone to group'}
+        {/* SQL editor */}
+        <div className="relative rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 overflow-hidden transition-colors focus-within:border-accent/40 dark:focus-within:border-accent/40">
+          <div ref={editorRef} className="min-h-[120px] max-h-[280px] overflow-auto" />
+          {/* Bottom bar */}
+          <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-100 dark:border-white/[0.04]">
+            <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">
+              {lineCount}L
             </span>
+            <div className="flex items-center gap-1.5">
+              {sql.trim() && !result && (
+                <button
+                  onClick={clearAll}
+                  className="p-1.5 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-white/[0.06] active:scale-[0.97] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  title="Clear"
+                >
+                  <X size={12} />
+                </button>
+              )}
+              <button
+                onClick={() => runCallbackRef.current()}
+                disabled={running || !sql.trim()}
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all duration-200 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed bg-accent text-white hover:bg-accent/90"
+              >
+                {running ? (
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                ) : (
+                  <Play size={12} weight="fill" />
+                )}
+                Run
+              </button>
+              <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500 ml-1">⌘↵</span>
+            </div>
           </div>
+        </div>
+
+        {/* Example pills */}
+        <div className="flex flex-wrap gap-1.5">
+          {EXAMPLE_QUERIES.map((eq) => (
+            <button
+              key={eq.label}
+              onClick={() => {
+                setEditorSql(eq.sql);
+                setOriginalSql(eq.sql);
+                setGroupByCols([]);
+                setExpandedPaths(new Set());
+                setDetailExpandedPaths(new Set());
+                setError(null);
+                runQueryInternal(eq.sql);
+              }}
+              className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 text-zinc-500 dark:text-zinc-400 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all duration-200 active:scale-[0.97]"
+            >
+              {eq.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Group-by drop zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!dragOverZone) setDragOverZone(true); }}
+          onDragLeave={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
+              setDragOverZone(false);
+          }}
+          onDrop={handleDrop}
+          className={`rounded-xl border-2 border-dashed h-[36px] overflow-hidden transition-all duration-200 ${dragOverZone ? 'scale-[1.005]' : ''} ${
+            groupByCols.length > 0 || dragOverZone
+              ? 'border-accent/40 bg-accent/5 dark:bg-accent/10'
+              : 'border-zinc-200/60 dark:border-white/[0.06] bg-white/40 dark:bg-zinc-800/20'
+          }`}
+        >
+          <div className="flex items-center gap-2 px-3 h-full">
+            <DotsSixVertical size={12} className={groupByCols.length > 0 ? 'text-accent/60' : 'text-zinc-400 dark:text-zinc-500 opacity-40'} />
+            {groupByCols.length > 0 ? (
+              <>
+                <span className="text-[10px] font-medium shrink-0 text-accent">Grouped by</span>
+                <AnimatePresence>
+                  {groupByCols.map((col) => (
+                    <motion.span
+                      key={col}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-accent/30 bg-accent/10 text-accent font-mono"
+                    >
+                      {fmtHeader(col)}
+                      <button onClick={() => removeGroupBy(col)} className="rounded p-0.5 opacity-50 hover:opacity-100 transition-opacity">
+                        <X size={10} />
+                      </button>
+                    </motion.span>
+                  ))}
+                </AnimatePresence>
+              </>
+            ) : (
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                {result ? 'Drag column headers here to group and aggregate' : 'Run a query, then drag column headers into this zone to group'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+            className="p-3 rounded-xl border border-red-200/40 dark:border-red-500/20 bg-red-50/50 dark:bg-red-500/5"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-red-500/10">
+                <X size={12} weight="bold" className="text-red-500" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium mb-0.5 text-red-600 dark:text-red-400">Query Error</p>
+                <pre className="text-[11px] whitespace-pre-wrap break-all font-mono text-zinc-600 dark:text-zinc-300">{error}</pre>
+              </div>
+            </div>
+          </motion.div>
         )}
       </div>
 
-      {/* Error */}
-      {error && (
-        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-          className="p-3 rounded-xl border border-red-200/40 dark:border-red-500/20 bg-red-50/50 dark:bg-red-500/5 shrink-0"
+      {/* Group-by zone — always visible when editor is collapsed */}
+      {editorCollapsed && result && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!dragOverZone) setDragOverZone(true); }}
+          onDragLeave={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
+              setDragOverZone(false);
+          }}
+          onDrop={handleDrop}
+          className={`rounded-xl border-2 border-dashed mx-4 mt-2 mb-2 h-[36px] overflow-hidden transition-all duration-200 ${dragOverZone ? 'scale-[1.005]' : ''} ${
+            groupByCols.length > 0 || dragOverZone
+              ? 'border-accent/40 bg-accent/5 dark:bg-accent/10'
+              : 'border-zinc-200/60 dark:border-white/[0.06] bg-white/40 dark:bg-zinc-800/20'
+          }`}
         >
-          <div className="flex items-start gap-3">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-red-500/10">
-              <X size={12} weight="bold" className="text-red-500" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium mb-0.5 text-red-600 dark:text-red-400">Query Error</p>
-              <pre className="text-[11px] whitespace-pre-wrap break-all font-mono text-zinc-600 dark:text-zinc-300">{error}</pre>
-            </div>
+          <div className="flex items-center gap-2 px-3 h-full">
+            <DotsSixVertical size={12} className={groupByCols.length > 0 ? 'text-accent/60' : 'text-zinc-400 dark:text-zinc-500 opacity-40'} />
+            {groupByCols.length > 0 ? (
+              <>
+                <span className="text-[10px] font-medium shrink-0 text-accent">Grouped by</span>
+                {groupByCols.map((col) => (
+                  <span
+                    key={col}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-accent/30 bg-accent/10 text-accent font-mono"
+                  >
+                    {fmtHeader(col)}
+                    <button onClick={() => removeGroupBy(col)} className="rounded p-0.5 opacity-50 hover:opacity-100 transition-opacity">
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+              </>
+            ) : (
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                Drag column headers here to group and aggregate
+              </span>
+            )}
           </div>
-        </motion.div>
+        </div>
       )}
 
       {/* Loading skeleton */}
       {running && !result && (
-        <div className="rounded-2xl overflow-hidden border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0">
+        <div className="m-4 rounded-2xl overflow-hidden border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0">
           <div className="px-3 py-2 border-b border-zinc-200/40 dark:border-white/[0.04] bg-white dark:bg-zinc-800">
             <div className="h-3 w-32 rounded bg-zinc-200/60 dark:bg-zinc-700/40 animate-pulse" />
           </div>
@@ -902,8 +1006,8 @@ export default function SqlPlayground() {
       )}
 
       {/* Empty */}
-      {!result && !running && !error && (
-        <div className="rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] p-10 flex-1 min-h-0 flex flex-col items-center justify-center bg-white/40 dark:bg-zinc-800/20">
+      {!result && !running && !error && !editorCollapsed && (
+        <div className="m-4 rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] p-10 flex-1 min-h-0 flex flex-col items-center justify-center bg-white/40 dark:bg-zinc-800/20">
           <div className="flex flex-col items-center justify-center text-center">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-zinc-100 dark:bg-white/[0.04]">
               <Table size={20} className="text-zinc-400 dark:text-zinc-500" />
@@ -919,15 +1023,13 @@ export default function SqlPlayground() {
       {/* Results */}
       {result && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-800 overflow-hidden"
+          className={`mx-4 mb-4 ${editorCollapsed ? 'mt-0' : 'mt-2'} rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-800 overflow-hidden`}
         >
           <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 max-h-full custom-scrollbar">
             <table className="text-left" style={{ tableLayout: 'fixed', width: 'auto', minWidth: '100%' }}>
               <colgroup>
                 {displayColumns.map((col, j) => {
-                  const w = measureColWidths(displayColumns, result.rows.map((row) =>
-                    displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? row[idx] : null; })
-                  ))[j];
+                  const w = colWidths[j];
                   return <col key={col} style={{ width: `${w}px`, minWidth: `${w}px` }} />;
                 })}
               </colgroup>
