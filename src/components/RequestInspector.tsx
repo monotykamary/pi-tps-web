@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useMemo, useRef, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { motion } from 'framer-motion';
 import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binoculars } from '@phosphor-icons/react';
 
 /** Format an ISO timestamp to a short time string (HH:MM:SS) */
@@ -68,34 +69,11 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
     return [...timeline].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [timeline]);
 
-  const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
-  const scrollPosRef = useRef(0);
 
   const handleSelect = useCallback((id: string | null) => {
-    if (id !== null && listRef.current) {
-      scrollPosRef.current = listRef.current.scrollTop;
-    }
     onSelect(id);
   }, [onSelect]);
-
-  useEffect(() => {
-    if (selectedId && selectedRef.current && listRef.current) {
-      selectedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [selectedId]);
-
-  // Restore scroll position when returning from detail to list
-  useEffect(() => {
-    if (selectedId === null) {
-      const timer = setTimeout(() => {
-        if (listRef.current) {
-          listRef.current.scrollTop = scrollPosRef.current;
-        }
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedId]);
 
   const selectedEvent = selectedId ? sorted.find(e => e.id === selectedId) : null;
 
@@ -170,17 +148,11 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden" style={{ minHeight: '400px' }}>
-        <div ref={listRef} className="w-full overflow-y-auto scrollbar-thin">
-          <AnimatePresence mode="wait">
-            {selectedEvent && isTpsEvent(selectedEvent) ? (
-              <motion.div
+      <div className="flex-1 overflow-hidden" style={{ minHeight: '400px' }}>
+        {selectedEvent && isTpsEvent(selectedEvent) ? (
+              <div
                 key="detail"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="p-5 space-y-5"
+                className="h-full w-full overflow-y-auto scrollbar-thin p-5 space-y-5"
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -308,26 +280,20 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                     <TimingPill label={selectedEvent.data.cost ? 'Cost (est.)' : 'Cost'} value={selectedEvent.energy ? `$${selectedEvent.energy.cost_usd.toFixed(4)}` : selectedEvent.data.cost ? `$${selectedEvent.data.cost.total.toFixed(4)}` : '-'} />
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ) : (
-              <motion.div
-                key="list"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="divide-y divide-zinc-100 dark:divide-white/[0.06]"
-              >
-                {sorted.map((e) => {
-                  if (isTpsEvent(e)) {
-                    const tpsIdx = tpsEvents.findIndex(t => t.id === e.id);
-                    return <TpsRow key={e.id} event={e} tpsIndex={tpsIdx} thresholds={thresholds} selectedRef={selectedId === e.id ? selectedRef : undefined} onSelect={(id: string) => handleSelect(id)} shortModel={shortModel} effectiveTps={effectiveTps} />;
-                  }
-                  return <StructuralRow key={e.id} event={e} />;
-                })}
-              </motion.div>
+              <VirtualizedRequestList
+                sorted={sorted}
+                tpsEvents={tpsEvents}
+                thresholds={thresholds}
+                selectedId={selectedId}
+                selectedRef={selectedRef}
+                onSelect={handleSelect}
+                shortModel={shortModel}
+                effectiveTps={effectiveTps}
+                isTpsEvent={isTpsEvent}
+              />
             )}
-          </AnimatePresence>
-        </div>
       </div>
     </motion.div>
   );
@@ -335,15 +301,14 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
 
 // ─── TPS request row ────────────────────────────────────────────────────────
 
-const TpsRow = React.forwardRef<HTMLDivElement, {
+const TpsRow = React.memo(function TpsRow({ event, tpsIndex, thresholds, onSelect, shortModel, effectiveTps }: {
   event: TpsEvent & { energy?: EnergyPayload };
   tpsIndex: number;
   thresholds: DataThresholds;
-  selectedRef?: React.RefObject<HTMLDivElement | null>;
   onSelect: (id: string) => void;
   shortModel: (modelId: string) => string;
   effectiveTps: (e: TpsEvent & { energy?: EnergyPayload }) => number;
-}>(function TpsRow({ event, tpsIndex, thresholds, selectedRef, onSelect, shortModel, effectiveTps }, ref) {
+}) {
   const cat = useMemo(() => {
     const total = event.data.tokens.total;
     const ttft = event.data.timing.ttftMs;
@@ -355,11 +320,9 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
   }, [event, thresholds]);
 
   return (
-    <motion.div
-      ref={selectedRef ? ref : undefined}
+    <div
       onClick={() => onSelect(event.id)}
-      className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-50/80 dark:hover:bg-white/[0.04] cursor-pointer transition-colors active:bg-zinc-100 dark:active:bg-white/[0.08]"
-      whileTap={{ scale: 0.995 }}
+      className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-50/80 dark:hover:bg-white/[0.04] cursor-pointer active:bg-zinc-100 dark:active:bg-white/[0.08]"
     >
       <div className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-100 dark:bg-white/[0.06] metric-mono text-[10px] font-bold text-zinc-500 dark:text-zinc-400 shrink-0">
         {tpsIndex + 1}
@@ -392,7 +355,7 @@ const TpsRow = React.forwardRef<HTMLDivElement, {
         </div>
       </div>
       <div className={`w-1.5 h-1.5 rounded-full ${cat.color.split(' ')[0].replace('text-', 'bg-')}`} />
-    </motion.div>
+    </div>
   );
 });
 
@@ -456,6 +419,93 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
 }
 
 export default React.memo(RequestInspectorInner);
+
+// ─── Virtualized list ────────────────────────────────────────────────────────
+
+const TPS_ROW_H = 45;
+const STRUCT_ROW_H = 58;
+
+function getRowHeight(e: TimelineEvent) {
+  return isTpsEvent(e) ? TPS_ROW_H : STRUCT_ROW_H;
+}
+
+function VirtualizedRequestList({ sorted, tpsEvents, thresholds, selectedId, selectedRef, onSelect, shortModel, effectiveTps, isTpsEvent: isTps }: {
+  sorted: TimelineEvent[];
+  tpsEvents: (TpsEvent & { energy?: EnergyPayload })[];
+  thresholds: DataThresholds;
+  selectedId: string | null;
+  selectedRef: React.RefObject<HTMLDivElement | null>;
+  onSelect: (id: string | null) => void;
+  shortModel: (modelId: string) => string;
+  effectiveTps: (e: TpsEvent & { energy?: EnergyPayload }) => number;
+  isTpsEvent: (e: TimelineEvent) => e is TpsEvent & { energy?: EnergyPayload };
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: sorted.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (i) => getRowHeight(sorted[i]),
+    overscan: 8,
+  });
+
+  return (
+    <div ref={parentRef} className="h-full w-full overflow-y-auto scrollbar-thin" style={{ contain: 'content' }}>
+      <div
+        style={{
+          height: virtualizer.getTotalSize(),
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((vItem) => {
+          const e = sorted[vItem.index];
+          if (isTps(e)) {
+            const tpsIdx = tpsEvents.findIndex(t => t.id === e.id);
+            return (
+              <div
+                key={e.id}
+                data-index={vItem.index}
+                ref={selectedId === e.id ? selectedRef : undefined}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${vItem.start}px)`,
+                }}
+              >
+                <TpsRow
+                  event={e}
+                  tpsIndex={tpsIdx}
+                  thresholds={thresholds}
+                  onSelect={(id: string) => onSelect(id)}
+                  shortModel={shortModel}
+                  effectiveTps={effectiveTps}
+                />
+              </div>
+            );
+          }
+          return (
+            <div
+              key={e.id}
+              data-index={vItem.index}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${vItem.start}px)`,
+              }}
+            >
+              <StructuralRow event={e} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
