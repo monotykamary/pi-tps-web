@@ -56,6 +56,20 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
     anomaly: '#d97706',
   };
 
+  // Sample data for rendering — cap at 800 points for smooth DOM/SVG performance.
+  // When the dataset exceeds this, take every N-th point + always include
+  // anomalies and slow-category points so outliers are never dropped.
+  const MAX_POINTS = 800;
+  const displayData = useMemo(() => {
+    if (data.length <= MAX_POINTS) return data;
+    // Always keep anomalies and slow points
+    const important = data.filter(d => d.category === 'anomaly' || d.category === 'slow');
+    const rest = data.filter(d => d.category !== 'anomaly' && d.category !== 'slow');
+    const step = rest.length / (MAX_POINTS - important.length);
+    const sampled = rest.filter((_, i) => i % step < 1);
+    return [...important, ...sampled];
+  }, [data]);
+
   const xDomain = useMemo(() => {
     const vals = data.map(d => d.x);
     const min = Math.min(...vals);
@@ -143,7 +157,7 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">TTFT vs Context Size</h2>
-          <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">Color indicates cache efficiency category derived from data.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">Color indicates cache efficiency category derived from data.{data.length > MAX_POINTS ? ` Showing ${displayData.length} of ${data.length} points.` : ''}</p>
         </div>
         <div className="flex items-center gap-1.5 bg-zinc-100/80 dark:bg-white/[0.06] rounded-xl p-1">
           {(['log', 'linear'] as const).map(s => (
@@ -190,14 +204,12 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
             />
             <ZAxis type="number" dataKey="z" range={[40, 200]} />
             <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} allowEscapeViewBox={{ x: true, y: true }} />
-            <Scatter data={data} onClick={(d: any) => onPointClick(d.id)}>
-              {data.map((entry, index) => (
+            <Scatter data={displayData} onClick={(d: any) => onPointClick(d.id)}>
+              {displayData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
                   fill={colorMap[entry.category]}
                   fillOpacity={0.7}
-                  stroke={colorMap[entry.category]}
-                  strokeWidth={1.5}
                   cursor="pointer"
                 />
               ))}

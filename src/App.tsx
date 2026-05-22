@@ -1319,11 +1319,7 @@ export default function App() {
           </motion.div>
         ) : (
           <div
-            className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8 rounded-[2rem] border-2 border-dashed transition-colors ${
-              dragOver
-                ? 'border-accent bg-accent/5 dark:border-accent dark:bg-accent/10'
-                : 'border-transparent'
-            }`}
+            className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8 rounded-[2rem] ${dragOver ? 'border-2 border-dashed border-accent bg-accent/5 dark:border-accent dark:bg-accent/10' : ''}`}
           >
             {/* Metrics Strip */}
             {summary && (
