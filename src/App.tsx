@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, Barbell, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database } from '@phosphor-icons/react';
 import { DEFAULT_THRESHOLDS } from './types';
 import type { ParsedEvent, ModelInfo, MultiSessionSummary, DataThresholds, SessionState } from './types';
-import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, pairEnergyWithTps, buildTimeline, exportMultiSessionCsv } from './lib/parser';
+import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, pairEnergyWithTps, buildTimeline, exportMultiSessionCsv } from './lib/parser';
 import { formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/format/format';
 import { useTheme } from './hooks/useTheme';
 import { useDuckQuery } from './hooks/useDuckQuery';
@@ -75,9 +75,6 @@ export default function App() {
     [allTpsEvents, selectedModel]
   );
 
-  // Structural events for timeline
-  const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
-  const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
 
   // Load events into DuckDB whenever sessions change
@@ -112,7 +109,7 @@ export default function App() {
   // ---- DuckDB-powered queries ----
 
   // Summary metrics — replaces computeSummary()
-  const { data: summary } = useDuckQuery<ConversationSummaryRow>(
+  const { data: summary } = useDuckQuery<ConversationSummaryRow | null>(
     () => querySummary(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
@@ -167,25 +164,26 @@ export default function App() {
   );
 
   // Scatter points — replaces pairEnergyWithTps() + TimingScatter useMemo
-  const { data: scatterPoints } = useDuckQuery<ScatterPoint[]>(
+  // Scatter points — DuckDB-powered (unused until TimingScatter is wired to it)
+  useDuckQuery<ScatterPoint[]>(
     () => dataThresholds ? queryScatter(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
     [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
   );
 
-  // Threshold crossings — replaces ThresholdAnalysis useMemo
-  const { data: thresholdStats } = useDuckQuery<ThresholdStat[]>(
+  // Threshold crossings — DuckDB-powered (unused until ThresholdAnalysis is wired to it)
+  useDuckQuery<ThresholdStat[]>(
     () => dataThresholds ? queryThresholdCrossings(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
     [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
   );
 
-  // Anomalies — replaces AnomalyDetector useMemo
-  const { data: anomalies } = useDuckQuery<AnomalyRow[]>(
+  // Anomalies — DuckDB-powered (unused until anomaly UI is wired)
+  useDuckQuery<AnomalyRow[]>(
     () => dataThresholds ? queryAnomalies(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
     [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
   );
 
-  // Timeline — replaces buildTimeline()
-  const { data: timelineRows } = useDuckQuery<TimelineEventRow[]>(
+  // Timeline — DuckDB-powered (unused until TimelineChart is wired to it)
+  useDuckQuery<TimelineEventRow[]>(
     () => queryTimeline(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
@@ -307,21 +305,6 @@ export default function App() {
   const handleDragLeave = useCallback(() => {
     setDragOver(false);
   }, []);
-
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-      reader.onload = () => {
-        addSession(reader.result as string, file.name);
-      };
-      reader.readAsText(file);
-    }
-    // Reset so re-selecting the same file triggers onChange
-    e.target.value = '';
-  }, [addSession]);
 
   const [pasteFlash, setPasteFlash] = useState(false);
 

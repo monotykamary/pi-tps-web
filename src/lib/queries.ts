@@ -667,7 +667,7 @@ export async function queryCacheEfficiency(sessionFilter?: string | null, modelF
     ORDER BY min_ts
   `;
 
-  const timeResult = await runQuery(timeSql);
+  await runQuery(timeSql);
   const overTime: CacheOverTimeInterval[] = [];
   // Simpler approach: use row-based query
   const timeSql2 = `

@@ -1,6 +1,6 @@
 import { Warning, Info } from '@phosphor-icons/react';
 import type { ModelInfo } from '../../types';
-import { formatTps, formatCurrency, formatDuration, formatEnergy, formatEnergyParts, formatNumber } from '../../lib/format/format';
+import { formatTps, formatCurrency, formatDuration, formatEnergy, formatNumber } from '../../lib/format/format';
 
 export function TpsTooltip({ activeTps, wallTps, lossPct, mode }: { activeTps: number; wallTps: number; lossPct: number; mode: 'avg' | 'weighted' }) {
   const wallShare = activeTps > 0 ? (wallTps / activeTps) * 100 : 0;

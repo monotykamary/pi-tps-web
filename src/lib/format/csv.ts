@@ -1,4 +1,4 @@
-import type { MultiSessionSummary } from '../types';
+import type { MultiSessionSummary } from '../../types';
 
 /** Minimal CSV escaping — quote if contains comma, quote, or newline */
 function csvEscape(s: string): string {

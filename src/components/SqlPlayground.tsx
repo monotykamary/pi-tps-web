@@ -760,7 +760,6 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
   // Only show the group whose children are currently visible in the viewport
   const _vi = rowVirtualizer.getVirtualItems();
   const _scrollOff = rowVirtualizer.scrollOffset ?? 0;
-  const _viewEnd = _scrollOff + (rowVirtualizer.getTotalSize ? rowVirtualizer.getTotalSize() : 0);
   let pinnedGroup: { nodeId: number; depth: number } | null = null;
   if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && _vi.length > 0) {
     // Find the first visible row that isn't a group — its parent group is the one to pin
