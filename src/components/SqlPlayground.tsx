@@ -853,31 +853,21 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
       sampled.push(displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? result.rows[i][idx] : null; }));
     }
     const widths = measureColWidths(displayColumns, sampled);
-    // Widen first column for tree indentation + caret + count badge + node text
+    // Widen first column for tree node rows: indent + caret + count + text
     if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
-      const maxDepth = (() => {
-        let d = 0;
-        function walk(nodes: TreeNode[], depth: number) {
-          for (const n of nodes) {
-            d = Math.max(d, depth);
-            if (n.children.length > 0) walk(n.children, depth + 1);
-          }
-        }
-        walk(tree, 0);
-        return d;
-      })();
-      // Measure the widest group node value at any depth
-      let maxNodeTextW = 0;
-      function measureNodes(nodes: TreeNode[]) {
+      let maxNodeRowW = 0;
+      function measureNodes(nodes: TreeNode[], depth: number) {
         for (const n of nodes) {
+          const indent = depth * 16;
           const textLen = (n.value === null ? 4 : String(n.value).length); // 4 = "NULL"
-          maxNodeTextW = Math.max(maxNodeTextW, textLen * 7 + 4); // charWidth + padding
-          if (n.children.length > 0) measureNodes(n.children);
+          const textW = textLen * 7 + 4;
+          // indent + caret(16) + gap(8) + text + count area(60)
+          maxNodeRowW = Math.max(maxNodeRowW, indent + 24 + textW + 60);
+          if (n.children.length > 0) measureNodes(n.children, depth + 1);
         }
       }
-      measureNodes(tree);
-      const treeOverhead = (maxDepth + 1) * 16 + 24 + 60 + maxNodeTextW; // indent + caret + count + text
-      widths[0] = Math.max(widths[0], treeOverhead);
+      measureNodes(tree, 0);
+      widths[0] = Math.max(widths[0], maxNodeRowW);
     }
     return widths;
   }, [result, displayColumns, tree, groupByCols, isTrivialTree]);
