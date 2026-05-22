@@ -1095,13 +1095,13 @@ export default function App() {
 
       {/* Session strip — shows when multiple sessions loaded */}
       {sessions.size > 0 && (
-        <div className="sticky top-[57px] sm:top-[65px] z-30 bg-[#fafafa]/95 dark:bg-[#18181b]/95 backdrop-blur-xl border-b border-zinc-200/40 dark:border-white/[0.06]">
+        <div className="sticky top-[57px] sm:top-[65px] z-30 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/40 dark:border-white/[0.06]">
           <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center gap-2">
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2 flex-1 min-w-0">
             <FolderOpen size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" weight="bold" />
             <button
               onClick={() => setActiveSessionId(null)}
-              className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+              className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-medium ${
                 activeSessionId === null
                   ? 'bg-accent/10 text-accent dark:bg-accent/15'
                   : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
@@ -1117,7 +1117,7 @@ export default function App() {
               return (
                 <div
                   key={sid}
-                  className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
+                  className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium cursor-pointer ${
                     activeSessionId === sid
                       ? 'bg-accent/10 text-accent dark:bg-accent/15'
                       : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
@@ -1288,7 +1288,7 @@ export default function App() {
                   <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300">Sessions Overview</h2>
                   <span className="ml-auto text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">{multiSummary.sessionCount} sessions · {formatNumber(multiSummary.totalCalls)} requests</span>
                 </div>
-                <div className="overflow-x-auto" style={{ contain: 'layout style paint' }}>
+                <div className="overflow-x-auto" style={{ contain: 'content' }}>
                   <table className="w-full text-[11px]">
                     <thead>
                       <tr className="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b border-zinc-200/30 dark:border-white/[0.04]">
@@ -1307,7 +1307,7 @@ export default function App() {
                       {multiSummary.sessions.map((s, i) => (
                         <tr
                           key={s.sessionId}
-                          className={`border-b border-zinc-200/20 dark:border-white/[0.03] hover:bg-zinc-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors ${
+                          className={`border-b border-zinc-200/20 dark:border-white/[0.03] hover:bg-zinc-50 dark:hover:bg-white/[0.02] cursor-pointer ${
                             i % 2 === 0 ? 'bg-zinc-50/30 dark:bg-white/[0.01]' : ''
                           }`}
                           onClick={() => setActiveSessionId(s.sessionId)}
