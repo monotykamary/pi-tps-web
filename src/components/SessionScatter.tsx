@@ -14,6 +14,8 @@ interface Props {
 }
 
 export default function SessionScatter({ multiSummary, onSessionClick }: Props) {
+  const hasCost = multiSummary.sessions.some(s => s.totalCostUsd !== null);
+
   const data = useMemo(() => {
     return multiSummary.sessions.map(s => ({
       x: s.weightedTps,
@@ -32,8 +34,6 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
       wallClockMs: s.wallClockMs,
     }));
   }, [multiSummary, hasCost]);
-
-  const hasCost = multiSummary.sessions.some(s => s.totalCostUsd !== null);
 
   const yLabel = hasCost ? 'Cost (USD)' : 'Wall-clock Duration';
   const yFormatter = hasCost
