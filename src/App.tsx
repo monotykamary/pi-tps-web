@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo, MultiSessionSummary } from './types';
@@ -786,6 +786,8 @@ export default function App() {
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'dashboard' | 'sql'>('dashboard');
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   // Derived: the events to display — either one session or all merged
   const events = useMemo<ParsedEvent[] | null>(() => {
@@ -973,7 +975,16 @@ export default function App() {
     return () => document.removeEventListener('paste', handlePaste);
   }, [addSession]);
 
-  // Sync events to DuckDB when switching to SQL tab or when sessions change while on SQL tab
+  // Measure header height for sticky session strip offset
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setHeaderHeight(Math.round(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     if (viewTab !== 'sql' || sessions.size === 0) return;
     const allEvents: ParsedEvent[] = [];
@@ -993,7 +1004,7 @@ export default function App() {
       onDragLeave={handleDragLeave}
     >
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/60 dark:border-white/[0.08]">
+      <header ref={headerRef} className="sticky top-0 z-40 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/60 dark:border-white/[0.08]">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2">
           <div className="flex items-center gap-3 shrink-0">
             <div className="p-2 bg-accent/10 dark:bg-accent/15 rounded-xl">
@@ -1009,7 +1020,7 @@ export default function App() {
               <div className="flex items-center gap-1 bg-white/60 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg p-0.5">
                 <button
                   onClick={() => setViewTab('dashboard')}
-                  className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
+                  className={`px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-200 ${
                     viewTab === 'dashboard'
                       ? 'bg-accent/10 text-accent dark:bg-accent/15'
                       : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
@@ -1019,7 +1030,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setViewTab('sql')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-200 ${
                     viewTab === 'sql'
                       ? 'bg-accent/10 text-accent dark:bg-accent/15'
                       : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
@@ -1031,104 +1042,23 @@ export default function App() {
               </div>
             )}
             <ThemeToggle theme={theme} setTheme={setTheme} />
-            <label className="relative cursor-pointer group shrink-0">
-              <input
-                type="file"
-                accept=".jsonl,.json"
-                multiple
-                className="sr-only"
-                onChange={handleFileInput}
-              />
-              <div className="flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all group-active:scale-[0.98]">
-                <FileArrowUp size={14} weight="bold" />
-                <span className="hidden sm:inline ml-1.5">Import JSONL</span>
-              </div>
-            </label>
+
             {sessionSummary && (
-              <>
-                {/* Desktop: horizontal button strip */}
-                <div className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 bg-white/80 dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-xl overflow-x-auto scrollbar-hide max-w-full">
-                  <Pulse size={12} className={selectedModel === null ? 'text-moss' : 'text-zinc-400 dark:text-zinc-500'} weight="fill" />
-                  <button
-                    onClick={() => setSelectedModel(null)}
-                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
-                      selectedModel === null
-                        ? 'bg-accent/10 text-accent dark:bg-accent/15'
-                        : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
-                    }`}
-                  >
-                    All
-                  </button>
+              <div className="relative min-w-0">
+                <select
+                  value={selectedModel ?? ''}
+                  onChange={(e) => setSelectedModel(e.target.value || null)}
+                  className="appearance-none bg-white dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-lg pl-2 pr-5 py-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[10rem] truncate"
+                >
+                  <option value="">All models</option>
                   {sessionSummary.models.map(m => (
-                    <button
-                      key={m.modelId}
-                      onClick={() => setSelectedModel(m.modelId === selectedModel ? null : m.modelId)}
-                      className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
-                        selectedModel === m.modelId
-                          ? 'bg-accent/10 text-accent dark:bg-accent/15'
-                          : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
-                      }`}
-                      title={`${m.modelId} · ${m.provider} · ${m.callCount} calls`}
-                    >
-                      {m.modelId.split('/').pop()}
-                      <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-400">{m.callCount}</span>
-                    </button>
+                    <option key={m.modelId} value={m.modelId}>
+                      {m.modelId.split('/')?.pop()} · {m.callCount} calls
+                    </option>
                   ))}
-                  {(sessionSummary.modelChangeCount > 0 || sessionSummary.rewindCount > 0) && (
-                    <>
-                      <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-                      <div className="flex items-center gap-1">
-                        {sessionSummary.modelChangeCount > 0 && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-accent" title={`${sessionSummary.modelChangeCount} model switches`}>
-                            <ArrowsLeftRight size={10} weight="bold" />
-                            {sessionSummary.modelChangeCount}
-                          </span>
-                        )}
-                        {sessionSummary.rewindCount > 0 && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-ember" title={`${sessionSummary.rewindCount} rewinds`}>
-                            <ArrowBendUpLeft size={10} weight="bold" />
-                            {sessionSummary.rewindCount}
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-                {/* Mobile: tiny select + icon-only counters */}
-                <div className="flex sm:hidden items-center gap-1.5 min-w-0">
-                  <div className="relative min-w-0">
-                    <select
-                      value={selectedModel ?? ''}
-                      onChange={(e) => setSelectedModel(e.target.value || null)}
-                      className="appearance-none bg-white dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-lg pl-2 pr-5 py-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[6.5rem] truncate"
-                    >
-                      <option value="">All</option>
-                      {sessionSummary.models.map(m => (
-                        <option key={m.modelId} value={m.modelId}>
-                          {m.modelId.split('/').pop()}
-                        </option>
-                      ))}
-                    </select>
-                    <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                  </div>
-                  {(sessionSummary.modelChangeCount > 0 || sessionSummary.rewindCount > 0) && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      {sessionSummary.modelChangeCount > 0 && (
-                        <span className="flex items-center gap-px text-[10px] text-accent" title={`${sessionSummary.modelChangeCount} model switches`}>
-                          <ArrowsLeftRight size={9} weight="bold" />
-                          <span className="metric-mono">{sessionSummary.modelChangeCount}</span>
-                        </span>
-                      )}
-                      {sessionSummary.rewindCount > 0 && (
-                        <span className="flex items-center gap-px text-[10px] text-ember" title={`${sessionSummary.rewindCount} rewinds`}>
-                          <ArrowBendUpLeft size={9} weight="bold" />
-                          <span className="metric-mono">{sessionSummary.rewindCount}</span>
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </>
+                </select>
+                <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+              </div>
             )}
           </div>
         </div>
@@ -1136,7 +1066,7 @@ export default function App() {
 
       {/* Session strip — shows when multiple sessions loaded */}
       {sessions.size > 0 && (
-        <div className="sticky top-[57px] sm:top-[65px] z-30 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/40 dark:border-white/[0.06]">
+        <div style={{ top: headerHeight ? `${headerHeight}px` : 0 }} className="sticky z-30 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/40 dark:border-white/[0.06]">
           <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center gap-2">
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2 flex-1 min-w-0">
             <FolderOpen size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" weight="bold" />

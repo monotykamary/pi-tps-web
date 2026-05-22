@@ -15,12 +15,12 @@ const options: { value: Theme; icon: React.ElementType; label: string }[] = [
 
 export default function ThemeToggle({ theme, setTheme }: Props) {
   return (
-    <div className="flex items-center gap-1 bg-zinc-100/80 dark:bg-zinc-800/50 rounded-xl p-1">
+    <div className="flex items-center gap-1 bg-white dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg p-0.5">
       {options.map(({ value, icon: Icon, label }) => (
         <button
           key={value}
           onClick={() => setTheme(value)}
-          className={`relative flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
+          className={`relative flex items-center justify-center p-1.5 text-xs font-medium rounded-lg transition-all ${
             theme === value
               ? 'text-zinc-800 dark:text-zinc-300'
               : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
@@ -35,7 +35,6 @@ export default function ThemeToggle({ theme, setTheme }: Props) {
             />
           )}
           <Icon size={14} weight="bold" className="relative z-10" />
-          <span className="relative z-10 hidden sm:inline">{label}</span>
         </button>
       ))}
     </div>
