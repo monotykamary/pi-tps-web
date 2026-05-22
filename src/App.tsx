@@ -1445,7 +1445,7 @@ export default function App() {
 
               {/* Right: Analysis Panel */}
               <div className="lg:col-span-4 flex flex-col gap-6">
-                {multiSummary && summaryModels.length > 1 && (
+                {summaryModels.length > 1 && (
                   <ModelPerformance
                     models={summaryModels}
                     avgTps={multiSummary.avgTps}

@@ -20,7 +20,7 @@ interface ModelRow {
   callCount: number;
   totalTokens: number;
   tpsPerToken: number | null;
-  blendedCostPer1kTokens: number | null;
+  blendedCostPer1MTokens: number | null;
   energyPerCall: number | null;
   blendedCostTotal: number | null;
   costSource: 'neuralwatt' | 'tps' | null;
@@ -33,8 +33,8 @@ function ModelPerformanceInner({ models, avgTps, weightedTps, totalCalls }: Prop
 
     const modelRows: ModelRow[] = models.map(m => {
       const tpsPerToken = m.callCount > 0 ? null : null; // We don't have per-model TPS from ModelInfo alone
-      const blendedCostPer1kTokens = m.blendedCostUsd !== null && m.totalTokens > 0
-        ? (m.blendedCostUsd / (m.totalTokens / 1000))
+      const blendedCostPer1MTokens = m.blendedCostUsd !== null && m.totalTokens > 0
+        ? (m.blendedCostUsd / (m.totalTokens / 1_000_000))
         : null;
       const energyPerCall = m.energyJoules !== null && m.callCount > 0
         ? m.energyJoules / m.callCount
@@ -46,7 +46,7 @@ function ModelPerformanceInner({ models, avgTps, weightedTps, totalCalls }: Prop
         callCount: m.callCount,
         totalTokens: m.totalTokens,
         tpsPerToken,
-        blendedCostPer1kTokens,
+        blendedCostPer1MTokens,
         energyPerCall,
         blendedCostTotal: m.blendedCostUsd,
         costSource: m.costSource,
@@ -54,13 +54,13 @@ function ModelPerformanceInner({ models, avgTps, weightedTps, totalCalls }: Prop
       };
     });
 
-    // Rank: most calls = most used; lowest cost/1k tokens = cheapest
+    // Rank: most calls = most used; lowest cost/1M tokens = cheapest
     // We highlight the most-used and cheapest models
     if (modelRows.length > 1) {
-      const withCost = modelRows.filter(r => r.blendedCostPer1kTokens !== null);
+      const withCost = modelRows.filter(r => r.blendedCostPer1MTokens !== null);
       if (withCost.length > 0) {
         const cheapest = withCost.reduce((a, b) =>
-          (a.blendedCostPer1kTokens ?? Infinity) < (b.blendedCostPer1kTokens ?? Infinity) ? a : b
+          (a.blendedCostPer1MTokens ?? Infinity) < (b.blendedCostPer1MTokens ?? Infinity) ? a : b
         );
         cheapest.rank = 'cheapest';
       }
@@ -97,7 +97,7 @@ function ModelPerformanceInner({ models, avgTps, weightedTps, totalCalls }: Prop
               <th className="text-right px-3 py-2 font-medium">Provider</th>
               <th className="text-right px-3 py-2 font-medium">Calls</th>
               <th className="text-right px-3 py-2 font-medium">Tokens</th>
-              <th className="text-right px-3 py-2 font-medium">Cost/1k tok</th>
+              <th className="text-right px-3 py-2 font-medium">Cost/1M tok</th>
               <th className="text-right px-3 py-2 font-medium">Total Cost</th>
               <th className="text-right px-3 py-2 font-medium">Energy/call</th>
               <th className="text-right px-3 py-2 font-medium">Source</th>
@@ -129,7 +129,7 @@ function ModelPerformanceInner({ models, avgTps, weightedTps, totalCalls }: Prop
                 <td className="px-3 py-2.5 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(r.callCount, 0)}</td>
                 <td className="px-3 py-2.5 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(r.totalTokens)}</td>
                 <td className="px-3 py-2.5 text-right metric-mono text-zinc-600 dark:text-zinc-300">
-                  {r.blendedCostPer1kTokens !== null ? `$${r.blendedCostPer1kTokens.toFixed(4)}` : '-'}
+                  {r.blendedCostPer1MTokens !== null ? `$${r.blendedCostPer1MTokens.toFixed(4)}` : '-'}
                 </td>
                 <td className="px-3 py-2.5 text-right metric-mono text-zinc-600 dark:text-zinc-300">
                   {r.blendedCostTotal !== null ? formatCurrency(r.blendedCostTotal) : '-'}
