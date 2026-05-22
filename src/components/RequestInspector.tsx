@@ -117,9 +117,9 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.4, type: 'spring', stiffness: 100, damping: 20 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-0 overflow-hidden flex flex-col"
       style={{ maxHeight: '750px' }}
     >

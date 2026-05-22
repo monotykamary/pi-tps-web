@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Warning, Lightning } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
 import { formatThreshold, formatDuration } from '../lib/parser';
@@ -90,8 +90,9 @@ function AnomalyDetectorInner({ events, thresholds }: Props) {
   if (anomalies.length === 0) {
     return (
       <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
         className="card-surface p-6"
       >
         <div className="flex items-center gap-2 mb-4">
@@ -115,9 +116,9 @@ function AnomalyDetectorInner({ events, thresholds }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.3, type: 'spring', stiffness: 100, damping: 20 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-6"
     >
       <div className="flex items-center justify-between mb-5">
@@ -131,34 +132,29 @@ function AnomalyDetectorInner({ events, thresholds }: Props) {
       </div>
 
       <div className="space-y-2.5 max-h-80 overflow-y-auto scrollbar-thin">
-        <AnimatePresence>
-          {anomalies.map((a, i) => (
-            <motion.div
-              key={`${a.event.id}-${a.type}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 + i * 0.06 }}
-              className={`p-3 rounded-xl border ${colorForSeverity(a.severity)}`}
-            >
-              <div className="flex items-start gap-2.5">
-                <div className="mt-0.5">
-                  {a.type === 'cache-drop' && <Lightning size={14} weight="bold" />}
-                  {a.type === 'slow-zone' && <Warning size={14} weight="bold" />}
-                  {a.type === 'high-new-input' && <Warning size={14} weight="bold" />}
-                  {a.type === 'stall-spike' && <Warning size={14} weight="bold" />}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{a.description}</p>
-                  <p className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400 mt-1">
-                    #{a.index + 1} · total={a.event.data.tokens.total.toLocaleString()}
-                    {a.event.energy && ` · ${(a.event.energy.cost_usd * 100).toFixed(2)}c`}
-                    {!a.event.energy && a.event.data.cost && ` · ~${(a.event.data.cost.total * 100).toFixed(2)}c`}
-                  </p>
-                </div>
+        {anomalies.map((a) => (
+          <div
+            key={`${a.event.id}-${a.type}`}
+            className={`p-3 rounded-xl border ${colorForSeverity(a.severity)}`}
+          >
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5">
+                {a.type === 'cache-drop' && <Lightning size={14} weight="bold" />}
+                {a.type === 'slow-zone' && <Warning size={14} weight="bold" />}
+                {a.type === 'high-new-input' && <Warning size={14} weight="bold" />}
+                {a.type === 'stall-spike' && <Warning size={14} weight="bold" />}
               </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{a.description}</p>
+                <p className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400 mt-1">
+                  #{a.index + 1} · total={a.event.data.tokens.total.toLocaleString()}
+                  {a.event.energy && ` · ${(a.event.energy.cost_usd * 100).toFixed(2)}c`}
+                  {!a.event.energy && a.event.data.cost && ` · ~${(a.event.data.cost.total * 100).toFixed(2)}c`}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </motion.div>
   );

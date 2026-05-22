@@ -135,9 +135,9 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.25, type: 'spring', stiffness: 100, damping: 20 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-6"
     >
       <div className="flex items-center justify-between mb-6">

@@ -55,9 +55,9 @@ function TimingDistributionInner({ events, thresholds }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.4, type: 'spring', stiffness: 100, damping: 20 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-6"
     >
       <div className="flex items-center justify-between mb-5">
@@ -86,7 +86,7 @@ function TimingDistributionInner({ events, thresholds }: Props) {
                 className={`h-full ${bin.color} rounded-lg`}
                 initial={{ width: 0 }}
                 animate={{ width: `${bin.barPct}%` }}
-                transition={{ delay: 0.5 + i * 0.06, duration: 0.6, type: 'spring', stiffness: 60 }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
               />
               {bin.count > 0 && (
                 <span

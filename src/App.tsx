@@ -1243,7 +1243,7 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
+                transition={{ duration: 0.2 }}
                 className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2"
               >
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip={
@@ -1283,7 +1283,7 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
+                transition={{ duration: 0.2 }}
                 className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden"
               >
                 <div className="px-4 py-3 border-b border-zinc-200/40 dark:border-white/[0.06] flex items-center gap-2">

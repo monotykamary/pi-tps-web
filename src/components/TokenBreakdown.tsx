@@ -19,9 +19,9 @@ interface Props {
 }
 
 function TokenBreakdownInner({ events }: Props) {
-  const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).slice(-30);
+  const sorted = React.useMemo(() => [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).slice(-30), [events]);
 
-  const data = sorted.map((e, i) => ({
+  const data = React.useMemo(() => sorted.map((e, i) => ({
     index: i + 1,
     input: e.data.tokens.input,
     output: e.data.tokens.output,
@@ -29,7 +29,7 @@ function TokenBreakdownInner({ events }: Props) {
     cacheWrite: e.data.tokens.cacheWrite,
     total: e.data.tokens.total,
     ttft: e.data.timing.ttftMs,
-  }));
+  })), [sorted]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
@@ -52,9 +52,9 @@ function TokenBreakdownInner({ events }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.35, type: 'spring', stiffness: 100, damping: 20 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-6"
     >
       <div className="flex items-center justify-between mb-6">

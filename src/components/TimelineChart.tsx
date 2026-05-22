@@ -15,14 +15,14 @@ interface Props {
 function TimelineChartInner({ buckets }: Props) {
   const [metric, setMetric] = useState<'ttft' | 'total' | 'tps'>('ttft');
 
-  const chartData = buckets.map(b => ({
+  const chartData = React.useMemo(() => buckets.map(b => ({
     ...b,
     ttft: b.avgTtft,
     total: b.avgTotal,
     tps: b.avgTps,
     tpsWall: b.avgWallTps,
     tpsLoss: b.avgTpsLoss,
-  }));
+  })), [buckets]);
 
   const metricConfig = {
     ttft: { label: 'TTFT', color: '#0891b2', fill: 'rgba(8,145,178,0.08)', unit: 'ms' },
@@ -84,9 +84,9 @@ function TimelineChartInner({ buckets }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.15, type: 'spring', stiffness: 100, damping: 20 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-6"
     >
       <div className="flex items-center justify-between mb-6">
@@ -142,7 +142,7 @@ function TimelineChartInner({ buckets }: Props) {
               stroke={config.color}
               strokeWidth={2}
               fill={`url(#fill-${metric})`}
-              animationDuration={800}
+              animationDuration={400}
             />
           </AreaChart>
         </ResponsiveContainer>

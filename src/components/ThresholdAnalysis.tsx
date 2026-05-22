@@ -61,9 +61,9 @@ function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.2, type: 'spring', stiffness: 100, damping: 20 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
       className="card-surface p-6"
     >
       <div className="flex items-center gap-2 mb-5">
@@ -76,11 +76,8 @@ function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
           const progress = s.below.count / (s.below.count + s.above.count);
 
           return (
-            <motion.div
+            <div
               key={s.threshold}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + i * 0.08 }}
               className="group"
             >
               <div className="flex items-center justify-between mb-2">
@@ -98,7 +95,7 @@ function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
                   className="h-full rounded-full bg-accent"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress * 100}%` }}
-                  transition={{ delay: 0.4 + i * 0.08, duration: 0.6, type: 'spring', stiffness: 60 }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
                 />
               </div>
 
@@ -124,7 +121,7 @@ function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
                   <p className="text-[10px] text-zinc-400 dark:text-zinc-400 mt-0.5">Above</p>
                 </div>
               </div>
-            </motion.div>
+            </div>
           );
         })}
       </div>
