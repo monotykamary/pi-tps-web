@@ -600,13 +600,12 @@ export default function App() {
                       <tr className="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b border-zinc-200/30 dark:border-white/[0.04]">
                         <th className="text-left px-4 py-2 font-medium">Session</th>
                         <th className="text-right px-3 py-2 font-medium">Requests</th>
-                        <th className="text-right px-3 py-2 font-medium">Tokens</th>
                         <th className="text-right px-3 py-2 font-medium">Avg TPS</th>
                         <th className="text-right px-3 py-2 font-medium">Wtd TPS</th>
                         <th className="text-right px-3 py-2 font-medium">Avg TTFT</th>
                         <th className="text-right px-3 py-2 font-medium">Cost</th>
                         <th className="text-right px-3 py-2 font-medium">Energy</th>
-                        <th className="text-right px-3 py-2 font-medium">Model</th>
+                        <th className="text-right px-3 py-2 font-medium">Tokens</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -622,13 +621,12 @@ export default function App() {
                             {s.fileName || s.sessionId.length > 20 ? (s.fileName || s.sessionId.slice(0, 20) + '…') : s.sessionId}
                           </td>
                           <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(s.totalCalls, 0)}</td>
-                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(s.totalTokens)}</td>
                           <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatTps(s.avgTps)}</td>
                           <td className="px-3 py-2 text-right metric-mono text-accent font-medium">{formatTps(s.weightedTps)}</td>
                           <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatDuration(Math.round(s.avgTtft))}</td>
                           <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatCurrency(s.totalCostUsd)}</td>
                           <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{s.totalEnergyJoules !== null ? formatEnergy(s.totalEnergyJoules) : '-'}</td>
-                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 max-w-[8rem] truncate">{s.model.split('/').pop()}</td>
+                          <td className="px-3 py-2 text-right metric-mono text-zinc-600 dark:text-zinc-300">{formatNumber(s.totalTokens)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -636,13 +634,12 @@ export default function App() {
                       <tr className="border-t border-zinc-200/50 dark:border-white/[0.06] font-semibold text-zinc-800 dark:text-zinc-200 bg-zinc-100/40 dark:bg-white/[0.03]">
                         <td className="px-4 py-2.5">Total ({multiSummary.sessionCount})</td>
                         <td className="px-3 py-2.5 text-right metric-mono">{formatNumber(multiSummary.totalCalls, 0)}</td>
-                        <td className="px-3 py-2.5 text-right metric-mono">{formatNumber(multiSummary.totalTokens)}</td>
                         <td className="px-3 py-2.5 text-right metric-mono">{formatTps(multiSummary.avgTps)}</td>
                         <td className="px-3 py-2.5 text-right metric-mono text-accent">{formatTps(multiSummary.weightedTps)}</td>
                         <td className="px-3 py-2.5 text-right metric-mono">{formatDuration(Math.round(multiSummary.avgTtft))}</td>
                         <td className="px-3 py-2.5 text-right metric-mono">{formatCurrency(multiSummary.totalCostUsd)}</td>
                         <td className="px-3 py-2.5 text-right metric-mono">{multiSummary.totalEnergyJoules !== null ? formatEnergy(multiSummary.totalEnergyJoules) : '-'}</td>
-                        <td className="px-3 py-2.5 text-right">—</td>
+                        <td className="px-3 py-2.5 text-right metric-mono">{formatNumber(multiSummary.totalTokens)}</td>
                       </tr>
                     </tfoot>
                   </table>
