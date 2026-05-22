@@ -853,7 +853,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
       sampled.push(displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? result.rows[i][idx] : null; }));
     }
     const widths = measureColWidths(displayColumns, sampled);
-    // Widen first column for tree indentation + caret + count badge
+    // Widen first column for tree indentation + caret + count badge + node text
     if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
       const maxDepth = (() => {
         let d = 0;
@@ -866,7 +866,17 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
         walk(tree, 0);
         return d;
       })();
-      const treeOverhead = (maxDepth + 1) * 16 + 24 + 60; // indent + caret + "9,999" count
+      // Measure the widest group node value at any depth
+      let maxNodeTextW = 0;
+      function measureNodes(nodes: TreeNode[]) {
+        for (const n of nodes) {
+          const textLen = (n.value === null ? 4 : String(n.value).length); // 4 = "NULL"
+          maxNodeTextW = Math.max(maxNodeTextW, textLen * 7 + 4); // charWidth + padding
+          if (n.children.length > 0) measureNodes(n.children);
+        }
+      }
+      measureNodes(tree);
+      const treeOverhead = (maxDepth + 1) * 16 + 24 + 60 + maxNodeTextW; // indent + caret + count + text
       widths[0] = Math.max(widths[0], treeOverhead);
     }
     return widths;
@@ -1111,11 +1121,11 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
           className={'relative mx-4 mb-4 ' + (editorCollapsed ? 'mt-0 ' : 'mt-2 ') + 'rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-800 overflow-hidden'}
         >
           <div ref={scrollContainerRef} className="overflow-auto flex-1 min-h-0 max-h-full custom-scrollbar" style={{ overscrollBehavior: 'none' }}>
-            <table className="text-left" style={{ tableLayout: 'fixed', width: 'auto', minWidth: '100%' }}>
+            <table className="text-left" style={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 {displayColumns.map((col, j) => {
                   const w = colWidths[j];
-                  return <col key={col} style={{ width: w + 'px', minWidth: w + 'px', transition: j === 0 ? 'width 0.15s ease' : undefined }} />;
+                  return <col key={col} style={{ width: w + 'px', minWidth: w + 'px' }} />;
                 })}
               </colgroup>
               <thead ref={theadRef} className="sticky top-0 z-30 bg-white dark:bg-zinc-800">
