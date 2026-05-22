@@ -59,14 +59,15 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
   // Sample data for rendering — cap at 800 points for smooth DOM/SVG performance.
   // When the dataset exceeds this, take every N-th point + always include
   // anomalies and slow-category points so outliers are never dropped.
-  const MAX_POINTS = 400;
+  const MAX_POINTS = 100;
   const displayData = useMemo(() => {
     if (data.length <= MAX_POINTS) return data;
-    // Always keep anomalies and slow points
+    // Always keep anomalies and slow points, then uniformly sample the rest
     const important = data.filter(d => d.category === 'anomaly' || d.category === 'slow');
     const rest = data.filter(d => d.category !== 'anomaly' && d.category !== 'slow');
-    const step = rest.length / (MAX_POINTS - important.length);
-    const sampled = rest.filter((_, i) => i % step < 1);
+    const remaining = Math.max(0, MAX_POINTS - important.length);
+    const step = rest.length / remaining;
+    const sampled = remaining > 0 ? rest.filter((_, i) => Math.floor(i / step) !== Math.floor((i + 1) / step)) : [];
     return [...important, ...sampled];
   }, [data]);
 
