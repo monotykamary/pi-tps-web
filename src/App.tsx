@@ -1089,7 +1089,8 @@ export default function App() {
       {/* Session strip — shows when multiple sessions loaded */}
       {sessions.size > 0 && (
         <div className="sticky top-[57px] sm:top-[65px] z-30 bg-[#fafafa]/95 dark:bg-[#18181b]/95 backdrop-blur-xl border-b border-zinc-200/40 dark:border-white/[0.06]">
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2 flex-1 min-w-0">
             <FolderOpen size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" weight="bold" />
             <button
               onClick={() => setActiveSessionId(null)}
@@ -1128,7 +1129,8 @@ export default function App() {
                 </div>
               );
             })}
-            <div className="flex-1" />
+            </div>
+            <div className="shrink-0 flex items-center gap-1.5 py-2 border-l border-zinc-200/40 dark:border-white/[0.06] pl-3 ml-1">
             <button
               onClick={handleExportCsv}
               className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-1"
@@ -1143,6 +1145,7 @@ export default function App() {
             >
               Clear all
             </button>
+            </div>
           </div>
         </div>
       )}
