@@ -28,15 +28,12 @@ function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent =
   accent?: boolean;
 }) {
   return (
-    <motion.div
-      layout
+    <div
       className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
         accent
           ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
           : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
       }`}
-      whileHover={{ y: -1 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
       <div className={`shrink-0 p-1.5 rounded-lg ${
         accent
@@ -59,7 +56,7 @@ function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent =
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
