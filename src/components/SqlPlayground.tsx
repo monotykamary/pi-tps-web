@@ -811,7 +811,8 @@ export default function SqlPlayground() {
     <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-0 flex-1">
       {/* Header — title + collapsed query + collapse toggle */}
       <div
-        className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200/60 dark:border-white/[0.06] shrink-0"
+        onClick={() => editorCollapsed ? expandEditor() : (result ? collapseEditor() : undefined)}
+        className={`flex items-center gap-2 px-4 py-3 border-b border-zinc-200/60 dark:border-white/[0.06] shrink-0 transition-colors duration-150 ${result ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-white/[0.04]' : ''}`}
       >
         <Database size={16} className="text-accent shrink-0" weight="bold" />
         <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300 shrink-0">SQL Playground</h2>
@@ -819,7 +820,7 @@ export default function SqlPlayground() {
         {editorCollapsed && sqlPreview && (
           <>
             <span className="text-zinc-300 dark:text-zinc-600 shrink-0">·</span>
-            <code className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 cursor-pointer" onClick={expandEditor}>{sqlPreview}</code>
+            <code className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0">{sqlPreview}</code>
           </>
         )}
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
