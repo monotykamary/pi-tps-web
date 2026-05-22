@@ -72,7 +72,7 @@ function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
       </div>
 
       <div className="space-y-4">
-        {stats.map((s, i) => {
+        {stats.map((s) => {
           const progress = s.below.count / (s.below.count + s.above.count);
 
           return (

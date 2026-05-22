@@ -78,7 +78,7 @@ function TimingDistributionInner({ events, thresholds }: Props) {
       </div>
 
       <div className="space-y-3">
-        {bins.map((bin, i) => (
+        {bins.map((bin) => (
           <div key={bin.label} className="flex items-center gap-3">
             <span className="text-[11px] metric-mono text-zinc-500 dark:text-zinc-400 w-14 shrink-0 text-right">{bin.label}</span>
             <div className="flex-1 h-7 bg-zinc-50 dark:bg-white/[0.04] rounded-lg overflow-hidden relative">

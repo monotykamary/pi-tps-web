@@ -423,7 +423,7 @@ export function ingestJsonl(raw: string, sessionId?: string): IngestResult {
  * array. The original result.events is safe to reuse (e.g. for DuckDB loading).
  */
 export function deriveEvents(result: IngestResult): ParsedEvent[] {
-  const { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter: baseSynthCounter, sessionId } = result;
+  const { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter: baseSynthCounter } = result;
   let synthCounter = baseSynthCounter;
   const derived: ParsedEvent[] = [];
 
@@ -904,18 +904,6 @@ export function computeMultiSessionSummary(
   let energyAccum = 0;
   let globalStart = '';
   let globalEnd = '';
-
-  // Per-model aggregation across sessions
-  const modelMap = new Map<string, {
-    provider: string;
-    count: number;
-    totalTokens: number;
-    energyCost: number;
-    energyJoules: number;
-    blendedCost: number;
-    hasEnergyCost: boolean;
-    hasBlendedCost: boolean;
-  }>();
 
   // We need all TPS + energy events combined for the model rollup
   const allTps: TpsEvent[] = [];

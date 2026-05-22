@@ -891,7 +891,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   }, [multiSummary]);
 
-  const handlePointClick = useCallback((id: string) => setSelectedTpsId(id), []);
+  const handlePointClick = useCallback((id: string | null) => { if (id) setSelectedTpsId(id); }, []);
   const handleSessionClick = useCallback((sid: string) => setActiveSessionId(sid), []);
   const handleBucketClick = useCallback(() => {}, []);
 
