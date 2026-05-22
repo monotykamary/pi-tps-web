@@ -1288,7 +1288,7 @@ export default function App() {
                   <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300">Sessions Overview</h2>
                   <span className="ml-auto text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">{multiSummary.sessionCount} sessions · {formatNumber(multiSummary.totalCalls)} requests</span>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" style={{ contain: 'layout style paint' }}>
                   <table className="w-full text-[11px]">
                     <thead>
                       <tr className="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b border-zinc-200/30 dark:border-white/[0.04]">
