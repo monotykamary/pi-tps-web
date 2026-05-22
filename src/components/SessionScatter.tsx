@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
@@ -13,7 +13,7 @@ interface Props {
   onSessionClick: (sessionId: string) => void;
 }
 
-export default function SessionScatter({ multiSummary, onSessionClick }: Props) {
+function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
   const hasCost = multiSummary.sessions.some(s => s.totalCostUsd !== null);
 
   const data = useMemo(() => {
@@ -194,3 +194,5 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
     </motion.div>
   );
 }
+
+export default React.memo(SessionScatterInner);

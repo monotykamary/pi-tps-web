@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Timer } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
@@ -18,7 +18,7 @@ function formatTtft(sorted: number[], p: number): string {
   return formatDuration(sorted[idx]);
 }
 
-export default function TimingDistribution({ events, thresholds }: Props) {
+function TimingDistributionInner({ events, thresholds }: Props) {
   const { slowTtft, fastTtft, cacheThreshold } = thresholds;
 
   const sorted = useMemo(() => {
@@ -123,3 +123,5 @@ export default function TimingDistribution({ events, thresholds }: Props) {
     </motion.div>
   );
 }
+
+export default React.memo(TimingDistributionInner);

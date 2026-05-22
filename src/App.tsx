@@ -793,7 +793,6 @@ export default function App() {
     if (activeSessionId) {
       return sessions.get(activeSessionId)?.events ?? null;
     }
-    // Merge all sessions' derived events
     const all: ParsedEvent[] = [];
     for (const s of sessions.values()) {
       all.push(...s.events);
@@ -802,46 +801,53 @@ export default function App() {
   }, [sessions, activeSessionId]);
 
   const allTpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
+  const allEnergyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
+  const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
+  const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
+
+  // Unfiltered summary — used for header model list (always full set)
+  const sessionSummary: ConversationSummary | null = useMemo(
+    () => allTpsEvents.length > 0 ? computeSummary(allTpsEvents, allEnergyEvents, modelChanges, rewindEvents) : null,
+    [allTpsEvents, allEnergyEvents, modelChanges, rewindEvents]
+  );
+
+  // Filtered events when a model is selected
   const tpsEvents = useMemo(
     () => selectedModel ? allTpsEvents.filter(e => e.data.model.modelId === selectedModel) : allTpsEvents,
     [allTpsEvents, selectedModel]
   );
-  const allEnergyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
   const energyEvents = useMemo(
     () => {
       if (!selectedModel) return allEnergyEvents;
-      // Only include energy events whose parentId matches a TPS event in the
-      // filtered set — otherwise computeSummary treats unmatched energy events
-      // as "orphans" and double-counts their cost.
       const tpsNsIds = new Set(tpsEvents.map(e => `${e.sessionId}:${e.id}`));
       return allEnergyEvents.filter(e => tpsNsIds.has(`${e.sessionId}:${e.parentId ?? ''}`));
     },
     [allEnergyEvents, selectedModel, tpsEvents]
   );
-  const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
-  const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
-  const paired = useMemo(() => pairEnergyWithTps(tpsEvents, energyEvents), [tpsEvents, energyEvents]);
-  // Full-session summary for header model list (always unfiltered)
-  const sessionSummary: ConversationSummary | null = useMemo(
-    () => allTpsEvents.length > 0 ? computeSummary(allTpsEvents, allEnergyEvents, modelChanges, rewindEvents) : null,
-    [allTpsEvents, allEnergyEvents, modelChanges, rewindEvents]
-  );
-  // Filtered summary for metrics strip and dashboard
+
+  // Filtered summary — reuse sessionSummary when unfiltered (avoid double compute)
   const summary: ConversationSummary | null = useMemo(
-    () => tpsEvents.length > 0 ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null,
-    [tpsEvents, energyEvents, modelChanges, rewindEvents]
+    () => selectedModel
+      ? (tpsEvents.length > 0 ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null)
+      : sessionSummary,
+    [selectedModel, tpsEvents, energyEvents, modelChanges, rewindEvents, sessionSummary]
   );
-  // Multi-session summary for per-session breakdowns
+
+  const paired = useMemo(() => pairEnergyWithTps(tpsEvents, energyEvents), [tpsEvents, energyEvents]);
+
+  // Multi-session summary — avoids re-filtering per-session events by caching
+  // tps/energy counts on SessionState
   const multiSummary: MultiSessionSummary | null = useMemo(() => {
     if (sessions.size <= 1 || activeSessionId) return null;
-    const sessionData = Array.from(sessions.entries()).map(([sessionId, s]) => ({
-      sessionId,
-      tpsEvents: getTpsEvents(s.events),
-      energyEvents: getEnergyEvents(s.events),
-      fileName: s.fileName ?? null,
-    }));
+    const sessionData = Array.from(sessions.entries()).map(([sessionId, s]) => {
+      // Use cached arrays from session state instead of re-filtering
+      const tps = getTpsEvents(s.events);
+      const energy = getEnergyEvents(s.events);
+      return { sessionId, tpsEvents: tps, energyEvents: energy, fileName: s.fileName ?? null };
+    });
     return computeMultiSessionSummary(sessionData);
   }, [sessions, activeSessionId]);
+
   const buckets = useMemo(() => computeTimingBuckets(tpsEvents), [tpsEvents]);
   const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
@@ -887,6 +893,10 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
   }, [multiSummary]);
+
+  const handlePointClick = useCallback((id: string) => setSelectedTpsId(id), []);
+  const handleSessionClick = useCallback((sid: string) => setActiveSessionId(sid), []);
+  const handleBucketClick = useCallback(() => {}, []);
 
   const loadSample = useCallback(async () => {
     setLoading(true);
@@ -1341,10 +1351,10 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left: Charts */}
               <div className="lg:col-span-8 space-y-6">
-                <TimelineChart buckets={buckets} onBucketClick={() => { }} />
-                <TimingScatter events={paired} onPointClick={(id) => setSelectedTpsId(id)} thresholds={dataThresholds} />
+                <TimelineChart buckets={buckets} onBucketClick={handleBucketClick} />
+                <TimingScatter events={paired} onPointClick={handlePointClick} thresholds={dataThresholds} />
                 {multiSummary && multiSummary.sessionCount > 1 && (
-                  <SessionScatter multiSummary={multiSummary} onSessionClick={(sid) => setActiveSessionId(sid)} />
+                  <SessionScatter multiSummary={multiSummary} onSessionClick={handleSessionClick} />
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <TimingDistribution events={paired} thresholds={dataThresholds} />
@@ -1368,7 +1378,7 @@ export default function App() {
                 <RequestInspector
                   timeline={timeline}
                   selectedId={selectedTpsId}
-                  onSelect={(id) => setSelectedTpsId(id)}
+                  onSelect={handlePointClick}
                   thresholds={dataThresholds}
                 />
               </div>

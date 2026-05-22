@@ -30,7 +30,7 @@ function isTpsEvent(e: TimelineEvent): e is TpsEvent & { energy?: EnergyPayload 
 
 const SPARKLINE_MAX_BARS = 60;
 
-export default function RequestInspector({ timeline, selectedId, onSelect, thresholds }: Props) {
+function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: Props) {
   const tpsEvents = useMemo(() => timeline.filter(isTpsEvent), [timeline]);
 
   const cacheHitRates = useMemo(() => {
@@ -454,6 +454,8 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
 
   return null;
 }
+
+export default React.memo(RequestInspectorInner);
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 

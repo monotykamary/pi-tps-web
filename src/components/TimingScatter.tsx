@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
@@ -14,7 +14,7 @@ interface Props {
   thresholds: DataThresholds;
 }
 
-export default function TimingScatter({ events, onPointClick, thresholds }: Props) {
+function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
   const [scale, setScale] = useState<'linear' | 'log'>('log');
   const { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio, anomalyInputThreshold } = thresholds;
 
@@ -227,3 +227,5 @@ export default function TimingScatter({ events, onPointClick, thresholds }: Prop
     </motion.div>
   );
 }
+
+export default React.memo(TimingScatterInner);

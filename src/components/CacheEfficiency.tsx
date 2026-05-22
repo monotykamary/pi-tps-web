@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { HardDrives } from '@phosphor-icons/react';
 import {
@@ -12,7 +12,7 @@ interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
 }
 
-export default function CacheEfficiency({ events }: Props) {
+function CacheEfficiencyInner({ events }: Props) {
   const sorted = useMemo(() => {
     return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [events]);
@@ -147,3 +147,5 @@ export default function CacheEfficiency({ events }: Props) {
     </motion.div>
   );
 }
+
+export default React.memo(CacheEfficiencyInner);

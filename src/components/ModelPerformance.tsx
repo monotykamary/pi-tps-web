@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy } from '@phosphor-icons/react';
 import type { ModelInfo } from '../types';
@@ -27,7 +27,7 @@ interface ModelRow {
   rank: 'fastest' | 'cheapest' | null;
 }
 
-export default function ModelPerformance({ models, avgTps, weightedTps, totalCalls }: Props) {
+function ModelPerformanceInner({ models, avgTps, weightedTps, totalCalls }: Props) {
   const rows = useMemo(() => {
     if (models.length === 0) return [];
 
@@ -158,3 +158,5 @@ export default function ModelPerformance({ models, avgTps, weightedTps, totalCal
     </motion.div>
   );
 }
+
+export default React.memo(ModelPerformanceInner);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Warning, Lightning } from '@phosphor-icons/react';
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
@@ -11,7 +11,7 @@ interface Props {
   thresholds: DataThresholds;
 }
 
-export default function AnomalyDetector({ events, thresholds }: Props) {
+function AnomalyDetectorInner({ events, thresholds }: Props) {
   const { slowTtft, lowContext, cacheThreshold, cacheDropMinTotal, cacheDropMinInput, highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity } = thresholds;
 
   const anomalies = useMemo(() => {
@@ -172,3 +172,5 @@ function severityRank(s: string): number {
     default: return 0;
   }
 }
+
+export default React.memo(AnomalyDetectorInner);

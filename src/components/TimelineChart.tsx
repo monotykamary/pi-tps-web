@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -12,7 +12,7 @@ interface Props {
   onBucketClick: (bucket: TimingBucket) => void;
 }
 
-export default function TimelineChart({ buckets }: Props) {
+function TimelineChartInner({ buckets }: Props) {
   const [metric, setMetric] = useState<'ttft' | 'total' | 'tps'>('ttft');
 
   const chartData = buckets.map(b => ({
@@ -150,3 +150,5 @@ export default function TimelineChart({ buckets }: Props) {
     </motion.div>
   );
 }
+
+export default React.memo(TimelineChartInner);

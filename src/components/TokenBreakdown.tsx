@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { motion } from 'framer-motion';
 
 import {
@@ -17,7 +18,7 @@ interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
 }
 
-export default function TokenBreakdown({ events }: Props) {
+function TokenBreakdownInner({ events }: Props) {
   const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).slice(-30);
 
   const data = sorted.map((e, i) => ({
@@ -107,3 +108,5 @@ export default function TokenBreakdown({ events }: Props) {
     </motion.div>
   );
 }
+
+export default React.memo(TokenBreakdownInner);

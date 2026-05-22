@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Gauge, TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
 import type { TpsEvent, DataThresholds } from '../types';
@@ -13,7 +13,7 @@ interface Props {
 
 
 
-export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
+function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
   // Derive 4 display thresholds from data-derived boundaries
   const displayThresholds = useMemo(() => {
     const maxTokens = events.length ? Math.max(...events.map(e => e.data.tokens.total)) : 80000;
@@ -146,3 +146,5 @@ export default function ThresholdAnalysis({ events, thresholds: dt }: Props) {
     </motion.div>
   );
 }
+
+export default React.memo(ThresholdAnalysisInner);
