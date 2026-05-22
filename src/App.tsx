@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database } from '@phosphor-icons/react';
 import type { ParsedEvent, ModelInfo, MultiSessionSummary, DataThresholds } from './types';
 import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, pairEnergyWithTps, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts, exportMultiSessionCsv } from './lib/parser';
@@ -800,6 +800,7 @@ export default function App() {
   const [sessions, setSessions] = useState<Map<string, SessionState>>(new Map());
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -842,17 +843,30 @@ export default function App() {
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
 
   // Load events into DuckDB whenever sessions change
+  // Debounced: when multiple files are dropped in quick succession, each addSession
+  // triggers this effect. We batch them by delaying 100ms so loadEvents runs once
+  // with the full set of events instead of once per file.
   useEffect(() => {
-    if (sessions.size === 0) return;
-    const allEvts: ParsedEvent[] = [];
-    for (const s of sessions.values()) {
-      allEvts.push(...s.events);
+    if (sessions.size === 0) {
+      setDbLoading(false);
+      return;
     }
-    loadEvents(allEvts).then(() => {
-      setDbVersion(v => v + 1);
-    }).catch((err) => {
-      console.error('DuckDB load failed:', err);
-    });
+    setDbLoading(true);
+    setLoading(false); // FileReader phase done, dbLoading takes over
+    const timer = setTimeout(() => {
+      const allEvts: ParsedEvent[] = [];
+      for (const s of sessions.values()) {
+        allEvts.push(...s.events);
+      }
+      loadEvents(allEvts).then(() => {
+        setDbVersion(v => v + 1);
+        setDbLoading(false);
+      }).catch((err) => {
+        console.error('DuckDB load failed:', err);
+        setDbLoading(false);
+      });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [sessions]);
 
   // ---- DuckDB-powered queries ----
@@ -991,6 +1005,7 @@ export default function App() {
     setActiveSessionId(null);
     setSelectedModel(null);
     setSelectedTpsId(null);
+    setDbLoading(false);
     resetDB().catch(() => {});
   }, []);
 
@@ -1018,8 +1033,9 @@ export default function App() {
       addSession(text, 'sample.jsonl');
     } catch (e) {
       console.error('Failed to load sample', e);
+      setLoading(false);
     }
-    setLoading(false);
+    // Don't set setLoading(false) here — dbLoading takes over from the sessions useEffect
   }, [addSession]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -1035,7 +1051,7 @@ export default function App() {
       reader.onload = () => {
         addSession(reader.result as string, file.name);
         loaded++;
-        if (loaded === files.length) setLoading(false);
+        // Don't clear loading here — dbLoading takes over from the sessions useEffect
       };
       reader.readAsText(file);
     }
@@ -1233,20 +1249,13 @@ export default function App() {
           </div>
       ) : (
       <div className="flex-1 min-h-0 overflow-y-auto">
-      <AnimatePresence mode="wait">
-      {loading && !summary ? (
-          <motion.div
-            key="loader"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex items-center justify-center min-h-[60dvh]"
-          >
+      {(dbLoading || loading) && !summary ? (
+          <div className="flex items-center justify-center min-h-[60dvh]">
             <div className="flex flex-col items-center gap-4">
               <div className="w-10 h-10 border-2 border-zinc-200 dark:border-white/[0.06] border-t-accent rounded-full animate-spin" />
-              <p className="text-sm text-zinc-400 dark:text-zinc-400 font-medium">Loading telemetry...</p>
+              <p className="text-sm text-zinc-400 dark:text-zinc-400 font-medium">Loading telemetry…</p>
             </div>
-          </motion.div>
+          </div>
         ) : !summary ? (
           <motion.div
             key="empty"
@@ -1300,11 +1309,7 @@ export default function App() {
             </div>
           </motion.div>
         ) : (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
+          <div
             className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8 rounded-[2rem] border-2 border-dashed transition-colors ${
               dragOver
                 ? 'border-accent bg-accent/5 dark:border-accent dark:bg-accent/10'
@@ -1456,9 +1461,8 @@ export default function App() {
                 />
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
       </div>
       )}
     </div>
