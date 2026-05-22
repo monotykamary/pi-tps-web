@@ -422,8 +422,8 @@ export default React.memo(RequestInspectorInner);
 
 // ─── Virtualized list ────────────────────────────────────────────────────────
 
-const TPS_ROW_H = 45;
-const STRUCT_ROW_H = 58;
+const TPS_ROW_H = 60;
+const STRUCT_ROW_H = 44;
 
 function getRowHeight(e: TimelineEvent) {
   return isTpsEvent(e) ? TPS_ROW_H : STRUCT_ROW_H;
