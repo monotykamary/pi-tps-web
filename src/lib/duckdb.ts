@@ -3,6 +3,7 @@ import type { ParsedEvent } from '../types';
 
 let db: duckdb.AsyncDuckDB | null = null;
 let conn: duckdb.AsyncDuckDBConnection | null = null;
+let sqlConn: duckdb.AsyncDuckDBConnection | null = null;
 let initPromise: Promise<void> | null = null;
 
 export interface QueryResult {
@@ -48,7 +49,18 @@ export async function getDuckDB(): Promise<{
 
   await initPromise;
   if (!db || !conn) throw new Error('DuckDB initialization failed');
+  // Create a second connection for the SQL playground so user queries
+  // don't block dashboard auto-queries (DuckDB serializes per-connection).
+  if (!sqlConn) {
+    sqlConn = await db.connect();
+  }
   return { db, conn };
+}
+
+/** Get a dedicated connection for the SQL playground. */
+export async function getSqlConn(): Promise<duckdb.AsyncDuckDBConnection> {
+  const { conn: c } = await getDuckDB();
+  return sqlConn ?? c;
 }
 
 export async function loadEvents(events: ParsedEvent[]): Promise<void> {

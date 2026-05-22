@@ -10,10 +10,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
  *     () => querySummary(modelFilter),
  *     [modelFilter]
  *   );
+ *
+ * Pass { skip: true } to avoid running the query (keeps previous data).
  */
 export function useDuckQuery<T>(
   queryFn: () => Promise<T>,
   deps: unknown[] = [],
+  options: { skip?: boolean } = {},
 ): { data: T | null; loading: boolean; error: Error | null } {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +26,11 @@ export function useDuckQuery<T>(
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
+
+    if (options.skip) {
+      setLoading(false);
+      return;
+    }
 
     const run = async () => {
       setLoading(true);
@@ -50,7 +58,7 @@ export function useDuckQuery<T>(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, options.skip]);
 
   useEffect(() => {
     return () => { mountedRef.current = false; };

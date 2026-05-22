@@ -19,7 +19,7 @@ import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@cod
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { useTheme } from '../hooks/useTheme';
-import { runQuery } from '../lib/duckdb';
+import { getSqlConn } from '../lib/duckdb';
 import type { QueryResult } from '../lib/duckdb';
 
 const EXAMPLE_QUERIES = [
@@ -456,8 +456,22 @@ export default function SqlPlayground() {
       setError(null);
       try {
         await ensureDb();
-        const r = await runQuery(sqlToRun);
-        if (r) {
+        const c = await getSqlConn();
+        const raw = await c.query(sqlToRun);
+        const columns = raw.schema.fields.map((f: { name: string }) => f.name);
+        const rows: unknown[][] = [];
+        for (const batch of raw.batches) {
+          const colArrays = columns.map((name: string) => batch.getChild(name));
+          for (let i = 0; i < batch.numRows; i++) {
+            rows.push(colArrays.map((arr) => {
+              const v = arr?.get(i);
+              if (typeof v === 'bigint') return Number(v);
+              return v ?? null;
+            }));
+          }
+        }
+        const r: QueryResult = { columns, rows, rowCount: rows.length };
+        if (r.rowCount > 0 || columns.length > 0) {
           setResult(r);
           const detected = detectGroupByCols(sqlToRun, r.columns);
           setGroupByCols(detected);
@@ -503,8 +517,22 @@ export default function SqlPlayground() {
       setDetailExpandedPaths(new Set());
       try {
         await ensureDb();
-        const r = await runQuery(pivotSql);
-        if (r) setResult(r);
+        const c = await getSqlConn();
+        const raw = await c.query(pivotSql);
+        const columns = raw.schema.fields.map((f: { name: string }) => f.name);
+        const rows: unknown[][] = [];
+        for (const batch of raw.batches) {
+          const colArrays = columns.map((name: string) => batch.getChild(name));
+          for (let i = 0; i < batch.numRows; i++) {
+            rows.push(colArrays.map((arr) => {
+              const v = arr?.get(i);
+              if (typeof v === 'bigint') return Number(v);
+              return v ?? null;
+            }));
+          }
+        }
+        const r: QueryResult = { columns, rows, rowCount: rows.length };
+        if (r.rowCount > 0 || columns.length > 0) setResult(r);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Pivot query failed');
       } finally {

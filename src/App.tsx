@@ -860,13 +860,13 @@ export default function App() {
   // Summary metrics — replaces computeSummary()
   const { data: summary } = useDuckQuery<ConversationSummaryRow>(
     () => querySummary(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel]
+    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
 
   // Models for header dropdown + tooltip breakdown
   const { data: queryModelsResult } = useDuckQuery<ModelInfoRow[]>(
     () => queryModels(activeSessionId),
-    [dbVersion, activeSessionId]
+    [dbVersion, activeSessionId], { skip: viewTab === 'sql' }
   );
 
   // Per-model list for header dropdown
@@ -887,7 +887,7 @@ export default function App() {
   // Thresholds — replaces deriveDataThresholds()
   const { data: dataThresholds } = useDuckQuery<DataThresholdsRow>(
     () => queryDataThresholds(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel]
+    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
 
   // Adapt DataThresholdsRow → DataThresholds for components still using JS types
@@ -909,31 +909,31 @@ export default function App() {
   // Timing buckets — replaces computeTimingBuckets()
   const { data: buckets } = useDuckQuery<TimingBucketRow[]>(
     () => queryTimingBuckets(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel]
+    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
 
   // Scatter points — replaces pairEnergyWithTps() + TimingScatter useMemo
   const { data: scatterPoints } = useDuckQuery<ScatterPoint[]>(
     () => dataThresholds ? queryScatter(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
-    [dbVersion, activeSessionId, selectedModel, dataThresholds]
+    [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
   );
 
   // Threshold crossings — replaces ThresholdAnalysis useMemo
   const { data: thresholdStats } = useDuckQuery<ThresholdStat[]>(
     () => dataThresholds ? queryThresholdCrossings(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
-    [dbVersion, activeSessionId, selectedModel, dataThresholds]
+    [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
   );
 
   // Anomalies — replaces AnomalyDetector useMemo
   const { data: anomalies } = useDuckQuery<AnomalyRow[]>(
     () => dataThresholds ? queryAnomalies(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
-    [dbVersion, activeSessionId, selectedModel, dataThresholds]
+    [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
   );
 
   // Timeline — replaces buildTimeline()
   const { data: timelineRows } = useDuckQuery<TimelineEventRow[]>(
     () => queryTimeline(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel]
+    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
 
   // Multi-session summary — replaces computeMultiSessionSummary()
@@ -960,7 +960,7 @@ export default function App() {
       }
       return queryMultiSessionSummary(fileNames);
     },
-    [dbVersion, sessions.size, activeSessionId]
+    [dbVersion, sessions.size, activeSessionId], { skip: viewTab === 'sql' }
   );
 
   const addSession = useCallback((raw: string, fileName?: string) => {
