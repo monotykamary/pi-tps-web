@@ -1,10 +1,11 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database } from '@phosphor-icons/react';
-import type { ParsedEvent, ConversationSummary, ModelInfo, MultiSessionSummary } from './types';
-import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeMultiSessionSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts, exportMultiSessionCsv } from './lib/parser';
+import type { ParsedEvent, ModelInfo, MultiSessionSummary, DataThresholds } from './types';
+import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, pairEnergyWithTps, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts, exportMultiSessionCsv } from './lib/parser';
 import type { IngestResult } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
+import { useDuckQuery } from './hooks/useDuckQuery';
 import { SmartTooltip } from './components/SmartTooltip';
 import TimelineChart from './components/TimelineChart';
 import TimingScatter from './components/TimingScatter';
@@ -19,6 +20,15 @@ import ModelPerformance from './components/ModelPerformance';
 import ThemeToggle from './components/ThemeToggle';
 import SqlPlayground from './components/SqlPlayground';
 import { loadEvents, resetDB } from './lib/duckdb';
+import {
+  querySummary, queryModels, queryDataThresholds, queryTimingBuckets,
+  queryScatter, queryThresholdCrossings, queryAnomalies, queryTimeline,
+  queryMultiSessionSummary,
+} from './lib/queries';
+import type {
+  ConversationSummaryRow, DataThresholdsRow, TimingBucketRow, ScatterPoint,
+  ThresholdStat, AnomalyRow, TimelineEventRow, ModelInfoRow, SessionSummaryRow,
+} from './lib/queries';
 
 function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent = false }: {
   icon: React.ElementType;
@@ -789,7 +799,11 @@ export default function App() {
   const headerRef = useRef<HTMLElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
+  // Track DB version — increments when sessions change, triggers re-queries
+  const [dbVersion, setDbVersion] = useState(0);
+
   // Derived: the events to display — either one session or all merged
+  // Used for per-event detail in components not yet migrated to SQL
   const events = useMemo<ParsedEvent[] | null>(() => {
     if (sessions.size === 0) return null;
     if (activeSessionId) {
@@ -804,55 +818,142 @@ export default function App() {
 
   const allTpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
   const allEnergyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
-  const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
-  const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
 
-  // Unfiltered summary — used for header model list (always full set)
-  const sessionSummary: ConversationSummary | null = useMemo(
-    () => allTpsEvents.length > 0 ? computeSummary(allTpsEvents, allEnergyEvents, modelChanges, rewindEvents) : null,
-    [allTpsEvents, allEnergyEvents, modelChanges, rewindEvents]
-  );
+  // JS-derived paired data for components not yet migrated to SQL
+  const paired = useMemo(() => pairEnergyWithTps(allTpsEvents, allEnergyEvents), [allTpsEvents, allEnergyEvents]);
 
-  // Filtered events when a model is selected
+  // Filtered TPS events for components still using JS-based data
   const tpsEvents = useMemo(
     () => selectedModel ? allTpsEvents.filter(e => e.data.model.modelId === selectedModel) : allTpsEvents,
     [allTpsEvents, selectedModel]
   );
-  const energyEvents = useMemo(
-    () => {
-      if (!selectedModel) return allEnergyEvents;
-      const tpsNsIds = new Set(tpsEvents.map(e => `${e.sessionId}:${e.id}`));
-      return allEnergyEvents.filter(e => tpsNsIds.has(`${e.sessionId}:${e.parentId ?? ''}`));
-    },
-    [allEnergyEvents, selectedModel, tpsEvents]
-  );
 
-  // Filtered summary — reuse sessionSummary when unfiltered (avoid double compute)
-  const summary: ConversationSummary | null = useMemo(
-    () => selectedModel
-      ? (tpsEvents.length > 0 ? computeSummary(tpsEvents, energyEvents, modelChanges, rewindEvents) : null)
-      : sessionSummary,
-    [selectedModel, tpsEvents, energyEvents, modelChanges, rewindEvents, sessionSummary]
-  );
-
-  const paired = useMemo(() => pairEnergyWithTps(tpsEvents, energyEvents), [tpsEvents, energyEvents]);
-
-  // Multi-session summary — avoids re-filtering per-session events by caching
-  // tps/energy counts on SessionState
-  const multiSummary: MultiSessionSummary | null = useMemo(() => {
-    if (sessions.size <= 1 || activeSessionId) return null;
-    const sessionData = Array.from(sessions.entries()).map(([sessionId, s]) => {
-      // Use cached arrays from session state instead of re-filtering
-      const tps = getTpsEvents(s.events);
-      const energy = getEnergyEvents(s.events);
-      return { sessionId, tpsEvents: tps, energyEvents: energy, fileName: s.fileName ?? null };
-    });
-    return computeMultiSessionSummary(sessionData);
-  }, [sessions, activeSessionId]);
-
-  const buckets = useMemo(() => computeTimingBuckets(tpsEvents), [tpsEvents]);
-  const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
+  // Structural events for timeline
+  const modelChanges = useMemo(() => events ? getModelChangeEvents(events) : [], [events]);
+  const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
+
+  // Adapt DataThresholdsRow → DataThresholds for components still using JS types
+  const dataThresholdsJs = useMemo(() => dataThresholds ? {
+    cacheThreshold: dataThresholds.cacheThreshold,
+    lowContext: dataThresholds.lowContext,
+    slowTtft: dataThresholds.slowTtft,
+    fastTtft: dataThresholds.fastTtft,
+    highNewInputRatio: dataThresholds.highNewInputRatio,
+    anomalyInputThreshold: dataThresholds.anomalyInputThreshold,
+    cacheDropMinTotal: dataThresholds.cacheDropMinTotal,
+    cacheDropMinInput: dataThresholds.cacheDropMinInput,
+    highInputRatio: dataThresholds.highInputRatio,
+    highInputSeverityToken: dataThresholds.highInputSeverityToken,
+    stallCountThreshold: dataThresholds.stallCountThreshold,
+    stallMsSeverity: dataThresholds.stallMsSeverity,
+  } as DataThresholds : undefined, [dataThresholds]);
+
+  // Load events into DuckDB whenever sessions change
+  useEffect(() => {
+    if (sessions.size === 0) return;
+    const allEvts: ParsedEvent[] = [];
+    for (const s of sessions.values()) {
+      allEvts.push(...s.events);
+    }
+    loadEvents(allEvts).then(() => {
+      setDbVersion(v => v + 1);
+    }).catch((err) => {
+      console.error('DuckDB load failed:', err);
+    });
+  }, [sessions]);
+
+  // ---- DuckDB-powered queries ----
+
+  // Summary metrics — replaces computeSummary()
+  const { data: summary } = useDuckQuery<ConversationSummaryRow>(
+    () => querySummary(selectedModel),
+    [dbVersion, selectedModel]
+  );
+
+  // Models for header dropdown + tooltip breakdown
+  const { data: queryModelsResult } = useDuckQuery<ModelInfoRow[]>(
+    () => queryModels(),
+    [dbVersion]
+  );
+
+  // Per-model list for header dropdown
+  const modelList = queryModelsResult ?? [];
+
+  // Adapt ModelInfoRow → ModelInfo for tooltip compatibility
+  const summaryModels: ModelInfo[] = queryModelsResult?.map(m => ({
+    modelId: m.modelId,
+    provider: m.provider,
+    callCount: m.callCount,
+    totalTokens: m.totalTokens,
+    energyCostUsd: m.energyCostUsd,
+    energyJoules: m.energyJoules,
+    blendedCostUsd: m.blendedCostUsd,
+    costSource: m.costSource,
+  })) ?? [];
+
+  // Thresholds — replaces deriveDataThresholds()
+  const { data: dataThresholds } = useDuckQuery<DataThresholdsRow>(
+    () => queryDataThresholds(selectedModel),
+    [dbVersion, selectedModel]
+  );
+
+  // Timing buckets — replaces computeTimingBuckets()
+  const { data: buckets } = useDuckQuery<TimingBucketRow[]>(
+    () => queryTimingBuckets(selectedModel),
+    [dbVersion, selectedModel]
+  );
+
+  // Scatter points — replaces pairEnergyWithTps() + TimingScatter useMemo
+  const { data: scatterPoints } = useDuckQuery<ScatterPoint[]>(
+    () => dataThresholds ? queryScatter(dataThresholds, selectedModel) : Promise.resolve([]),
+    [dbVersion, selectedModel, dataThresholds]
+  );
+
+  // Threshold crossings — replaces ThresholdAnalysis useMemo
+  const { data: thresholdStats } = useDuckQuery<ThresholdStat[]>(
+    () => dataThresholds ? queryThresholdCrossings(dataThresholds, selectedModel) : Promise.resolve([]),
+    [dbVersion, selectedModel, dataThresholds]
+  );
+
+  // Anomalies — replaces AnomalyDetector useMemo
+  const { data: anomalies } = useDuckQuery<AnomalyRow[]>(
+    () => dataThresholds ? queryAnomalies(dataThresholds, selectedModel) : Promise.resolve([]),
+    [dbVersion, selectedModel, dataThresholds]
+  );
+
+  // Timeline — replaces buildTimeline()
+  const { data: timelineRows } = useDuckQuery<TimelineEventRow[]>(
+    () => queryTimeline(selectedModel),
+    [dbVersion, selectedModel]
+  );
+
+  // Multi-session summary — replaces computeMultiSessionSummary()
+  const { data: multiSummary } = useDuckQuery<{
+    sessionCount: number;
+    totalCalls: number;
+    totalTokens: number;
+    totalOutput: number;
+    totalCostUsd: number | null;
+    totalEnergyJoules: number | null;
+    sessions: SessionSummaryRow[];
+    models: ModelInfoRow[];
+    avgTps: number;
+    weightedTps: number;
+    avgTtft: number;
+    timeRangeStart: string;
+    timeRangeEnd: string;
+  } | null>(
+    () => {
+      if (sessions.size <= 1 || activeSessionId) return Promise.resolve(null);
+      const fileNames = new Map<string, string | null>();
+      for (const [sid, s] of sessions.entries()) {
+        fileNames.set(sid, s.fileName ?? null);
+      }
+      return queryMultiSessionSummary(fileNames);
+    },
+    [dbVersion, sessions.size, activeSessionId]
+  );
 
   const addSession = useCallback((raw: string, fileName?: string) => {
     const ingest = ingestJsonl(raw);
@@ -887,7 +988,7 @@ export default function App() {
 
   const handleExportCsv = useCallback(() => {
     if (!multiSummary) return;
-    const csv = exportMultiSessionCsv(multiSummary);
+    const csv = exportMultiSessionCsv(multiSummary as unknown as MultiSessionSummary);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -985,16 +1086,6 @@ export default function App() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  useEffect(() => {
-    if (viewTab !== 'sql' || sessions.size === 0) return;
-    const allEvents: ParsedEvent[] = [];
-    for (const s of sessions.values()) {
-      allEvents.push(...s.events);
-    }
-    loadEvents(allEvents).catch((err) => {
-      console.error('DuckDB load failed:', err);
-    });
-  }, [sessions, viewTab]);
 
   return (
     <div
@@ -1043,7 +1134,7 @@ export default function App() {
             )}
             <ThemeToggle theme={theme} setTheme={setTheme} />
 
-            {sessionSummary && (
+            {modelList.length > 0 && (
               <div className="relative min-w-0">
                 <select
                   value={selectedModel ?? ''}
@@ -1051,7 +1142,7 @@ export default function App() {
                   className="appearance-none bg-white dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-lg pl-2 pr-5 py-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[10rem] truncate"
                 >
                   <option value="">All models</option>
-                  {sessionSummary.models.map(m => (
+                  {modelList.map(m => (
                     <option key={m.modelId} value={m.modelId}>
                       {m.modelId.split('/')?.pop()} · {m.callCount} calls
                     </option>
@@ -1141,7 +1232,7 @@ export default function App() {
               <SqlPlayground />
             </div>
           </motion.div>
-        ) : loading && !events ? (
+        ) : loading && !summary ? (
           <motion.div
             key="loader"
             initial={{ opacity: 0 }}
@@ -1154,7 +1245,7 @@ export default function App() {
               <p className="text-sm text-zinc-400 dark:text-zinc-400 font-medium">Loading telemetry...</p>
             </div>
           </motion.div>
-        ) : !events || tpsEvents.length === 0 ? (
+        ) : !summary ? (
           <motion.div
             key="empty"
             initial={{ opacity: 0, y: 20 }}
@@ -1229,7 +1320,7 @@ export default function App() {
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip={
   <RequestsTooltip
     total={summary.totalCalls}
-    models={summary.models}
+    models={summaryModels}
     avgTokensPerCall={summary.avgTokensPerCall}
     stalledCalls={summary.stalledCalls}
     cachedCalls={summary.cachedCalls}
@@ -1241,7 +1332,7 @@ export default function App() {
                 <TpsPill icon={Barbell} label="Wtd TPS" activeTps={summary.weightedTps} wallTps={summary.weightedWallTps} lossPct={summary.weightedTpsLoss} accent mode="weighted" />
                 <MetricPill icon={Clock} label="Avg TTFT" value={formatDuration(Math.round(summary.avgTtft))} tooltip={<TtftTooltip avgTtft={summary.avgTtft} p50={summary.ttftP50} p75={summary.ttftP75} p90={summary.ttftP90} p99={summary.ttftP99} min={summary.minTtft} max={summary.maxTtft} />} />
                 <MetricPill icon={Flame} label="Stalls (ITL)" value={formatNumber(summary.totalStallCount)} accent tooltip={<StallsTooltip count={summary.totalStallCount} ms={summary.totalStallMs} totalTimeMs={summary.totalTimeMs} />} />
-                <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} energyCost={summary.energyCostUsd} costSource={summary.costSource} models={summary.models} totalTokens={summary.totalTokens} />} />
+                <MetricPill icon={Coins} label="Cost" value={formatCurrency(summary.totalCostUsd)} tooltip={<CostTooltip totalCost={summary.totalCostUsd} energyCost={summary.energyCostUsd} costSource={summary.costSource} models={summaryModels} totalTokens={summary.totalTokens} />} />
                 {(() => {
                   const energy = summary.totalEnergyJoules !== null ? formatEnergyParts(summary.totalEnergyJoules) : null;
                   return (
@@ -1250,7 +1341,7 @@ export default function App() {
                       label="Energy"
                       value={energy ? energy.value : '-'}
                       unit={energy ? energy.unit : undefined}
-                      tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} models={summary.models} totalCalls={summary.totalCalls} />}
+                      tooltip={<EnergyTooltip joules={summary.totalEnergyJoules} energyCost={summary.energyCostUsd} models={summaryModels} totalCalls={summary.totalCalls} />}
                     />
                   );
                 })()}
@@ -1332,12 +1423,12 @@ export default function App() {
               {/* Left: Charts */}
               <div className="lg:col-span-8 space-y-6">
                 <TimelineChart buckets={buckets} onBucketClick={handleBucketClick} />
-                <TimingScatter events={paired} onPointClick={handlePointClick} thresholds={dataThresholds} />
+                <TimingScatter events={paired} onPointClick={handlePointClick} thresholds={dataThresholdsJs} />
                 {multiSummary && multiSummary.sessionCount > 1 && (
-                  <SessionScatter multiSummary={multiSummary} onSessionClick={handleSessionClick} />
+                  <SessionScatter multiSummary={multiSummary as unknown as MultiSessionSummary} onSessionClick={handleSessionClick} />
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <TimingDistribution events={paired} thresholds={dataThresholds} />
+                  <TimingDistribution events={paired} thresholds={dataThresholdsJs} />
                   <CacheEfficiency events={paired} />
                 </div>
                 <TokenBreakdown events={paired} />
@@ -1345,21 +1436,21 @@ export default function App() {
 
               {/* Right: Analysis Panel */}
               <div className="lg:col-span-4 flex flex-col gap-6">
-                {multiSummary && multiSummary.models.length > 1 && (
+                {multiSummary && summaryModels.length > 1 && (
                   <ModelPerformance
-                    models={multiSummary.models}
+                    models={summaryModels}
                     avgTps={multiSummary.avgTps}
                     weightedTps={multiSummary.weightedTps}
                     totalCalls={multiSummary.totalCalls}
                   />
                 )}
-                <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholds} />
-                <AnomalyDetector events={paired} thresholds={dataThresholds} />
+                <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholdsJs} />
+                <AnomalyDetector events={paired} thresholds={dataThresholdsJs} />
                 <RequestInspector
                   timeline={timeline}
                   selectedId={selectedTpsId}
                   onSelect={handlePointClick}
-                  thresholds={dataThresholds}
+                  thresholds={dataThresholdsJs}
                 />
               </div>
             </div>

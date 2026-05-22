@@ -54,9 +54,10 @@ export async function getDuckDB(): Promise<{
 export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   const { conn: c } = await getDuckDB();
 
-  await c.query(`DROP TABLE IF EXISTS events`);
+  await c.query(`DROP VIEW IF EXISTS tps_paired`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
+  await c.query(`DROP TABLE IF EXISTS events`);
 
   // All events go into a single table with a discriminator column.
   // Nullable columns cover the union of all event types.
@@ -217,7 +218,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
     await c.query(`INSERT INTO events VALUES ${chunk.join(',\n')}`);
   }
 
-  // Convenience views for the most common query patterns
+  // Flat views for the most common query patterns
   await c.query(`
     CREATE VIEW tps_flat AS
     SELECT
@@ -237,6 +238,60 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       energy_joules, energy_cost_usd
     FROM events
     WHERE type = 'energy'
+  `);
+
+  // Enriched view: TPS rows with effective_tps, wall_tps, effective_ms,
+  // and LEFT JOINed energy data. This is the primary view for all dashboard queries.
+  //
+  // effective_tps mirrors computeSafeEffectiveMs / computeEffectiveTps from parser.ts:
+  //   Primary branch (stream-based, excludes TTFT):
+  //     if streamMs > 0 AND stallMs < streamMs AND (streamMs - stallMs) >= 50 AND stallMs < (streamMs - stallMs)
+  //       → effective_ms = streamMs - stallMs
+  //   Fallback branch (generationMs-based, includes TTFT):
+  //     if generationMs >= 50
+  //       → effectiveGenMs = generationMs - stallMs
+  //         if effectiveGenMs < 200 OR stallMs > generationMs * 0.85
+  //           → partial stall reduction: effective_ms = max(generationMs - stallMs/2, 50)
+  //         else → effective_ms = max(effectiveGenMs, 50)
+  //   Else: effective_ms = 0, effective_tps = 0
+  await c.query(`
+    CREATE VIEW tps_paired AS
+    WITH base AS (
+      SELECT
+        t.session_id, t.id, t.parent_id, t.timestamp,
+        t.provider, t.model_id,
+        t.tokens_input, t.tokens_output, t.tokens_cache_read, t.tokens_cache_write, t.tokens_total,
+        t.ttft_ms, t.total_ms, t.generation_ms, t.stream_ms, t.stall_ms, t.stall_count, t.tps,
+        t.cost_input, t.cost_output, t.cost_cache_read, t.cost_cache_write, t.cost_total,
+        e.energy_joules,
+        e.energy_cost_usd,
+        CASE
+          WHEN t.stream_ms > 0 AND t.stall_ms < t.stream_ms
+               AND (t.stream_ms - t.stall_ms) >= 50
+               AND t.stall_ms < (t.stream_ms - t.stall_ms)
+            THEN t.stream_ms - t.stall_ms
+          WHEN t.generation_ms >= 50 THEN
+            CASE
+              WHEN (t.generation_ms - t.stall_ms) < 200
+                   OR t.stall_ms > t.generation_ms * 0.85
+                THEN greatest(t.generation_ms - t.stall_ms / 2.0, 50)
+              ELSE greatest(t.generation_ms - t.stall_ms, 50)
+            END
+          ELSE 0
+        END AS effective_ms
+      FROM tps_flat t
+      LEFT JOIN energy_flat e
+        ON t.session_id = e.session_id AND t.id = e.parent_id
+    )
+    SELECT
+      *,
+      CASE WHEN effective_ms > 0
+        THEN tokens_output / (effective_ms / 1000.0)
+        ELSE 0 END AS effective_tps,
+      CASE WHEN total_ms > 0
+        THEN tokens_output / (total_ms / 1000.0)
+        ELSE 0 END AS wall_tps
+    FROM base
   `);
 }
 
@@ -264,7 +319,8 @@ export async function runQuery(sql: string): Promise<QueryResult> {
 
 export async function resetDB(): Promise<void> {
   const { conn: c } = await getDuckDB();
-  await c.query(`DROP TABLE IF EXISTS events`);
+  await c.query(`DROP VIEW IF EXISTS tps_paired`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
+  await c.query(`DROP TABLE IF EXISTS events`);
 }
