@@ -861,8 +861,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
           const indent = depth * 16;
           const textLen = (n.value === null ? 4 : String(n.value).length); // 4 = "NULL"
           const textW = textLen * 7 + 4;
-          // indent + caret(16) + gap(8) + text + count area(60)
-          maxNodeRowW = Math.max(maxNodeRowW, indent + 24 + textW + 60);
+          // indent + px-3(12) + caret(16) + gap(8) + text + right-padding(12)
+          maxNodeRowW = Math.max(maxNodeRowW, indent + 48 + textW);
           if (n.children.length > 0) measureNodes(n.children, depth + 1);
         }
       }
