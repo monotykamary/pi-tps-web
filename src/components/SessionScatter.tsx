@@ -17,7 +17,7 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
   const data = useMemo(() => {
     return multiSummary.sessions.map(s => ({
       x: s.weightedTps,
-      y: s.totalCostUsd ?? 0,
+      y: hasCost ? (s.totalCostUsd ?? 0) : s.wallClockMs,
       z: s.totalCalls,
       sessionId: s.sessionId,
       fileName: s.fileName,
@@ -26,13 +26,19 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
       totalCalls: s.totalCalls,
       avgTtft: s.avgTtft,
       avgTps: s.avgTps,
+      weightedTps: s.weightedTps,
       model: s.model,
       energy: s.totalEnergyJoules,
       wallClockMs: s.wallClockMs,
     }));
-  }, [multiSummary]);
+  }, [multiSummary, hasCost]);
 
   const hasCost = multiSummary.sessions.some(s => s.totalCostUsd !== null);
+
+  const yLabel = hasCost ? 'Cost (USD)' : 'Wall-clock Duration';
+  const yFormatter = hasCost
+    ? (v: number) => formatCurrency(v)
+    : (v: number) => formatDuration(v);
 
   const xDomain = useMemo(() => {
     if (data.length === 0) return [0, 100];
@@ -46,25 +52,11 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
   const yDomain = useMemo(() => {
     if (data.length === 0) return [0, 1];
     const vals = data.map(d => d.y);
-    if (!hasCost) {
-      // Fallback: use wall-clock ms instead of cost
-      const msVals = data.map(d => d.wallClockMs);
-      const min = Math.min(...msVals);
-      const max = Math.max(...msVals);
-      const pad = Math.max((max - min) * 0.1, 1000);
-      return [Math.max(0, min - pad), max + pad];
-    }
     const min = Math.min(...vals);
     const max = Math.max(...vals);
-    const pad = Math.max((max - min) * 0.1, 0.001);
+    const pad = Math.max((max - min) * 0.1, hasCost ? 0.001 : 1000);
     return [Math.max(0, min - pad), max + pad];
   }, [data, hasCost]);
-
-  const yLabel = hasCost ? 'Cost (USD)' : 'Wall-clock Duration';
-  const yFormatter = hasCost
-    ? (v: number) => formatCurrency(v)
-    : (v: number) => formatDuration(v);
-  const yDataKey = hasCost ? 'y' : 'wallClockMs';
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
@@ -160,11 +152,10 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
               axisLine={false}
               tickLine={false}
               dy={8}
-              label={{ value: 'Weighted TPS (tok/s)', position: 'insideBottom', offset: -4, style: { fontSize: 10, fill: 'var(--text-tertiary)' } }}
             />
             <YAxis
               type="number"
-              dataKey={yDataKey}
+              dataKey="y"
               name={yLabel}
               domain={yDomain as [number, number]}
               tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
@@ -172,7 +163,6 @@ export default function SessionScatter({ multiSummary, onSessionClick }: Props) 
               tickLine={false}
               dx={-4}
               tickFormatter={yFormatter}
-              label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 16, style: { fontSize: 10, fill: 'var(--text-tertiary)' } }}
             />
             <ZAxis type="number" dataKey="z" range={[60, 400]} />
             <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
