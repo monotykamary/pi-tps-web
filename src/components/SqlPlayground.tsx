@@ -420,9 +420,10 @@ const cmDarkHighlight = syntaxHighlighting(oneDarkHighlightStyle);
 
 interface SqlPlaygroundProps {
   dbVersion: number;
+  activeSessionId: string | null;
 }
 
-export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
+export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygroundProps) {
   const { theme } = useTheme();
   const [sql, setSql] = useState('');
   const [originalSql, setOriginalSql] = useState('');
@@ -463,7 +464,7 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
   }, []);
 
   const runQueryInternal = useCallback(
-    async (querySql?: string) => {
+    async (querySql?: string, sessionFilter?: string | null) => {
       const sqlToRun = querySql ?? sql;
       if (!sqlToRun.trim()) return;
       setRunning(true);
@@ -474,7 +475,11 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
         // Wrap user query with a limit to avoid pulling millions of rows into the UI.
         // If the user already has LIMIT, the inner LIMIT applies first,
         // and the outer LIMIT is a no-op.
-        const limitedSql = `SELECT * FROM (${sqlToRun.replace(/;+\s*$/, '')}) AS _q LIMIT 50000`;
+        let wrapped = sqlToRun.replace(/;+\s*$/, '');
+        if (sessionFilter) {
+          wrapped = `SELECT * FROM (${wrapped}) AS _q WHERE session_id = '${sessionFilter.replace(/'/g, "''")}'`;
+        }
+        const limitedSql = `SELECT * FROM (${wrapped}) AS _q LIMIT 50000`;
         const raw = await c.query(limitedSql);
         const columns = raw.schema.fields.map((f: { name: string }) => f.name);
         const rows: unknown[][] = [];
@@ -508,8 +513,8 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
     if (groupByCols.length === 0) {
       setOriginalSql(sql);
     }
-    runQueryInternal(sql);
-  }, [sql, runQueryInternal, groupByCols]);
+    runQueryInternal(sql, activeSessionId);
+  }, [sql, runQueryInternal, groupByCols, activeSessionId]);
 
   // Sync the stable run callback into a ref for use inside CodeMirror keymap
   useEffect(() => {
@@ -519,11 +524,20 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
   // Re-run the current query when the underlying DB data changes (session add/remove)
   useEffect(() => {
     if (dbVersion > 0 && result && sql.trim()) {
-      runQueryInternal(sql);
+      runQueryInternal(sql, activeSessionId);
     }
   // Only trigger on dbVersion changes, not on sql/result changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbVersion]);
+
+  // Re-run the current query when the session selection changes
+  useEffect(() => {
+    if (result && sql.trim()) {
+      runQueryInternal(sql, activeSessionId);
+    }
+  // Only trigger on activeSessionId changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   const runPivotQuery = useCallback(
     async (cols: string[]) => {
@@ -532,7 +546,7 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
         setPendingGroupByCols([]);
         setSql(originalSql);
         if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: originalSql } });
-        runQueryInternal(originalSql);
+        runQueryInternal(originalSql, activeSessionId);
         return;
       }
       const pivotSql = buildPivotSql(originalSql, cols);
@@ -540,40 +554,11 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
       setSql(pivotSql);
       if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: pivotSql } });
       setPendingGroupByCols(cols);
-      setRunning(true);
-      setError(null);
+      runQueryInternal(pivotSql, activeSessionId);
       setExpandedPaths(new Set());
       setDetailExpandedPaths(new Set());
-      try {
-        await ensureDb();
-        const c = await getSqlConn();
-        const raw = await c.query(`SELECT * FROM (${pivotSql}) AS _q LIMIT 50000`);
-        const columns = raw.schema.fields.map((f: { name: string }) => f.name);
-        const rows: unknown[][] = [];
-        for (const batch of raw.batches) {
-          const colArrays = columns.map((name: string) => batch.getChild(name));
-          for (let i = 0; i < batch.numRows; i++) {
-            rows.push(colArrays.map((arr) => {
-              const v = arr?.get(i);
-              if (typeof v === 'bigint') return Number(v);
-              return v ?? null;
-            }));
-          }
-        }
-        const r: QueryResult = { columns, rows, rowCount: rows.length };
-        if (r.rowCount > 0 || columns.length > 0) {
-          setResult(r);
-          setGroupByCols(cols);
-          setPendingGroupByCols([]);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Pivot query failed');
-        setPendingGroupByCols([]);
-      } finally {
-        setRunning(false);
-      }
     },
-    [originalSql, ensureDb, runQueryInternal],
+    [originalSql, ensureDb, runQueryInternal, activeSessionId],
   );
 
   // Initialize CodeMirror
@@ -980,7 +965,7 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
                 setExpandedPaths(new Set());
                 setDetailExpandedPaths(new Set());
                 setError(null);
-                runQueryInternal(eq.sql);
+                runQueryInternal(eq.sql, activeSessionId);
               }}
               className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 text-zinc-500 dark:text-zinc-400 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all duration-200 active:scale-[0.97]"
             >
@@ -1363,7 +1348,6 @@ export default function SqlPlayground({ dbVersion }: SqlPlaygroundProps) {
                 {result.rowCount.toLocaleString()} rows
                 {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? (' \u00B7 ' + groupByCols.length + ' level' + (groupByCols.length > 1 ? 's' : '')) : ''}
               </span>
-              <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">Drag headers to group bar</span>
               <button
                 onClick={handleDownloadCsv}
                 className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-1"
