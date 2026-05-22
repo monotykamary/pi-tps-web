@@ -787,6 +787,14 @@ interface SessionState {
   fileName?: string;
 }
 
+// Default thresholds used before DuckDB query resolves
+const defaultThresholds: DataThresholds = {
+  cacheThreshold: 65000, lowContext: 32000, slowTtft: 15000, fastTtft: 3000,
+  highNewInputRatio: 0.15, anomalyInputThreshold: 10000, cacheDropMinTotal: 10000,
+  cacheDropMinInput: 5000, highInputRatio: 0.5, highInputSeverityToken: 20000,
+  stallCountThreshold: 3, stallMsSeverity: 5000,
+};
+
 export default function App() {
   const { theme, setTheme } = useTheme();
   const [sessions, setSessions] = useState<Map<string, SessionState>>(new Map());
@@ -1422,13 +1430,13 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left: Charts */}
               <div className="lg:col-span-8 space-y-6">
-                <TimelineChart buckets={buckets} onBucketClick={handleBucketClick} />
-                <TimingScatter events={paired} onPointClick={handlePointClick} thresholds={dataThresholdsJs} />
+                <TimelineChart buckets={buckets ?? []} onBucketClick={handleBucketClick} />
+                <TimingScatter events={paired} onPointClick={handlePointClick} thresholds={dataThresholdsJs ?? defaultThresholds} />
                 {multiSummary && multiSummary.sessionCount > 1 && (
                   <SessionScatter multiSummary={multiSummary as unknown as MultiSessionSummary} onSessionClick={handleSessionClick} />
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <TimingDistribution events={paired} thresholds={dataThresholdsJs} />
+                  <TimingDistribution events={paired} thresholds={dataThresholdsJs ?? defaultThresholds} />
                   <CacheEfficiency events={paired} />
                 </div>
                 <TokenBreakdown events={paired} />
@@ -1444,13 +1452,13 @@ export default function App() {
                     totalCalls={multiSummary.totalCalls}
                   />
                 )}
-                <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholdsJs} />
-                <AnomalyDetector events={paired} thresholds={dataThresholdsJs} />
+                <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholdsJs ?? defaultThresholds} />
+                <AnomalyDetector events={paired} thresholds={dataThresholdsJs ?? defaultThresholds} />
                 <RequestInspector
                   timeline={timeline}
                   selectedId={selectedTpsId}
                   onSelect={handlePointClick}
-                  thresholds={dataThresholdsJs}
+                  thresholds={dataThresholdsJs ?? defaultThresholds}
                 />
               </div>
             </div>
