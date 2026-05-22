@@ -392,7 +392,7 @@ export default function App() {
                   <option value="">All models</option>
                   {modelList.map(m => (
                     <option key={m.modelId} value={m.modelId}>
-                      {m.modelId.split('/')?.pop()} · {m.callCount} calls
+                      ({m.provider}) {m.modelId.split('/')?.pop()}
                     </option>
                   ))}
                 </select>
