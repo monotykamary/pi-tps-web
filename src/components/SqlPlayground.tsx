@@ -1,0 +1,978 @@
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  Play,
+  CaretRight,
+  DotsSixVertical,
+  X,
+  Table,
+} from '@phosphor-icons/react';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
+import { EditorState, Compartment } from '@codemirror/state';
+import { sql as sqlLang, SQLDialect } from '@codemirror/lang-sql';
+import { oneDarkHighlightStyle, oneDarkTheme } from '@codemirror/theme-one-dark';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
+import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { useTheme } from '../hooks/useTheme';
+import { runQuery } from '../lib/duckdb';
+import type { QueryResult } from '../lib/duckdb';
+
+const EXAMPLE_QUERIES = [
+  {
+    label: 'All TPS events',
+    sql: `SELECT * FROM tps_flat ORDER BY timestamp`,
+  },
+  {
+    label: 'Per-model aggregates',
+    sql: `SELECT
+  provider,
+  model_id,
+  COUNT(*) AS calls,
+  SUM(tokens_output) AS total_output,
+  ROUND(AVG(tps), 1) AS avg_tps,
+  ROUND(AVG(ttft_ms)) AS avg_ttft_ms,
+  ROUND(AVG(total_ms)) AS avg_total_ms,
+  ROUND(SUM(cost_total), 4) AS total_cost
+FROM tps_flat
+GROUP BY provider, model_id
+ORDER BY calls DESC`,
+  },
+  {
+    label: 'TTFT distribution',
+    sql: `SELECT
+  CASE
+    WHEN ttft_ms < 1000 THEN '<1s'
+    WHEN ttft_ms < 3000 THEN '1-3s'
+    WHEN ttft_ms < 10000 THEN '3-10s'
+    ELSE '>10s'
+  END AS ttft_bucket,
+  COUNT(*) AS calls,
+  ROUND(AVG(tps), 1) AS avg_tps,
+  SUM(tokens_output) AS total_output
+FROM tps_flat
+GROUP BY ttft_bucket
+ORDER BY MIN(ttft_ms)`,
+  },
+  {
+    label: 'Cache efficiency',
+    sql: `SELECT
+  model_id,
+  COUNT(*) AS calls,
+  SUM(tokens_cache_read) AS cache_read,
+  SUM(tokens_input) AS new_input,
+  ROUND(
+    SUM(tokens_cache_read)::DOUBLE / NULLIF(SUM(tokens_cache_read) + SUM(tokens_input), 0) * 100,
+    1
+  ) AS cache_hit_pct,
+  ROUND(AVG(ttft_ms)) AS avg_ttft_ms
+FROM tps_flat
+WHERE tokens_cache_read > 0 OR tokens_input > 0
+GROUP BY model_id
+ORDER BY cache_hit_pct DESC`,
+  },
+  {
+    label: 'Stall analysis',
+    sql: `SELECT
+  model_id,
+  COUNT(*) AS total_calls,
+  SUM(CASE WHEN stall_count > 0 THEN 1 ELSE 0 END) AS stalled_calls,
+  ROUND(AVG(stall_ms)) AS avg_stall_ms,
+  ROUND(AVG(stall_count), 1) AS avg_stall_count,
+  ROUND(SUM(stall_ms)::DOUBLE / NULLIF(SUM(total_ms), 0) * 100, 1) AS stall_overhead_pct
+FROM tps_flat
+GROUP BY model_id
+ORDER BY stalled_calls DESC`,
+  },
+  {
+    label: 'Cost breakdown',
+    sql: `SELECT
+  provider,
+  model_id,
+  COUNT(*) AS calls,
+  ROUND(SUM(cost_input), 4) AS input_cost,
+  ROUND(SUM(cost_output), 4) AS output_cost,
+  ROUND(SUM(cost_cache_read), 4) AS cache_read_cost,
+  ROUND(SUM(cost_cache_write), 4) AS cache_write_cost,
+  ROUND(SUM(cost_total), 4) AS total_cost
+FROM tps_flat
+WHERE cost_total IS NOT NULL
+GROUP BY provider, model_id
+ORDER BY total_cost DESC`,
+  },
+  {
+    label: 'Session timeline',
+    sql: `SELECT
+  session_id,
+  MIN(timestamp) AS session_start,
+  MAX(timestamp) AS session_end,
+  COUNT(*) AS calls,
+  SUM(tokens_output) AS total_output,
+  ROUND(AVG(tps), 1) AS avg_tps
+FROM tps_flat
+GROUP BY session_id
+ORDER BY session_start`,
+  },
+  {
+    label: 'Energy per model',
+    sql: `SELECT
+  t.model_id,
+  COUNT(*) AS calls,
+  ROUND(SUM(e.energy_joules), 2) AS total_joules,
+  ROUND(SUM(e.energy_joules) / 3600000, 6) AS total_kwh,
+  ROUND(SUM(e.energy_cost_usd), 4) AS energy_cost_usd
+FROM tps_flat t
+JOIN energy_flat e ON t.session_id = e.session_id AND t.id = e.parent_id
+GROUP BY t.model_id
+ORDER BY total_joules DESC`,
+  },
+];
+
+const PATH_SEP = '\x1F';
+const GRP_COUNT_RE = /^_grp_count_(\d+)$/;
+
+const ACRONYMS: Record<string, string> = {
+  id: 'ID', usd: 'USD', ms: 'MS', cwd: 'CWD', url: 'URL', uri: 'URI',
+  api: 'API', http: 'HTTP', https: 'HTTPS', ip: 'IP', db: 'DB',
+  sql: 'SQL', jwt: 'JWT', csv: 'CSV', html: 'HTML', css: 'CSS',
+  js: 'JS', ts: 'TS', json: 'JSON', xml: 'XML', os: 'OS',
+  cpu: 'CPU', ram: 'RAM', gpu: 'GPU', ai: 'AI', llm: 'LLM',
+  tps: 'TPS', ttft: 'TTFT', pct: 'PCT', avg: 'AVG',
+};
+
+function fmtHeader(name: string): string {
+  const m = name.match(GRP_COUNT_RE);
+  if (m) return `Count (L${m[1]})`;
+  let s = name.replace(/_/g, ' ');
+  s = s.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  const words = s.split(/\s+/).filter(Boolean);
+  return words
+    .map((w) => {
+      const lower = w.toLowerCase();
+      if (ACRONYMS[lower]) return ACRONYMS[lower];
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+function isTimestampCol(name: string): boolean {
+  const n = name.toLowerCase();
+  return n === 'timestamp' || n === 'time' || n === 'createdat' || n === 'updatedat'
+    || n === 'created_at' || n === 'updated_at' || n === 'session_start' || n === 'session_end';
+}
+
+function fmtCell(val: unknown, col: string): string {
+  if (val === null || val === undefined) return 'NULL';
+  if (typeof val === 'number' && isTimestampCol(col) && val > 1_000_000_000_000) {
+    return new Date(val).toISOString().replace('T', ' ').slice(0, 19);
+  }
+  if (typeof val === 'number') {
+    return val % 1 === 0 ? val.toLocaleString() : val.toFixed(4);
+  }
+  return String(val);
+}
+
+function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
+  const charWidth = 7;
+  const padding = 24;
+  const maxCellW = 300;
+  return columns.map((col, j) => {
+    let maxW = col.length * charWidth + padding;
+    for (const row of allRows) {
+      const v = row[j];
+      const s = v === null || v === undefined ? 'NULL' : String(v);
+      maxW = Math.max(maxW, Math.min(s.length * charWidth + padding, maxCellW));
+    }
+    return maxW;
+  });
+}
+
+function buildPivotSql(originalSql: string, groupByCols: string[]): string | null {
+  if (groupByCols.length === 0) return null;
+  const cleanSql = originalSql.replace(/;+\s*$/, '').trim();
+  const windowCols = groupByCols
+    .map((col, i) => `COUNT(*) OVER (PARTITION BY ${col}) AS _grp_count_${i + 1}`)
+    .join(', ');
+  return `SELECT _sub.*, ${windowCols} FROM (${cleanSql}) AS _sub`;
+}
+
+function detectPartitionByCols(sql: string, resultColumns: string[]): string[] {
+  const cols: string[] = [];
+  const re = /COUNT\(\*\)\s+OVER\s+\(\s*PARTITION\s+BY\s+([^)]+)\)\s+AS\s+_grp_count_(\d+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql)) !== null) {
+    const partitionCol = m[1].trim().split('.').pop()!;
+    const index = parseInt(m[2], 10) - 1;
+    while (cols.length <= index) cols.push('');
+    cols[index] = partitionCol;
+  }
+  return cols.filter((c) => c && resultColumns.includes(c));
+}
+
+function detectGroupByCols(sql: string, resultColumns: string[]): string[] {
+  const clean = sql
+    .replace(/--[^\n]*\n?/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+  const partitionCols = detectPartitionByCols(clean, resultColumns);
+  if (partitionCols.length > 0) return partitionCols;
+
+  const groupMatch = clean.match(
+    /GROUP\s+BY\s+([^)]+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s+HAVING|\s+WINDOW|\s+QUALIFY|$)/i
+  );
+  if (!groupMatch) return [];
+
+  const rawCols = groupMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
+  const selectMatch = clean.match(/SELECT\s+(.*?)\s+FROM\s+/is);
+  const selectAliases: string[] = [];
+  if (selectMatch) {
+    const items = selectMatch[1].split(',').map((s) => s.trim());
+    for (const item of items) {
+      const asMatch = item.match(/\s+AS\s+(\w+)$/i);
+      if (asMatch) {
+        selectAliases.push(asMatch[1]);
+      } else {
+        const parts = item.split(/\s+/);
+        const last = parts[parts.length - 1].replace(/[^a-zA-Z0-9_]/g, '');
+        if (last) selectAliases.push(last);
+      }
+    }
+  }
+
+  return rawCols.map((col) => {
+    const ordinal = parseInt(col, 10);
+    if (!isNaN(ordinal) && ordinal > 0 && ordinal <= selectAliases.length) {
+      return selectAliases[ordinal - 1];
+    }
+    return col.split('.').pop()!;
+  }).filter((c) => resultColumns.includes(c));
+}
+
+interface TreeNode {
+  id: number;
+  value: string | number | null;
+  depth: number;
+  groupCount: number;
+  children: TreeNode[];
+  path: string;
+}
+
+function buildTree(rows: unknown[][], columns: string[], groupByCols: string[]): TreeNode[] {
+  if (groupByCols.length === 0 || rows.length === 0) return [];
+  const groupColIndices = groupByCols.map((c) => columns.indexOf(c));
+  if (groupColIndices.some((i) => i === -1)) return [];
+  const grpCountIndices = groupByCols.map((_, i) => columns.indexOf(`_grp_count_${i + 1}`));
+
+  const seen = new Map<string, number>();
+  for (const row of rows) {
+    const pathParts = groupColIndices.map((idx) => String(row[idx] ?? ''));
+    for (let depth = 0; depth < groupByCols.length; depth++) {
+      const prefix = pathParts.slice(0, depth + 1).join(PATH_SEP);
+      const gci = grpCountIndices[depth];
+      const count = gci !== -1 ? Number(row[gci]) : 0;
+      if (!seen.has(prefix)) seen.set(prefix, count);
+    }
+  }
+
+  let nextId = 0;
+  function buildLevel(prefix: string, depth: number): TreeNode[] {
+    const levelNodes: TreeNode[] = [];
+    for (const [path, groupCount] of seen) {
+      const vals = path.split(PATH_SEP);
+      if (vals.length !== depth + 1) continue;
+      if (depth > 0) {
+        const expectedPrefix = vals.slice(0, depth).join(PATH_SEP);
+        if (expectedPrefix !== prefix) continue;
+      }
+      const currentVal = vals[depth];
+      const fullPath = vals.join(PATH_SEP);
+      const isLeaf = depth === groupByCols.length - 1;
+
+      if (isLeaf) {
+        levelNodes.push({
+          id: nextId++, value: currentVal || null, depth, groupCount, children: [], path: fullPath,
+        });
+      } else {
+        const children = buildLevel(fullPath, depth + 1);
+        const childTotal = children.reduce((s, c) => s + c.groupCount, 0);
+        levelNodes.push({
+          id: nextId++, value: currentVal || null, depth, groupCount: childTotal, children, path: fullPath,
+        });
+      }
+    }
+    levelNodes.sort((a, b) => b.groupCount - a.groupCount);
+    return levelNodes;
+  }
+  return buildLevel('', 0);
+}
+
+function getDetailRows(node: TreeNode, groupByCols: string[], columns: string[], allRows: unknown[][]): unknown[][] {
+  const pathValues = node.path.split(PATH_SEP);
+  const groupColIndices = groupByCols.map((c) => columns.indexOf(c));
+  return allRows.filter((row) =>
+    pathValues.every((pathVal, i) => {
+      const colIdx = groupColIndices[i];
+      if (colIdx === -1) return false;
+      return String(row[colIdx] ?? '') === pathVal;
+    })
+  );
+}
+
+function detailColumns(columns: string[]): string[] {
+  return columns.filter((c) => !GRP_COUNT_RE.test(c));
+}
+
+function SkeletonRow({ cols }: { cols: number }) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 border-b border-zinc-200/40 dark:border-white/[0.04]">
+      {Array.from({ length: cols }).map((_, i) => (
+        <div key={i} className="h-3 rounded bg-zinc-200/60 dark:bg-zinc-700/40 animate-pulse" style={{ width: `${60 + (i * 17 % 30)}px` }} />
+      ))}
+    </div>
+  );
+}
+
+function renderTreeRows({
+  nodes, columns, groupByCols, expandedPaths, onToggle,
+  detailExpandedPaths, onToggleDetail, allRows, depth, allDisplayColumns, theadHeight,
+}: {
+  nodes: TreeNode[];
+  columns: string[];
+  groupByCols: string[];
+  expandedPaths: Set<number>;
+  onToggle: (id: number) => void;
+  detailExpandedPaths: Set<number>;
+  onToggleDetail: (id: number) => void;
+  allRows: unknown[][];
+  depth: number;
+  allDisplayColumns: string[];
+  theadHeight: number;
+}): React.ReactNode[] {
+  const rows: React.ReactNode[] = [];
+  const detailCols = detailColumns(columns);
+  const detailColIndices = detailCols.map((c) => columns.indexOf(c));
+
+  for (const node of nodes) {
+    const hasChildren = node.children.length > 0;
+    const isTreeExpanded = expandedPaths.has(node.id);
+    const isDetailExpanded = detailExpandedPaths.has(node.id);
+
+    rows.push(
+      <tr
+        key={`g-${node.id}`}
+                className="group/row sticky z-[15] cursor-pointer transition-colors duration-150 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-[#28282d]"
+        style={{ top: `${theadHeight - 2}px` }}
+        onClick={() => {
+          if (hasChildren) onToggle(node.id);
+          else onToggleDetail(node.id);
+        }}
+      >
+        <td className="py-2 px-3 sticky left-0 z-[15] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d] border-b border-zinc-200/40 dark:border-white/[0.04]">
+          <div className="flex items-center gap-3" style={{ paddingLeft: `${depth * 16 + 13}px` }}>
+            <div className="w-4 shrink-0 flex items-center justify-center">
+              <div className={`transition-transform duration-200 ${isTreeExpanded || isDetailExpanded ? 'rotate-90' : ''}`}>
+                <CaretRight size={12} className="text-zinc-400 dark:text-zinc-500" />
+              </div>
+            </div>
+            <div className="text-xs font-medium truncate text-zinc-600 dark:text-zinc-300">
+              {node.value === null ? (
+                <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+              ) : (
+                String(node.value)
+              )}
+            </div>
+          </div>
+        </td>
+        <td colSpan={allDisplayColumns.length - 1} className="py-2 bg-white dark:bg-zinc-800 border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]" />
+      </tr>
+    );
+
+    if (hasChildren && isTreeExpanded) {
+      rows.push(
+        ...renderTreeRows({
+          nodes: node.children, columns, groupByCols, expandedPaths, onToggle,
+          detailExpandedPaths, onToggleDetail, allRows, depth: depth + 1, allDisplayColumns, theadHeight,
+        })
+      );
+    } else if (!hasChildren && isDetailExpanded) {
+      const detailRows = getDetailRows(node, groupByCols, columns, allRows);
+      for (let i = 0; i < Math.min(detailRows.length, 50); i++) {
+        const row = detailRows[i];
+        rows.push(
+          <tr key={`d-${node.id}-${i}`} className="group/row transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]">
+            {detailColIndices.map((colIdx, j) => {
+              const val = colIdx !== -1 ? row[colIdx] : null;
+              const colName = detailCols[j];
+              const isNum = typeof val === 'number';
+              const isFirstCol = j === 0;
+              return (
+                <td key={j} className={`py-1.5 px-3 text-[11px] whitespace-nowrap ${isNum ? 'metric-mono tabular-nums' : ''} ${isFirstCol ? 'sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : ''}`}>
+                  <div className="flex items-center truncate max-w-[200px]">
+                    {isFirstCol && <span style={{ display: 'inline-block', width: `${(depth + 1) * 16 + 28}px`, flexShrink: 0 }} />}
+                    {val === null || val === undefined ? (
+                      <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                    ) : (
+                      <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
+                        {fmtCell(val, colName)}
+                      </span>
+                    )}
+                  </div>
+                </td>
+              );
+            })}
+          </tr>
+        );
+      }
+      if (detailRows.length > 50) {
+        rows.push(
+          <tr key={`d-${node.id}-more`}>
+            <td colSpan={allDisplayColumns.length} className="py-1 px-3 text-[10px] text-zinc-400 dark:text-zinc-500">
+              <span style={{ display: 'inline-block', width: `${(depth + 1) * 16 + 28}px` }} />
+              + {detailRows.length - 50} more rows
+            </td>
+          </tr>
+        );
+      }
+    }
+  }
+
+  return rows;
+}
+
+function RenderFlatTable({ result, displayCols }: { result: QueryResult; displayCols: string[] }) {
+  const pageSize = 200;
+  const visible = result.rows.slice(0, pageSize);
+  const colIndices = displayCols.map((c) => result.columns.indexOf(c));
+
+  return (
+    <>
+      {visible.map((row, i) => (
+        <tr key={i} className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]">
+          {colIndices.map((colIdx, j) => {
+            const val = colIdx !== -1 ? row[colIdx] : null;
+            const col = displayCols[j];
+            const isNum = typeof val === 'number';
+            return (
+              <td key={j} className={`py-2 px-3 text-xs whitespace-nowrap ${isNum ? 'metric-mono tabular-nums' : ''} ${j === 0 ? 'sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : ''}`}>
+                <div className="truncate max-w-[240px]">
+                  {val === null || val === undefined ? (
+                    <span className="italic text-[10px] text-zinc-400 dark:text-zinc-500">NULL</span>
+                  ) : (
+                    <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
+                      {fmtCell(val, col)}
+                    </span>
+                  )}
+                </div>
+              </td>
+            );
+          })}
+        </tr>
+      ))}
+      {result.rowCount > pageSize && (
+        <tr>
+          <td colSpan={displayCols.length} className="px-4 py-3 text-center text-[10px] text-zinc-400 dark:text-zinc-500">
+            Showing first {pageSize.toLocaleString()} of {result.rowCount.toLocaleString()} rows. Add LIMIT to narrow.
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// DuckDB SQL dialect hints for autocomplete
+const DUCKDB_TABLES = ['events', 'tps_flat', 'energy_flat'];
+const DUCKDB_COLUMNS: Record<string, string[]> = {
+  events: ['session_id', 'id', 'parent_id', 'timestamp', 'type', 'provider', 'model_id',
+    'tokens_input', 'tokens_output', 'tokens_cache_read', 'tokens_cache_write', 'tokens_total',
+    'ttft_ms', 'total_ms', 'generation_ms', 'stream_ms', 'stall_ms', 'stall_count', 'tps',
+    'cost_input', 'cost_output', 'cost_cache_read', 'cost_cache_write', 'cost_total',
+    'energy_joules', 'energy_cost_usd', 'rewind_v', 'from_id', 'summary'],
+  tps_flat: ['session_id', 'id', 'parent_id', 'timestamp', 'provider', 'model_id',
+    'tokens_input', 'tokens_output', 'tokens_cache_read', 'tokens_cache_write', 'tokens_total',
+    'ttft_ms', 'total_ms', 'generation_ms', 'stream_ms', 'stall_ms', 'stall_count', 'tps',
+    'cost_input', 'cost_output', 'cost_cache_read', 'cost_cache_write', 'cost_total'],
+  energy_flat: ['session_id', 'id', 'parent_id', 'timestamp', 'energy_joules', 'energy_cost_usd'],
+};
+
+const duckdbDialect = SQLDialect.define({
+  keywords: 'select from where group by order having limit offset as and or not in is null like between exists case when then else end insert into values create table view drop if alter set join on left right inner outer cross union all distinct asc desc over partition window function cast coalesce nullif true false',
+  types: 'varchar bigint double int boolean',
+  builtin: 'count sum avg min max round abs ceil floor row_number rank dense_rank lag lead first_value last_value',
+});
+
+// CodeMirror themes — light and dark, matching the app
+const cmLightTheme = EditorView.theme({
+  '&': { fontSize: '12px', fontFamily: "'Geist Mono', 'JetBrains Mono', monospace" },
+  '.cm-content': { padding: '12px 16px', caretColor: '#0891b2' },
+  '.cm-focused': { outline: 'none' },
+  '.cm-gutters': { backgroundColor: 'transparent', border: 'none', color: '#a1a1aa', paddingRight: '4px' },
+  '.cm-activeLineGutter': { backgroundColor: 'rgba(8, 145, 178, 0.05)', color: '#71717a' },
+  '.cm-activeLine': { backgroundColor: 'rgba(8, 145, 178, 0.04)' },
+  '.cm-selectionBackground': { backgroundColor: 'rgba(8, 145, 178, 0.15) !important' },
+  '.cm-cursor': { borderLeftColor: '#0891b2', borderLeftWidth: '2px' },
+  '.cm-matchingBracket': { backgroundColor: 'rgba(8, 145, 178, 0.2)', outline: '1px solid rgba(8, 145, 178, 0.4)' },
+  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgba(8, 145, 178, 0.2) !important' },
+});
+
+const cmLightHighlight = syntaxHighlighting(defaultHighlightStyle, { fallback: true });
+const cmDarkHighlight = syntaxHighlighting(oneDarkHighlightStyle);
+
+export default function SqlPlayground() {
+  const { theme } = useTheme();
+  const [sql, setSql] = useState('');
+  const [originalSql, setOriginalSql] = useState('');
+  const [result, setResult] = useState<QueryResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [groupByCols, setGroupByCols] = useState<string[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<number>>(new Set());
+  const [detailExpandedPaths, setDetailExpandedPaths] = useState<Set<number>>(new Set());
+  const [dragOverZone, setDragOverZone] = useState(false);
+  const [draggedCol, setDraggedCol] = useState<string | null>(null);
+  const [lineCount, setLineCount] = useState(1);
+
+  const editorRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const theadRef = useRef<HTMLTableSectionElement>(null);
+  const [theadHeight, setTheadHeight] = useState(33);
+  const themeCompartment = useRef(new Compartment());
+  const styleCompartment = useRef(new Compartment());
+  const runCallbackRef = useRef<() => void>(() => {});
+
+  const ensureDb = useCallback(async () => {
+    if (dbReady) return;
+    const { getDuckDB } = await import('../lib/duckdb');
+    await getDuckDB();
+    setDbReady(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runQueryInternal = useCallback(
+    async (querySql?: string) => {
+      const sqlToRun = querySql ?? sql;
+      if (!sqlToRun.trim()) return;
+      setRunning(true);
+      setError(null);
+      try {
+        await ensureDb();
+        const r = await runQuery(sqlToRun);
+        if (r) {
+          setResult(r);
+          const detected = detectGroupByCols(sqlToRun, r.columns);
+          setGroupByCols(detected);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Query failed');
+      } finally {
+        setRunning(false);
+      }
+    },
+    [sql, ensureDb],
+  );
+
+  const handleRun = useCallback(() => {
+    if (groupByCols.length === 0) {
+      setOriginalSql(sql);
+    }
+    runQueryInternal(sql);
+  }, [sql, runQueryInternal, groupByCols]);
+
+  // Sync the stable run callback into a ref for use inside CodeMirror keymap
+  useEffect(() => {
+    runCallbackRef.current = handleRun;
+  }, [handleRun]);
+
+  const runPivotQuery = useCallback(
+    async (cols: string[]) => {
+      if (!originalSql.trim()) return;
+      if (cols.length === 0) {
+        setSql(originalSql);
+        if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: originalSql } });
+        runQueryInternal(originalSql);
+        return;
+      }
+      const pivotSql = buildPivotSql(originalSql, cols);
+      if (!pivotSql) return;
+      setSql(pivotSql);
+      if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: pivotSql } });
+      setRunning(true);
+      setError(null);
+      setExpandedPaths(new Set());
+      setDetailExpandedPaths(new Set());
+      try {
+        await ensureDb();
+        const r = await runQuery(pivotSql);
+        if (r) setResult(r);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Pivot query failed');
+      } finally {
+        setRunning(false);
+      }
+    },
+    [originalSql, ensureDb, runQueryInternal],
+  );
+
+  // Initialize CodeMirror
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    const isDark = theme === 'dark';
+    const state = EditorState.create({
+      doc: sql,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightActiveLine(),
+        history(),
+        bracketMatching(),
+        closeBrackets(),
+        highlightSelectionMatches(),
+        sqlLang({ dialect: duckdbDialect, tables: DUCKDB_TABLES.map(t => ({ label: t, type: 'table', columns: DUCKDB_COLUMNS[t]?.map(c => ({ label: c, type: 'column' })) ?? [] })) }),
+        themeCompartment.current.of(isDark ? [oneDarkTheme, cmDarkHighlight] : cmLightTheme),
+        styleCompartment.current.of(isDark ? cmDarkHighlight : cmLightHighlight),
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          {
+            key: 'Mod-Enter',
+            run: () => { runCallbackRef.current(); return true; },
+          },
+        ]),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            const doc = update.state.doc.toString();
+            setSql(doc);
+            setLineCount(update.state.doc.lines);
+          }
+        }),
+        EditorView.lineWrapping,
+      ],
+    });
+
+    const view = new EditorView({ state, parent: editorRef.current });
+    viewRef.current = view;
+
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+  // Only recreate on mount — theme changes are handled by compartments
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update CodeMirror theme when app theme changes
+  useEffect(() => {
+    if (!viewRef.current) return;
+    const isDark = theme === 'dark';
+    viewRef.current.dispatch({
+      effects: [
+        themeCompartment.current.reconfigure(isDark ? [oneDarkTheme, cmDarkHighlight] : cmLightTheme),
+        styleCompartment.current.reconfigure(isDark ? cmDarkHighlight : cmLightHighlight),
+      ],
+    });
+  }, [theme]);
+
+  useEffect(() => {
+    const el = theadRef.current;
+    if (!el) return;
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setTheadHeight(h);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [result]);
+
+  const handleHeaderDragStart = useCallback(
+    (e: React.DragEvent, col: string) => {
+      setDraggedCol(col);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', col);
+    },
+    [],
+  );
+
+  const handleHeaderDragEnd = useCallback(() => { setDraggedCol(null); }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOverZone(false);
+      const col = e.dataTransfer.getData('text/plain');
+      if (!col || groupByCols.includes(col)) return;
+      const newGroupBy = [...groupByCols, col];
+      setGroupByCols(newGroupBy);
+      runPivotQuery(newGroupBy);
+      setDraggedCol(null);
+    },
+    [groupByCols, runPivotQuery],
+  );
+
+  const removeGroupBy = useCallback(
+    (col: string) => {
+      const newGroupBy = groupByCols.filter((c) => c !== col);
+      setGroupByCols(newGroupBy);
+      runPivotQuery(newGroupBy);
+    },
+    [groupByCols, runPivotQuery],
+  );
+
+  const toggleExpanded = useCallback((id: number) => {
+    setExpandedPaths((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }, []);
+
+  const toggleDetailExpanded = useCallback((id: number) => {
+    setDetailExpandedPaths((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }, []);
+
+  const tree = useMemo(
+    () => result && groupByCols.length > 0 && result.rows.length > 0 ? buildTree(result.rows, result.columns, groupByCols) : null,
+    [result, groupByCols],
+  );
+
+  const isTrivialTree = useMemo(() => {
+    if (!tree) return false;
+    function checkLeaves(nodes: TreeNode[]): boolean {
+      for (const n of nodes) {
+        if (n.children.length > 0) { if (!checkLeaves(n.children)) return false; }
+        else if (n.groupCount > 1) return false;
+      }
+      return true;
+    }
+    return checkLeaves(tree);
+  }, [tree]);
+
+  const displayColumns = useMemo(
+    () => (result ? result.columns.filter((c) => !GRP_COUNT_RE.test(c)) : []),
+    [result],
+  );
+
+  const clearAll = useCallback(() => {
+    setSql('');
+    setOriginalSql('');
+    setResult(null);
+    setError(null);
+    setGroupByCols([]);
+    setExpandedPaths(new Set());
+    setDetailExpandedPaths(new Set());
+    setLineCount(1);
+    if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: '' } });
+  }, []);
+
+  const setEditorSql = useCallback((newSql: string) => {
+    setSql(newSql);
+    if (viewRef.current) viewRef.current.dispatch({ changes: { from: 0, to: viewRef.current.state.doc.length, insert: newSql } });
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-3 flex-1 min-h-0">
+      {/* SQL editor */}
+      <div className="relative shrink-0 rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 overflow-hidden transition-colors focus-within:border-accent/40 dark:focus-within:border-accent/40">
+        <div ref={editorRef} className="min-h-[144px] max-h-[360px] overflow-auto" />
+        {/* Bottom bar with padding to match run button area */}
+        <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-100 dark:border-white/[0.04]">
+          <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">
+            {lineCount}L
+          </span>
+          <div className="flex items-center gap-1.5">
+            {sql.trim() && (
+              <button
+                onClick={clearAll}
+                className="p-1.5 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-white/[0.06] active:scale-[0.97] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                title="Clear"
+              >
+                <X size={12} />
+              </button>
+            )}
+            <button
+              onClick={() => runCallbackRef.current()}
+              disabled={running || !sql.trim()}
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all duration-200 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed bg-accent text-white hover:bg-accent/90"
+            >
+              {running ? (
+                <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+              ) : (
+                <Play size={12} weight="fill" />
+              )}
+              Run
+            </button>
+            <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500 ml-1">⌘↵</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Example pills */}
+      <div className="flex flex-wrap gap-1.5 shrink-0">
+        {EXAMPLE_QUERIES.map((eq) => (
+          <button
+            key={eq.label}
+            onClick={() => {
+              setEditorSql(eq.sql);
+              setOriginalSql(eq.sql);
+              setGroupByCols([]);
+              setExpandedPaths(new Set());
+              setDetailExpandedPaths(new Set());
+              setError(null);
+              runQueryInternal(eq.sql);
+            }}
+            className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 text-zinc-500 dark:text-zinc-400 hover:border-accent/30 hover:text-accent dark:hover:border-accent/40 dark:hover:text-accent-light transition-all duration-200 active:scale-[0.97]"
+          >
+            {eq.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Group-by drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!dragOverZone) setDragOverZone(true); }}
+        onDragLeave={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)
+            setDragOverZone(false);
+        }}
+        onDrop={handleDrop}
+        className={`rounded-xl border-2 border-dashed transition-all duration-200 shrink-0 ${dragOverZone ? 'scale-[1.005]' : ''} ${
+          groupByCols.length > 0 || dragOverZone
+            ? 'border-accent/40 bg-accent/5 dark:bg-accent/10'
+            : 'border-zinc-200/60 dark:border-white/[0.06] bg-white/40 dark:bg-zinc-800/20'
+        }`}
+      >
+        {groupByCols.length > 0 ? (
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <DotsSixVertical size={12} className="text-accent/60" />
+            <span className="text-[10px] font-medium shrink-0 text-accent">Grouped by</span>
+            <AnimatePresence>
+              {groupByCols.map((col) => (
+                <motion.span
+                  key={col}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-accent/30 bg-accent/10 text-accent font-mono"
+                >
+                  {fmtHeader(col)}
+                  <button onClick={() => removeGroupBy(col)} className="rounded p-0.5 opacity-50 hover:opacity-100 transition-opacity">
+                    <X size={10} />
+                  </button>
+                </motion.span>
+              ))}
+            </AnimatePresence>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <DotsSixVertical size={12} className="text-zinc-400 dark:text-zinc-500 opacity-40" />
+            <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+              {result ? 'Drag column headers here to group and aggregate' : 'Run a query, then drag column headers into this zone to group'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+          className="p-3 rounded-xl border border-red-200/40 dark:border-red-500/20 bg-red-50/50 dark:bg-red-500/5 shrink-0"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-red-500/10">
+              <X size={12} weight="bold" className="text-red-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium mb-0.5 text-red-600 dark:text-red-400">Query Error</p>
+              <pre className="text-[11px] whitespace-pre-wrap break-all font-mono text-zinc-600 dark:text-zinc-300">{error}</pre>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Loading skeleton */}
+      {running && !result && (
+        <div className="rounded-2xl overflow-hidden border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0">
+          <div className="px-3 py-2 border-b border-zinc-200/40 dark:border-white/[0.04] bg-white dark:bg-zinc-800">
+            <div className="h-3 w-32 rounded bg-zinc-200/60 dark:bg-zinc-700/40 animate-pulse" />
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={4} />)}
+        </div>
+      )}
+
+      {/* Empty */}
+      {!result && !running && !error && (
+        <div className="rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] p-10 flex-1 min-h-0 flex flex-col items-center justify-center bg-white/40 dark:bg-zinc-800/20">
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-zinc-100 dark:bg-white/[0.04]">
+              <Table size={20} className="text-zinc-400 dark:text-zinc-500" />
+            </div>
+            <p className="text-sm font-medium mb-0.5 text-zinc-600 dark:text-zinc-300">No data yet</p>
+            <p className="text-xs max-w-sm text-zinc-400 dark:text-zinc-500">
+              Write a SQL query and hit run, or pick an example query to explore your telemetry data with DuckDB.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-800 overflow-hidden"
+        >
+          <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 max-h-full custom-scrollbar">
+            <table className="text-left" style={{ tableLayout: 'fixed', width: 'auto', minWidth: '100%' }}>
+              <colgroup>
+                {displayColumns.map((col, j) => {
+                  const w = measureColWidths(displayColumns, result.rows.map((row) =>
+                    displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? row[idx] : null; })
+                  ))[j];
+                  return <col key={col} style={{ width: `${w}px`, minWidth: `${w}px` }} />;
+                })}
+              </colgroup>
+              <thead ref={theadRef} className="sticky -top-px z-30 bg-white dark:bg-zinc-800 pt-px">
+                <tr className="border-b border-zinc-200/60 dark:border-white/[0.06]">
+                  {displayColumns.map((col, i) => (
+                    <th
+                      key={col}
+                      draggable
+                      onDragStart={(e) => handleHeaderDragStart(e, col)}
+                      onDragEnd={handleHeaderDragEnd}
+                      className={`px-3 py-2 text-[10px] font-medium tracking-wider cursor-grab active:cursor-grabbing select-none transition-colors hover:text-accent whitespace-nowrap ${i === 0 ? 'sticky left-0 z-40 bg-white dark:bg-zinc-800' : ''} ${draggedCol === col ? 'text-accent' : 'text-zinc-400 dark:text-zinc-500'}`}
+                    >
+                      <span className="truncate">{fmtHeader(col)}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="relative z-0">
+                {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? (
+                  renderTreeRows({
+                    nodes: tree, columns: result.columns, groupByCols, expandedPaths,
+                    onToggle: toggleExpanded, detailExpandedPaths, onToggleDetail: toggleDetailExpanded,
+                    allRows: result.rows, depth: 0, allDisplayColumns: displayColumns, theadHeight,
+                  })
+                ) : (
+                  <RenderFlatTable result={result} displayCols={displayColumns} />
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-zinc-200/60 dark:border-white/[0.06] px-4 py-2 bg-white dark:bg-zinc-800">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] tabular-nums flex items-center gap-1.5 metric-mono text-zinc-400 dark:text-zinc-500">
+                {running && <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />}
+                {result.rowCount.toLocaleString()} rows
+                {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? ` · ${groupByCols.length} level${groupByCols.length > 1 ? 's' : ''}` : ''}
+              </span>
+              <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">Drag headers to group bar</span>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}

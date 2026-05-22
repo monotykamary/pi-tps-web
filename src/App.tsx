@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo, MultiSessionSummary } from './types';
 import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeMultiSessionSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts, exportMultiSessionCsv } from './lib/parser';
 import type { IngestResult } from './lib/parser';
@@ -17,6 +17,8 @@ import TimingDistribution from './components/TimingDistribution';
 import SessionScatter from './components/SessionScatter';
 import ModelPerformance from './components/ModelPerformance';
 import ThemeToggle from './components/ThemeToggle';
+import SqlPlayground from './components/SqlPlayground';
+import { loadEvents, resetDB } from './lib/duckdb';
 
 function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent = false }: {
   icon: React.ElementType;
@@ -783,6 +785,7 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [viewTab, setViewTab] = useState<'dashboard' | 'sql'>('dashboard');
 
   // Derived: the events to display — either one session or all merged
   const events = useMemo<ParsedEvent[] | null>(() => {
@@ -851,11 +854,11 @@ export default function App() {
 
   const addSession = useCallback((raw: string, fileName?: string) => {
     const ingest = ingestJsonl(raw);
-    const events = deriveEvents(ingest);
+    const evts = deriveEvents(ingest);
     const sid = ingest.sessionId;
     setSessions(prev => {
       const next = new Map(prev);
-      next.set(sid, { raw, ingest, events, fileName });
+      next.set(sid, { raw, ingest, events: evts, fileName });
       return next;
     });
     setActiveSessionId(null); // show "all sessions" view after adding
@@ -877,6 +880,7 @@ export default function App() {
     setActiveSessionId(null);
     setSelectedModel(null);
     setSelectedTpsId(null);
+    resetDB().catch(() => {});
   }, []);
 
   const handleExportCsv = useCallback(() => {
@@ -969,6 +973,18 @@ export default function App() {
     return () => document.removeEventListener('paste', handlePaste);
   }, [addSession]);
 
+  // Sync events to DuckDB when switching to SQL tab or when sessions change while on SQL tab
+  useEffect(() => {
+    if (viewTab !== 'sql' || sessions.size === 0) return;
+    const allEvents: ParsedEvent[] = [];
+    for (const s of sessions.values()) {
+      allEvents.push(...s.events);
+    }
+    loadEvents(allEvents).catch((err) => {
+      console.error('DuckDB load failed:', err);
+    });
+  }, [sessions, viewTab]);
+
   return (
     <div
       className="min-h-[100dvh] bg-[#fafafa] dark:bg-[#18181b]"
@@ -989,6 +1005,31 @@ export default function App() {
             </div>
           </div>
           <div className="flex flex-row items-center gap-1.5 min-w-0">
+            {sessions.size > 0 && (
+              <div className="flex items-center gap-1 bg-white/60 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg p-0.5">
+                <button
+                  onClick={() => setViewTab('dashboard')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
+                    viewTab === 'dashboard'
+                      ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                      : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setViewTab('sql')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
+                    viewTab === 'sql'
+                      ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                      : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
+                  }`}
+                >
+                  <Database size={11} weight="bold" />
+                  SQL
+                </button>
+              </div>
+            )}
             <ThemeToggle theme={theme} setTheme={setTheme} />
             <label className="relative cursor-pointer group shrink-0">
               <input
@@ -1158,7 +1199,24 @@ export default function App() {
       )}
 
       <AnimatePresence mode="wait">
-        {loading && !events ? (
+        {viewTab === 'sql' && sessions.size > 0 ? (
+          <motion.div
+            key="sql-playground"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 min-h-[70dvh]"
+          >
+            <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden p-4 flex flex-col min-h-[70dvh] max-h-[85dvh]">
+              <div className="flex items-center gap-2 mb-3 shrink-0">
+                <Database size={16} className="text-accent" weight="bold" />
+                <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-300">SQL Playground</h2>
+                <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">DuckDB WASM · in-browser</span>
+              </div>
+              <SqlPlayground />
+            </div>
+          </motion.div>
+        ) : loading && !events ? (
           <motion.div
             key="loader"
             initial={{ opacity: 0 }}
