@@ -833,22 +833,6 @@ export default function App() {
   const rewindEvents = useMemo(() => events ? getRewindEvents(events) : [], [events]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
 
-  // Adapt DataThresholdsRow → DataThresholds for components still using JS types
-  const dataThresholdsJs = useMemo(() => dataThresholds ? {
-    cacheThreshold: dataThresholds.cacheThreshold,
-    lowContext: dataThresholds.lowContext,
-    slowTtft: dataThresholds.slowTtft,
-    fastTtft: dataThresholds.fastTtft,
-    highNewInputRatio: dataThresholds.highNewInputRatio,
-    anomalyInputThreshold: dataThresholds.anomalyInputThreshold,
-    cacheDropMinTotal: dataThresholds.cacheDropMinTotal,
-    cacheDropMinInput: dataThresholds.cacheDropMinInput,
-    highInputRatio: dataThresholds.highInputRatio,
-    highInputSeverityToken: dataThresholds.highInputSeverityToken,
-    stallCountThreshold: dataThresholds.stallCountThreshold,
-    stallMsSeverity: dataThresholds.stallMsSeverity,
-  } as DataThresholds : undefined, [dataThresholds]);
-
   // Load events into DuckDB whenever sessions change
   useEffect(() => {
     if (sessions.size === 0) return;
@@ -897,6 +881,22 @@ export default function App() {
     () => queryDataThresholds(selectedModel),
     [dbVersion, selectedModel]
   );
+
+  // Adapt DataThresholdsRow → DataThresholds for components still using JS types
+  const dataThresholdsJs = useMemo(() => dataThresholds ? {
+    cacheThreshold: dataThresholds.cacheThreshold,
+    lowContext: dataThresholds.lowContext,
+    slowTtft: dataThresholds.slowTtft,
+    fastTtft: dataThresholds.fastTtft,
+    highNewInputRatio: dataThresholds.highNewInputRatio,
+    anomalyInputThreshold: dataThresholds.anomalyInputThreshold,
+    cacheDropMinTotal: dataThresholds.cacheDropMinTotal,
+    cacheDropMinInput: dataThresholds.cacheDropMinInput,
+    highInputRatio: dataThresholds.highInputRatio,
+    highInputSeverityToken: dataThresholds.highInputSeverityToken,
+    stallCountThreshold: dataThresholds.stallCountThreshold,
+    stallMsSeverity: dataThresholds.stallMsSeverity,
+  } as DataThresholds : undefined, [dataThresholds]);
 
   // Timing buckets — replaces computeTimingBuckets()
   const { data: buckets } = useDuckQuery<TimingBucketRow[]>(
