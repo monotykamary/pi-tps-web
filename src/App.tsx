@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo, MultiSessionSummary } from './types';
-import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeMultiSessionSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
+import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeMultiSessionSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts, exportMultiSessionCsv } from './lib/parser';
 import type { IngestResult } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import { SmartTooltip } from './components/SmartTooltip';
@@ -14,6 +14,8 @@ import AnomalyDetector from './components/AnomalyDetector';
 import RequestInspector from './components/RequestInspector';
 import CacheEfficiency from './components/CacheEfficiency';
 import TimingDistribution from './components/TimingDistribution';
+import SessionScatter from './components/SessionScatter';
+import ModelPerformance from './components/ModelPerformance';
 import ThemeToggle from './components/ThemeToggle';
 
 function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent = false }: {
@@ -874,6 +876,18 @@ export default function App() {
     setSelectedTpsId(null);
   }, []);
 
+  const handleExportCsv = useCallback(() => {
+    if (!multiSummary) return;
+    const csv = exportMultiSessionCsv(multiSummary);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pi-tps-sessions-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [multiSummary]);
+
   const loadSample = useCallback(async () => {
     setLoading(true);
     try {
@@ -1116,6 +1130,14 @@ export default function App() {
             })}
             <div className="flex-1" />
             <button
+              onClick={handleExportCsv}
+              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-1"
+              title="Export per-session stats as CSV"
+            >
+              <DownloadSimple size={10} weight="bold" />
+              CSV
+            </button>
+            <button
               onClick={clearSessions}
               className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-ember hover:bg-ember/5 dark:hover:bg-ember/10 transition-colors"
             >
@@ -1318,6 +1340,9 @@ export default function App() {
               <div className="lg:col-span-8 space-y-6">
                 <TimelineChart buckets={buckets} onBucketClick={() => { }} />
                 <TimingScatter events={paired} onPointClick={(id) => setSelectedTpsId(id)} thresholds={dataThresholds} />
+                {multiSummary && multiSummary.sessionCount > 1 && (
+                  <SessionScatter multiSummary={multiSummary} onSessionClick={(sid) => setActiveSessionId(sid)} />
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <TimingDistribution events={paired} thresholds={dataThresholds} />
                   <CacheEfficiency events={paired} />
@@ -1327,6 +1352,14 @@ export default function App() {
 
               {/* Right: Analysis Panel */}
               <div className="lg:col-span-4 flex flex-col gap-6">
+                {multiSummary && multiSummary.models.length > 1 && (
+                  <ModelPerformance
+                    models={multiSummary.models}
+                    avgTps={multiSummary.avgTps}
+                    weightedTps={multiSummary.weightedTps}
+                    totalCalls={multiSummary.totalCalls}
+                  />
+                )}
                 <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholds} />
                 <AnomalyDetector events={paired} thresholds={dataThresholds} />
                 <RequestInspector
