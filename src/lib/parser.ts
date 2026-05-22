@@ -184,6 +184,7 @@ function parseLegacyMessage(message: string): TpsPayload | null {
 }
 
 interface AssistantMsg {
+  sessionId: string;
   id: string | null;
   parentId: string | null;
   entryTimestamp: string;
@@ -212,10 +213,35 @@ export interface IngestResult {
   hasTpsEntries: boolean;
   /** Whether any legacy-format TPS events were found (controls enrichment) */
   hasLegacyTpsEntries: boolean;
-  /** Map of entry ID → timestamp, for deriving timing from parent relationships */
+  /** Map of namespaced entry ID (sessionId:rawId) → timestamp, for deriving timing */
   timestampById: Map<string, string>;
   /** Counter for generating unique synthetic IDs */
   synthCounter: number;
+  /** Session ID assigned to this ingestion */
+  sessionId: string;
+}
+
+/**
+ * Generate a session ID from JSONL content. Uses the first non-empty JSON
+ * line's id field if available, otherwise hashes the first 1KB of content.
+ */
+function deriveSessionId(raw: string): string {
+  const lines = raw.trim().split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const obj = JSON.parse(line);
+      if (obj.id) return String(obj.id).split(':')[0];
+    } catch { /* skip */ }
+    break;
+  }
+  // Fallback: hash of first 1KB
+  const slice = raw.trim().substring(0, 1024);
+  let hash = 0;
+  for (let i = 0; i < slice.length; i++) {
+    hash = ((hash << 5) - hash + slice.charCodeAt(i)) | 0;
+  }
+  return `session-${Math.abs(hash).toString(36)}`;
 }
 
 /**
@@ -229,8 +255,12 @@ export interface IngestResult {
  * The returned IngestResult is self-contained: it carries everything needed
  * for the derivation stage, and the events array is suitable for loading
  * directly into DuckDB as-is.
+ *
+ * @param raw JSONL string to parse
+ * @param sessionId Optional session identifier. Auto-derived from content if not provided.
  */
-export function ingestJsonl(raw: string): IngestResult {
+export function ingestJsonl(raw: string, sessionId?: string): IngestResult {
+  const sid = sessionId ?? deriveSessionId(raw);
   const lines = raw.trim().split('\n');
   const events: ParsedEvent[] = [];
   const assistantMessages: AssistantMsg[] = [];
@@ -245,9 +275,9 @@ export function ingestJsonl(raw: string): IngestResult {
     try {
       const rawEvent = JSON.parse(line);
 
-      // Track timestamps for timing derivation
+      // Track timestamps for timing derivation (namespaced keys)
       if (rawEvent.id && rawEvent.timestamp) {
-        timestampById.set(rawEvent.id, rawEvent.timestamp);
+        timestampById.set(`${sid}:${rawEvent.id}`, rawEvent.timestamp);
       }
 
       if (rawEvent.type === 'custom' && rawEvent.customType === 'tps') {
@@ -260,6 +290,7 @@ export function ingestJsonl(raw: string): IngestResult {
           if (parsed) {
             parsed.timestamp = data.timestamp ?? 0;
             events.push({
+              sessionId: sid,
               id: rawEvent.id,
               parentId: rawEvent.parentId,
               timestamp: rawEvent.timestamp,
@@ -277,6 +308,7 @@ export function ingestJsonl(raw: string): IngestResult {
         if (tpsData.cost === undefined) tpsData.cost = null;
         if (tpsData.tps === null || tpsData.tps === undefined) tpsData.tps = 0;
         events.push({
+          sessionId: sid,
           id: rawEvent.id,
           parentId: rawEvent.parentId,
           timestamp: rawEvent.timestamp,
@@ -285,6 +317,7 @@ export function ingestJsonl(raw: string): IngestResult {
         });
       } else if (rawEvent.type === 'custom' && rawEvent.customType === 'neuralwatt-energy') {
         events.push({
+          sessionId: sid,
           id: rawEvent.id,
           parentId: rawEvent.parentId,
           timestamp: rawEvent.timestamp,
@@ -293,6 +326,7 @@ export function ingestJsonl(raw: string): IngestResult {
         });
       } else if (rawEvent.type === 'custom' && rawEvent.customType === 'rewind-turn') {
         events.push({
+          sessionId: sid,
           id: rawEvent.id,
           parentId: rawEvent.parentId,
           timestamp: rawEvent.timestamp,
@@ -301,6 +335,7 @@ export function ingestJsonl(raw: string): IngestResult {
         });
       } else if (rawEvent.type === 'model_change') {
         events.push({
+          sessionId: sid,
           id: rawEvent.id,
           parentId: rawEvent.parentId,
           timestamp: rawEvent.timestamp,
@@ -310,6 +345,7 @@ export function ingestJsonl(raw: string): IngestResult {
         });
       } else if (rawEvent.type === 'branch_summary') {
         events.push({
+          sessionId: sid,
           id: rawEvent.id,
           parentId: rawEvent.parentId,
           timestamp: rawEvent.timestamp,
@@ -321,6 +357,7 @@ export function ingestJsonl(raw: string): IngestResult {
         // Older session entries embed the initial model; extract as model_change
         if (rawEvent.provider && rawEvent.modelId) {
           events.push({
+            sessionId: sid,
             id: rawEvent.id ? `session-model-${rawEvent.id}` : `session-model-${synthCounter++}`,
             parentId: null,
             timestamp: rawEvent.timestamp,
@@ -339,6 +376,7 @@ export function ingestJsonl(raw: string): IngestResult {
           const u = msg.usage;
           const total = u.totalTokens || (u.input || 0) + u.output + (u.cacheRead || 0) + (u.cacheWrite || 0);
           assistantMessages.push({
+            sessionId: sid,
             id: rawEvent.id ?? null,
             parentId: rawEvent.parentId ?? null,
             entryTimestamp: rawEvent.timestamp,
@@ -366,7 +404,7 @@ export function ingestJsonl(raw: string): IngestResult {
     }
   }
 
-  return { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter };
+  return { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter, sessionId: sid };
 }
 
 /**
@@ -380,53 +418,68 @@ export function ingestJsonl(raw: string): IngestResult {
  *  2. Synthesis: when no custom/tps entries exist, synthesize TpsEvents
  *     from assistant messages using timestamp-gap-derived timing.
  *
- * Both operations mutate the events array in-place (enrichment modifies
- * existing TpsPayload fields; synthesis appends new events).
+ * This function does NOT mutate the input IngestResult. Enrichment creates
+ * new TpsPayload objects with filled-in fields; synthesis appends to a new
+ * array. The original result.events is safe to reuse (e.g. for DuckDB loading).
  */
 export function deriveEvents(result: IngestResult): ParsedEvent[] {
-  const { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter: baseSynthCounter } = result;
+  const { events, assistantMessages, hasTpsEntries, hasLegacyTpsEntries, timestampById, synthCounter: baseSynthCounter, sessionId } = result;
   let synthCounter = baseSynthCounter;
+  const derived: ParsedEvent[] = [];
 
-  // ── Enrich legacy TPS entries with model + cost from assistant messages ────
-  if (hasLegacyTpsEntries && assistantMessages.length > 0) {
-    const assistantById = new Map<string, AssistantMsg>();
-    for (const m of assistantMessages) {
-      if (m.id) assistantById.set(m.id, m);
+  // Build namespaced lookup maps from assistant messages
+  const assistantByNsId = new Map<string, AssistantMsg>();
+  const assistantByOutput = new Map<number, AssistantMsg[]>();
+  for (const m of assistantMessages) {
+    if (m.id) assistantByNsId.set(`${m.sessionId}:${m.id}`, m);
+    const list = assistantByOutput.get(m.usage.output) ?? [];
+    list.push(m);
+    assistantByOutput.set(m.usage.output, list);
+  }
+
+  // Namespaced ID lookup for walking parentId chains across events
+  const eventByNsId = new Map<string, ParsedEvent>();
+  for (const e of events) {
+    eventByNsId.set(`${e.sessionId}:${e.id}`, e);
+  }
+
+  // Walk up to 5 hops along the namespaced parentId chain looking for an assistant message
+  const findAssistant = (sId: string, parentId: string | null, output: number): AssistantMsg | null => {
+    let current: string | null = parentId;
+    for (let hop = 0; hop < 5 && current; hop++) {
+      const ns = `${sId}:${current}`;
+      const m = assistantByNsId.get(ns);
+      if (m) return m;
+      const parentEntry = eventByNsId.get(ns);
+      current = parentEntry?.parentId ?? null;
     }
+    // Fallback: match by output token count + chronological proximity
+    const candidates = assistantByOutput.get(output);
+    if (candidates && candidates.length > 0) return candidates[0];
+    return null;
+  };
 
-    const assistantByOutput = new Map<number, AssistantMsg[]>();
-    for (const m of assistantMessages) {
-      const list = assistantByOutput.get(m.usage.output) ?? [];
-      list.push(m);
-      assistantByOutput.set(m.usage.output, list);
-    }
-
-    const findAssistant = (parentId: string | null, output: number): AssistantMsg | null => {
-      let current = parentId;
-      for (let hop = 0; hop < 5 && current; hop++) {
-        const m = assistantById.get(current);
-        if (m) return m;
-        const parentEntry = events.find(e => e.id === current);
-        current = parentEntry?.parentId ?? null;
-      }
-      const candidates = assistantByOutput.get(output);
-      if (candidates && candidates.length > 0) return candidates[0];
-      return null;
-    };
-
-    for (const event of events) {
-      if (event.type !== 'tps') continue;
+  // ── Process events: enrich legacy, pass through others ────────────────────
+  for (const event of events) {
+    if (event.type === 'tps' && hasLegacyTpsEntries) {
       const data = event.data as TpsPayload;
-      if (data.model.modelId !== 'unknown') continue;
-
-      const assistant = findAssistant(event.parentId, data.tokens.output);
-      if (!assistant) continue;
-
-      data.model = { provider: assistant.provider, modelId: assistant.modelId };
-      if (data.cost === null && assistant.cost) {
-        data.cost = assistant.cost;
+      if (data.model.modelId === 'unknown') {
+        const assistant = findAssistant(event.sessionId, event.parentId, data.tokens.output);
+        if (assistant) {
+          // Clone with enriched model + cost — no mutation of original
+          derived.push({
+            ...event,
+            data: {
+              ...data,
+              model: { provider: assistant.provider, modelId: assistant.modelId },
+              cost: data.cost === null && assistant.cost ? assistant.cost : data.cost,
+            },
+          });
+          continue;
+        }
       }
     }
+    derived.push(event);
   }
 
   // ── Synthesize TpsEvent entries when no custom/tps entries exist ─────────
@@ -434,7 +487,7 @@ export function deriveEvents(result: IngestResult): ParsedEvent[] {
     for (const msg of assistantMessages) {
       let totalMs = 0;
       if (msg.parentId) {
-        const parentTs = timestampById.get(msg.parentId);
+        const parentTs = timestampById.get(`${msg.sessionId}:${msg.parentId}`);
         if (parentTs && msg.entryTimestamp) {
           totalMs = Math.max(0, new Date(msg.entryTimestamp).getTime() - new Date(parentTs).getTime());
         }
@@ -447,7 +500,8 @@ export function deriveEvents(result: IngestResult): ParsedEvent[] {
         ? Math.round((msg.usage.output / (totalMs / 1000)) * 10) / 10
         : 0;
 
-      events.push({
+      derived.push({
+        sessionId: msg.sessionId,
         id: msg.id ? `synth-${msg.id}` : `synth-${synthCounter++}`,
         parentId: msg.parentId,
         timestamp: msg.entryTimestamp,
@@ -471,7 +525,7 @@ export function deriveEvents(result: IngestResult): ParsedEvent[] {
     }
   }
 
-  return events;
+  return derived;
 }
 
 /**
@@ -509,13 +563,13 @@ export function getRewindEvents(events: ParsedEvent[]): RewindEvent[] {
 }
 
 export function pairEnergyWithTps(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[]): (TpsEvent & { energy?: EnergyPayload })[] {
-  const energyById = new Map<string, EnergyPayload>();
+  const energyByNsParentId = new Map<string, EnergyPayload>();
   for (const e of energyEvents) {
-    energyById.set(e.parentId ?? '', e.data);
+    energyByNsParentId.set(`${e.sessionId}:${e.parentId ?? ''}`, e.data);
   }
   return tpsEvents.map(t => ({
     ...t,
-    energy: energyById.get(t.id),
+    energy: energyByNsParentId.get(`${t.sessionId}:${t.id}`),
   }));
 }
 
@@ -528,12 +582,12 @@ export function buildTimeline(
   events: ParsedEvent[],
   tpsEnergyPairs: (TpsEvent & { energy?: EnergyPayload })[]
 ): TimelineEvent[] {
-  const pairedById = new Map(tpsEnergyPairs.map(e => [e.id, e]));
+  const pairedByNsId = new Map(tpsEnergyPairs.map(e => [`${e.sessionId}:${e.id}`, e]));
   const timeline: TimelineEvent[] = [];
 
   for (const event of events) {
     if (event.type === 'tps') {
-      const paired = pairedById.get(event.id);
+      const paired = pairedByNsId.get(`${event.sessionId}:${event.id}`);
       if (paired) timeline.push(paired);
     } else if (event.type === 'model_change' || event.type === 'rewind' || event.type === 'branch_summary') {
       timeline.push(event);
@@ -596,11 +650,11 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   // Total cost sums ALL sources, but dedupes per-event: when a TPS event has both
   // a token cost AND a paired neuralwatt energy cost, only the energy cost is used
   // (they measure the same spend — neuralwatt is the authoritative source when present).
-  const energyByParentId = new Map<string, EnergyPayload>();
+  const energyByNsParentId = new Map<string, EnergyPayload>();
   for (const e of energyEvents) {
-    energyByParentId.set(e.parentId ?? '', e.data);
+    energyByNsParentId.set(`${e.sessionId}:${e.parentId ?? ''}`, e.data);
   }
-  const tpsIds = new Set(sorted.map(e => e.id));
+  const tpsNsIds = new Set(sorted.map(e => `${e.sessionId}:${e.id}`));
   let totalCostUsd = 0;
   let energyCostUsd = 0;
   let hasAnyCost = false;
@@ -610,7 +664,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
 
   // Per-TPS-event: prefer paired energy cost, fall back to token cost
   for (const tps of sorted) {
-    const pairedEnergy = energyByParentId.get(tps.id);
+    const pairedEnergy = energyByNsParentId.get(`${tps.sessionId}:${tps.id}`);
     if (pairedEnergy) {
       totalCostUsd += pairedEnergy.cost_usd;
       energyCostUsd += pairedEnergy.cost_usd;
@@ -626,7 +680,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
 
   // Orphan energy events (not paired with any TPS event)
   for (const e of energyEvents) {
-    if (!tpsIds.has(e.parentId ?? '')) {
+    if (!tpsNsIds.has(`${e.sessionId}:${e.parentId ?? ''}`)) {
       totalCostUsd += e.data.cost_usd;
       energyCostUsd += e.data.cost_usd;
       usedNeuralwatt = true;
@@ -647,9 +701,9 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     : null;
 
   // Build a map from TPS id → joules so we can attribute energy per model
-  const joulesByParentId = new Map<string, number>();
+  const joulesByNsParentId = new Map<string, number>();
   for (const e of energyEvents) {
-    joulesByParentId.set(e.parentId ?? '', e.data.energy_joules);
+    joulesByNsParentId.set(`${e.sessionId}:${e.parentId ?? ''}`, e.data.energy_joules);
   }
 
   // Collect per-model aggregates (calls, tokens, energy cost, blended cost, joules)
@@ -668,8 +722,8 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     const key = e.data.model.modelId;
     const existing = modelMap.get(key);
     const tokens = e.data.tokens.total;
-    const pairedEnergy = energyByParentId.get(e.id);
-    const pairedJoules = joulesByParentId.get(e.id) ?? 0;
+    const pairedEnergy = energyByNsParentId.get(`${e.sessionId}:${e.id}`);
+    const pairedJoules = joulesByNsParentId.get(`${e.sessionId}:${e.id}`) ?? 0;
 
     if (existing) {
       existing.count++;
@@ -717,7 +771,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   // Also collect orphan energy events as a synthetic model row when their
   // parent model is not in the TPS set (e.g. energy-only measurements).
   for (const e of energyEvents) {
-    if (tpsIds.has(e.parentId ?? '')) continue; // already paired above
+    if (tpsNsIds.has(`${e.sessionId}:${e.parentId ?? ''}`)) continue; // already paired above
     // Orphan energy — we have cost but no model context. Skip for now
     // since we cannot attribute it to a specific model.
   }

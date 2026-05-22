@@ -1,4 +1,6 @@
 export interface TelemetryEvent {
+  /** Session this event belongs to. Set during ingestion. */
+  sessionId: string;
   id: string;
   parentId: string | null;
   timestamp: string;
