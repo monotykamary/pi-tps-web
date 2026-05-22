@@ -244,3 +244,19 @@ export interface TimingBucket {
   avgTpsLoss: number;
   totalTokens: number;
 }
+
+/** Session state for the main app — tracks loaded files and their parsed events */
+export interface SessionState {
+  raw: string;
+  ingest: { events: ParsedEvent[]; assistantMessages: unknown[]; hasTpsEntries: boolean; hasLegacyTpsEntries: boolean; timestampById: Map<string, string>; synthCounter: number; sessionId: string };
+  events: ParsedEvent[];
+  fileName?: string;
+}
+
+/** Default thresholds used before DuckDB query resolves */
+export const DEFAULT_THRESHOLDS: DataThresholds = {
+  cacheThreshold: 65000, lowContext: 32000, slowTtft: 15000, fastTtft: 3000,
+  highNewInputRatio: 0.15, anomalyInputThreshold: 10000, cacheDropMinTotal: 10000,
+  cacheDropMinInput: 5000, highInputRatio: 0.5, highInputSeverityToken: 20000,
+  stallCountThreshold: 3, stallMsSeverity: 5000,
+};

@@ -1,79 +1,7 @@
 import type { ParsedEvent, TpsEvent, TpsPayload, EnergyEvent, ModelChangeEvent, BranchSummaryEvent, RewindEvent, ConversationSummary, SessionSummary, MultiSessionSummary, TimingBucket, EnergyPayload, DataThresholds, TimelineEvent } from '../types';
+import { computeSafeEffectiveMs, computeEffectiveTps } from './compute/tps';
 
-// ─── Shared TPS computation ───────────────────────────────────────────────────
-
-/** Minimum effective span for a reliable generation speed estimate */
-const MIN_GENERATION_MS = 50;
-
-/**
- * Divide stallMs by this factor when stalls dominate the generation window.
- * Prevents a single undetected stall from inflating the denominator and
- * creating absurd TPS values.
- */
-const STALL_REDUCTION_DENOM = 2;
-
-/** If effective time is below this, the denominator looks suspicious */
-const ACTIVE_TIME_THRESHOLD_MS = 200;
-
-/** Stall-to-generation ratio above which partial reduction kicks in */
-const STALL_DOMINANCE_RATIO = 0.85;
-
-/**
- * Compute generation TPS for a single TPS event, mirroring the
- * extension's buildTelemetry three-branch logic.
- *
- * Generation TPS = output / (active generation time), excluding both
- * TTFT and known stalls. This measures the raw inference speed —
- * how fast the model was actually producing tokens.
- *
- * Three guard conditions on the primary branch prevent inflation:
- *  1. stallMs < streamMs: prevents stall-before-stream
- *  2. effectiveStreamMs >= 50ms: active span must be measurable
- *  3. stallMs < effectiveStreamMs: stalls must not exceed active time
- *     (prevents buffer-flush bursts from being counted as generation)
- *
- * Primary:   all 3 guards pass → output / ((streamMs - stallMs) / 1000)
- * Fallback:  generationMs >= 50ms → output / (effectiveGenMs / 1000)
- *            where effectiveGenMs = max(generationMs - stallMs, 50ms).
- *            Includes TTFT, underestimates, but never overshoots.
- * Else:      0 — structurally unidentifiable.
- */
-/**
- * Compute a trustworthy per-event effective generation denominator (ms).
- *
- * Primary branch (stream-based): returns streamMs - stallMs when guards pass.
- * Fallback branch (generationMs-based): applies partial stall reduction when
- * stalls dominate the effective window, preventing a tiny denominator.
- */
-function computeSafeEffectiveMs(data: TpsPayload): number {
-  const streamMs = data.timing.streamMs ?? 0;
-  const stallMs = data.timing.stallMs;
-
-  // ── Primary branch (stream-based, no TTFT) ──
-  const effectiveStreamMs = streamMs - stallMs;
-  if (streamMs > 0 && stallMs < streamMs && effectiveStreamMs >= MIN_GENERATION_MS && stallMs < effectiveStreamMs) {
-    return effectiveStreamMs;
-  }
-
-  // ── Fallback branch (generationMs–based, includes TTFT) ──
-  if (data.timing.generationMs >= MIN_GENERATION_MS) {
-    const effectiveGenMs = data.timing.generationMs - stallMs;
-    const stallsDominate = effectiveGenMs < ACTIVE_TIME_THRESHOLD_MS || stallMs > data.timing.generationMs * STALL_DOMINANCE_RATIO;
-    if (stallsDominate) {
-      const partialStall = stallMs / STALL_REDUCTION_DENOM;
-      return Math.max(data.timing.generationMs - partialStall, MIN_GENERATION_MS);
-    }
-    return Math.max(effectiveGenMs, MIN_GENERATION_MS);
-  }
-
-  return 0;
-}
-
-/** Compute per-event generation TPS using the safe effective denominator. */
-export function computeEffectiveTps(data: TpsPayload): number {
-  const denom = computeSafeEffectiveMs(data);
-  return denom > 0 ? data.tokens.output / (denom / 1000) : 0;
-}
+export { computeSafeEffectiveMs, computeEffectiveTps } from './compute/tps';
 
 /**
  * Parse a legacy TPS message string into a TpsPayload.
@@ -198,7 +126,7 @@ interface AssistantMsg {
 
 // ─── Ingest types ─────────────────────────────────────────────────────────────
 // ingestJsonl produces these structures. The raw events are fully typed but
-// have NOT been enriched or synthesized yet — that happens in deriveEvents.
+// have NOT been enriched or synthesized yet - that happens in deriveEvents.
 // This separation means the ingest output can be loaded directly into DuckDB
 // while the graph-based derivation (parentId chain walking, synthesis) stays
 // in JS until DuckDB can handle those patterns.
@@ -249,7 +177,7 @@ function deriveSessionId(raw: string): string {
  *
  * This is the first stage of the pipeline: it handles line-by-line parsing,
  * event discrimination, and legacy message parsing. It does NOT perform
- * graph operations — no parentId chain walking, no enrichment, no synthesis.
+ * graph operations - no parentId chain walking, no enrichment, no synthesis.
  * Those happen in deriveEvents().
  *
  * The returned IngestResult is self-contained: it carries everything needed
@@ -283,7 +211,7 @@ export function ingestJsonl(raw: string, sessionId?: string): IngestResult {
       if (rawEvent.type === 'custom' && rawEvent.customType === 'tps') {
         hasTpsEntries = true;
         const data = rawEvent.data;
-        // Legacy format: { message: string, timestamp: number } — parse the message string
+        // Legacy format: { message: string, timestamp: number } - parse the message string
         if (data && typeof data.message === 'string' && !data.model) {
           hasLegacyTpsEntries = true;
           const parsed = parseLegacyMessage(data.message);
@@ -302,8 +230,8 @@ export function ingestJsonl(raw: string, sessionId?: string): IngestResult {
           continue;
         }
         // Structured format: TurnTelemetry
-        // Normalize: cost may be absent (undefined) — coerce to null
-        // Normalize: tps may be null (e.g. generation timing unavailable) — coerce to 0
+        // Normalize: cost may be absent (undefined) - coerce to null
+        // Normalize: tps may be null (e.g. generation timing unavailable) - coerce to 0
         const tpsData = rawEvent.data;
         if (tpsData.cost === undefined) tpsData.cost = null;
         if (tpsData.tps === null || tpsData.tps === undefined) tpsData.tps = 0;
@@ -466,7 +394,7 @@ export function deriveEvents(result: IngestResult): ParsedEvent[] {
       if (data.model.modelId === 'unknown') {
         const assistant = findAssistant(event.sessionId, event.parentId, data.tokens.output);
         if (assistant) {
-          // Clone with enriched model + cost — no mutation of original
+          // Clone with enriched model + cost - no mutation of original
           derived.push({
             ...event,
             data: {
@@ -532,7 +460,7 @@ export function deriveEvents(result: IngestResult): ParsedEvent[] {
  * Parse JSONL into fully enriched ParsedEvents.
  *
  * This is the convenience wrapper that combines ingest + derive in one call.
- * It preserves the original parseJsonl API — all existing callers continue
+ * It preserves the original parseJsonl API - all existing callers continue
  * to work unchanged.
  *
  * For the two-stage pipeline (e.g. loading into DuckDB between stages),
@@ -592,7 +520,7 @@ export function buildTimeline(
     } else if (event.type === 'model_change' || event.type === 'rewind' || event.type === 'branch_summary') {
       timeline.push(event);
     }
-    // energy events are already paired into TPS events — skip
+    // energy events are already paired into TPS events - skip
   }
 
   return timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -649,7 +577,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
 
   // Total cost sums ALL sources, but dedupes per-event: when a TPS event has both
   // a token cost AND a paired neuralwatt energy cost, only the energy cost is used
-  // (they measure the same spend — neuralwatt is the authoritative source when present).
+  // (they measure the same spend - neuralwatt is the authoritative source when present).
   const energyByNsParentId = new Map<string, EnergyPayload>();
   for (const e of energyEvents) {
     energyByNsParentId.set(`${e.sessionId}:${e.parentId ?? ''}`, e.data);
@@ -772,7 +700,7 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
   // parent model is not in the TPS set (e.g. energy-only measurements).
   for (const e of energyEvents) {
     if (tpsNsIds.has(`${e.sessionId}:${e.parentId ?? ''}`)) continue; // already paired above
-    // Orphan energy — we have cost but no model context. Skip for now
+    // Orphan energy - we have cost but no model context. Skip for now
     // since we cannot attribute it to a specific model.
   }
 
@@ -1079,172 +1007,7 @@ export function computeThresholdCrossings(tpsEvents: TpsEvent[]): { threshold: n
   }));
 }
 
-export function formatThreshold(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
-  return n.toString();
-}
-
-export function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    const rounded = Math.round(ms * 10) / 10;
-    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}ms`;
-  }
-  if (ms < 60000) {
-    const s = ms / 1000;
-    return `${Number.isInteger(s) ? s : s.toFixed(1)}s`;
-  }
-
-  const totalSeconds = Math.round(ms / 1000);
-  const s = totalSeconds % 60;
-  const m = Math.floor(totalSeconds / 60) % 60;
-  const h = Math.floor(totalSeconds / 3600) % 24;
-  const d = Math.floor(totalSeconds / 86400) % 30;
-  const mo = Math.floor(totalSeconds / 2592000) % 12;
-  const y = Math.floor(totalSeconds / 31536000);
-
-  if (y > 0) return `${y}y ${mo}mo`;
-  if (mo > 0) return `${mo}mo ${d}d`;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m ${s}s`;
-}
-
-export function formatNumber(n: number | null, decimals = 1): string {
-  if (n === null) return '-';
-  if (n < 1_000) return String(Math.round(n));
-
-  let value: number;
-  let suffix: string;
-
-  if (n >= 1_000_000_000) {
-    value = n / 1_000_000_000;
-    suffix = 'B';
-  } else if (n >= 1_000_000) {
-    value = n / 1_000_000;
-    suffix = 'M';
-  } else {
-    value = n / 1_000;
-    suffix = 'K';
-  }
-
-  const formatted = value.toFixed(decimals);
-  // Drop trailing ".0" for clean display
-  if (formatted.endsWith('.0')) {
-    return `${value.toFixed(0)}${suffix}`;
-  }
-  return `${formatted}${suffix}`;
-}
-
-export function formatCurrency(n: number | null): string {
-  if (n === null) return '-';
-  return `$${n.toFixed(4)}`;
-}
-
-/** Format TPS: keep 1 decimal for small values, drop it for large ones where it's noise */
-export function formatTps(n: number): string {
-  if (n >= 1000) return Math.round(n).toString();
-  return n.toFixed(1);
-}
-
-/**
- * Auto-scale energy from joules up through mWh, Wh, kWh — matching NeuralWatt's
- * footer display: small values stay in J, then scale naturally to the most
- * readable unit at each threshold.
- */
-export function formatEnergy(joules: number): string {
-  if (joules === 0) return '0 J';
-  if (joules < 3.6) {
-    return `${joules.toFixed(2)} J`;
-  }
-  const mWh = joules / 3_600;
-  if (mWh < 1000) {
-    return `${mWh.toFixed(2)} mWh`;
-  }
-  const wh = mWh / 1_000;
-  if (wh < 1000) {
-    return `${wh.toFixed(2)} Wh`;
-  }
-  const kWh = wh / 1_000;
-  return `${kWh.toFixed(2)} kWh`;
-}
-
-export function formatEnergyParts(joules: number): { value: string; unit: string } {
-  if (joules === 0) return { value: '0', unit: 'J' };
-  if (joules < 3.6) {
-    return { value: joules.toFixed(2), unit: 'J' };
-  }
-  const mWh = joules / 3_600;
-  if (mWh < 1000) {
-    return { value: mWh.toFixed(2), unit: 'mWh' };
-  }
-  const wh = mWh / 1_000;
-  if (wh < 1000) {
-    return { value: wh.toFixed(2), unit: 'Wh' };
-  }
-  const kWh = wh / 1_000;
-  return { value: kWh.toFixed(2), unit: 'kWh' };
-}
-
-/**
- * Export a MultiSessionSummary as a CSV string.
- * One row per session, with aggregate summary as a final row.
- */
-export function exportMultiSessionCsv(summary: MultiSessionSummary): string {
-  const header = [
-    'Session',
-    'Requests',
-    'Tokens',
-    'Output',
-    'Avg TPS',
-    'Weighted TPS',
-    'Avg TTFT (ms)',
-    'Cost (USD)',
-    'Energy (J)',
-    'Model',
-    'Provider',
-    'Start',
-    'End',
-  ].join(',');
-
-  const rows = summary.sessions.map(s => [
-    csvEscape(s.fileName ?? s.sessionId),
-    s.totalCalls,
-    s.totalTokens,
-    s.totalOutput,
-    s.avgTps.toFixed(1),
-    s.weightedTps.toFixed(1),
-    Math.round(s.avgTtft),
-    s.totalCostUsd !== null ? s.totalCostUsd.toFixed(4) : '',
-    s.totalEnergyJoules !== null ? s.totalEnergyJoules.toFixed(0) : '',
-    csvEscape(s.model),
-    csvEscape(s.provider),
-    csvEscape(s.timeRange.start),
-    csvEscape(s.timeRange.end),
-  ].join(','));
-
-  const totalRow = [
-    csvEscape(`TOTAL (${summary.sessionCount})`),
-    summary.totalCalls,
-    summary.totalTokens,
-    summary.totalOutput,
-    summary.avgTps.toFixed(1),
-    summary.weightedTps.toFixed(1),
-    Math.round(summary.avgTtft),
-    summary.totalCostUsd !== null ? summary.totalCostUsd.toFixed(4) : '',
-    summary.totalEnergyJoules !== null ? summary.totalEnergyJoules.toFixed(0) : '',
-    '',
-    '',
-    csvEscape(summary.timeRange.start),
-    csvEscape(summary.timeRange.end),
-  ].join(',');
-
-  return [header, ...rows, totalRow].join('\n');
-}
-
-/** Minimal CSV escaping — quote if contains comma, quote, or newline */
-function csvEscape(s: string): string {
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
+// Re-export format utilities from extracted module
+export { formatDuration, formatNumber, formatCurrency, formatTps, formatEnergy, formatEnergyParts } from './format/format';
+export { formatThreshold } from './format/format';
+export { exportMultiSessionCsv } from './format/csv';
