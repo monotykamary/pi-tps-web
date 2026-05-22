@@ -1227,6 +1227,7 @@ export default function App() {
         </div>
       )}
 
+      <div className="flex-1 min-h-0 overflow-y-auto">
       <AnimatePresence mode="wait">
         {viewTab === 'sql' && sessions.size > 0 ? (
           <motion.div
@@ -1465,6 +1466,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
