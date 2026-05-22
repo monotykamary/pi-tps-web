@@ -1227,7 +1227,6 @@ export default function App() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
       <AnimatePresence mode="wait">
         {viewTab === 'sql' && sessions.size > 0 ? (
           <motion.div
@@ -1241,7 +1240,9 @@ export default function App() {
               <SqlPlayground />
             </div>
           </motion.div>
-        ) : loading && !summary ? (
+        ) : (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+        {loading && !summary ? (
           <motion.div
             key="loader"
             initial={{ opacity: 0 }}
@@ -1465,8 +1466,9 @@ export default function App() {
             </div>
           </motion.div>
         )}
+        </div>
+        )}
       </AnimatePresence>
-      </div>
     </div>
   );
 }
