@@ -255,6 +255,7 @@ export default function App() {
       ...multiSummary,
       sessions: multiSummary.sessions.map(s => ({
         ...s,
+        models: [],
         timeRange: { start: s.timeRangeStart, end: s.timeRangeEnd },
       })),
       timeRange: { start: multiSummary.timeRangeStart, end: multiSummary.timeRangeEnd },
