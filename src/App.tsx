@@ -1448,9 +1448,9 @@ export default function App() {
                 {summaryModels.length > 1 && (
                   <ModelPerformance
                     models={summaryModels}
-                    avgTps={multiSummary.avgTps}
-                    weightedTps={multiSummary.weightedTps}
-                    totalCalls={multiSummary.totalCalls}
+                    avgTps={summary?.avgTps ?? 0}
+                    weightedTps={summary?.weightedTps ?? 0}
+                    totalCalls={summary?.totalCalls ?? 0}
                   />
                 )}
                 <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholdsJs ?? defaultThresholds} />
