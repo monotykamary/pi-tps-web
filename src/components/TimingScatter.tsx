@@ -200,7 +200,7 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
             <ZAxis type="number" dataKey="z" range={[40, 200]} />
-            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} allowEscapeViewBox={{ x: true, y: true }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
             <Scatter data={displayData} onClick={(d: any) => onPointClick(d.id)}>
               {displayData.map((entry, index) => (
                 <Cell
