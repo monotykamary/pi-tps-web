@@ -270,7 +270,7 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [multiSummary]);
 
-  const handlePointClick = useCallback((id: string | null) => { if (id) setSelectedTpsId(id); }, []);
+  const handlePointClick = useCallback((id: string | null) => setSelectedTpsId(id), []);
   const handleSessionClick = useCallback((sid: string) => setActiveSessionId(sid), []);
   const handleBucketClick = useCallback(() => {}, []);
 
