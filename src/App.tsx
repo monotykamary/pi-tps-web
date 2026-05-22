@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, Barbell, Warning, Info, ClipboardText, X, FolderOpen } from '@phosphor-icons/react';
 import type { ParsedEvent, ConversationSummary, ModelInfo } from './types';
-import { parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
+import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, getModelChangeEvents, getRewindEvents, computeSummary, computeTimingBuckets, pairEnergyWithTps, deriveDataThresholds, buildTimeline, formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/parser';
+import type { IngestResult } from './lib/parser';
 import { useTheme } from './hooks/useTheme';
 import { SmartTooltip } from './components/SmartTooltip';
 import TimelineChart from './components/TimelineChart';
@@ -768,13 +769,35 @@ function TpsPill({ icon, label, activeTps, wallTps, lossPct, accent = false, mod
   );
 }
 
+interface SessionState {
+  raw: string;
+  ingest: IngestResult;
+  events: ParsedEvent[];
+  fileName?: string;
+}
+
 export default function App() {
   const { theme, setTheme } = useTheme();
-  const [events, setEvents] = useState<ParsedEvent[] | null>(null);
+  const [sessions, setSessions] = useState<Map<string, SessionState>>(new Map());
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+
+  // Derived: the events to display — either one session or all merged
+  const events = useMemo<ParsedEvent[] | null>(() => {
+    if (sessions.size === 0) return null;
+    if (activeSessionId) {
+      return sessions.get(activeSessionId)?.events ?? null;
+    }
+    // Merge all sessions' derived events
+    const all: ParsedEvent[] = [];
+    for (const s of sessions.values()) {
+      all.push(...s.events);
+    }
+    return all;
+  }, [sessions, activeSessionId]);
 
   const allTpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
   const tpsEvents = useMemo(
@@ -788,8 +811,8 @@ export default function App() {
       // Only include energy events whose parentId matches a TPS event in the
       // filtered set — otherwise computeSummary treats unmatched energy events
       // as "orphans" and double-counts their cost.
-      const tpsIds = new Set(tpsEvents.map(e => e.id));
-      return allEnergyEvents.filter(e => tpsIds.has(e.parentId ?? ''));
+      const tpsNsIds = new Set(tpsEvents.map(e => `${e.sessionId}:${e.id}`));
+      return allEnergyEvents.filter(e => tpsNsIds.has(`${e.sessionId}:${e.parentId ?? ''}`));
     },
     [allEnergyEvents, selectedModel, tpsEvents]
   );
@@ -810,32 +833,67 @@ export default function App() {
   const dataThresholds = useMemo(() => deriveDataThresholds(tpsEvents), [tpsEvents]);
   const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
 
+  const addSession = useCallback((raw: string, fileName?: string) => {
+    const ingest = ingestJsonl(raw);
+    const events = deriveEvents(ingest);
+    const sid = ingest.sessionId;
+    setSessions(prev => {
+      const next = new Map(prev);
+      next.set(sid, { raw, ingest, events, fileName });
+      return next;
+    });
+    setActiveSessionId(null); // show "all sessions" view after adding
+    setSelectedModel(null);
+    setSelectedTpsId(null);
+  }, []);
+
+  const removeSession = useCallback((sid: string) => {
+    setSessions(prev => {
+      const next = new Map(prev);
+      next.delete(sid);
+      return next;
+    });
+    if (activeSessionId === sid) setActiveSessionId(null);
+  }, [activeSessionId]);
+
+  const clearSessions = useCallback(() => {
+    setSessions(new Map());
+    setActiveSessionId(null);
+    setSelectedModel(null);
+    setSelectedTpsId(null);
+  }, []);
+
   const loadSample = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/sample.jsonl');
       const text = await res.text();
-      setEvents(parseJsonl(text));
-      setSelectedModel(null);
+      addSession(text, 'sample.jsonl');
     } catch (e) {
       console.error('Failed to load sample', e);
     }
     setLoading(false);
-  }, []);
+  }, [addSession]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = reader.result as string;
-      setEvents(parseJsonl(text));
-      setSelectedModel(null);
-    };
-    reader.readAsText(file);
-  }, []);
+    const files = Array.from(e.dataTransfer.files).filter(f =>
+      f.name.endsWith('.jsonl') || f.name.endsWith('.json') || f.type === 'text/plain'
+    );
+    if (files.length === 0) return;
+    let loaded = 0;
+    for (const file of files) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        addSession(reader.result as string, file.name);
+        loaded++;
+        if (loaded === files.length) setLoading(false);
+      };
+      reader.readAsText(file);
+    }
+    if (files.length > 0) setLoading(true);
+  }, [addSession]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -847,16 +905,19 @@ export default function App() {
   }, []);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = reader.result as string;
-      setEvents(parseJsonl(text));
-      setSelectedModel(null);
-    };
-    reader.readAsText(file);
-  }, []);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      reader.onload = () => {
+        addSession(reader.result as string, file.name);
+      };
+      reader.readAsText(file);
+    }
+    // Reset so re-selecting the same file triggers onChange
+    e.target.value = '';
+  }, [addSession]);
 
   const [pasteFlash, setPasteFlash] = useState(false);
 
@@ -868,14 +929,13 @@ export default function App() {
       const parsed = parseJsonl(text);
       if (parsed.length === 0) return;
       e.preventDefault();
-      setEvents(parsed);
-      setSelectedModel(null);
+      addSession(text);
       setPasteFlash(true);
       setTimeout(() => setPasteFlash(false), 600);
     };
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, []);
+  }, [addSession]);
 
   return (
     <div
@@ -902,6 +962,7 @@ export default function App() {
               <input
                 type="file"
                 accept=".jsonl,.json"
+                multiple
                 className="sr-only"
                 onChange={handleFileInput}
               />
@@ -1000,6 +1061,59 @@ export default function App() {
         </div>
       </header>
 
+      {/* Session strip — shows when multiple sessions loaded */}
+      {sessions.size > 0 && (
+        <div className="sticky top-[57px] sm:top-[65px] z-30 bg-[#fafafa]/95 dark:bg-[#18181b]/95 backdrop-blur-xl border-b border-zinc-200/40 dark:border-white/[0.06]">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            <FolderOpen size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" weight="bold" />
+            <button
+              onClick={() => setActiveSessionId(null)}
+              className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                activeSessionId === null
+                  ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+              }`}
+            >
+              All ({sessions.size})
+            </button>
+            {Array.from(sessions.entries()).map(([sid, s]) => {
+              const tpsCount = getTpsEvents(s.events).length;
+              const label = s.fileName
+                ? s.fileName.replace(/\.(jsonl|json)$/, '')
+                : sid.length > 16 ? sid.slice(0, 16) + '…' : sid;
+              return (
+                <div
+                  key={sid}
+                  className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
+                    activeSessionId === sid
+                      ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+                  }`}
+                  onClick={() => setActiveSessionId(activeSessionId === sid ? null : sid)}
+                >
+                  <span className="truncate max-w-[12rem]">{label}</span>
+                  <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-500">{tpsCount} req</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeSession(sid); }}
+                    className="ml-0.5 p-0.5 rounded hover:bg-zinc-200/60 dark:hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                    title="Remove session"
+                  >
+                    <X size={10} weight="bold" />
+                  </button>
+                </div>
+              );
+            })}
+            <div className="flex-1" />
+            <button
+              onClick={clearSessions}
+              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-ember hover:bg-ember/5 dark:hover:bg-ember/10 transition-colors"
+            >
+              Clear all
+            </button>
+          </div>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {loading && !events ? (
           <motion.div
@@ -1029,9 +1143,9 @@ export default function App() {
               <div className="w-16 h-16 mx-auto mb-6 bg-zinc-50 dark:bg-white/[0.06] rounded-3xl flex items-center justify-center">
                 <FileArrowUp size={28} className="text-zinc-300 dark:text-zinc-400" weight="duotone" />
               </div>
-              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop, paste, or import a telemetry file</h2>
+              <h2 className="text-xl font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Drop, paste, or import telemetry files</h2>
               <p className="text-sm text-zinc-400 dark:text-zinc-400 mb-6 leading-relaxed">
-                Drag and drop a <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> file, or paste JSONL contents directly (<kbd className="metric-mono text-[11px] bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-zinc-200/60 dark:border-white/[0.06]">⌘V</kbd>). Supports telemetry exports from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">/tps-export</code> and raw session files from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">~/.pi/agent/sessions</code>.
+                Drag and drop <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">.jsonl</code> files (one or many), or paste JSONL contents directly (<kbd className="metric-mono text-[11px] bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-zinc-200/60 dark:border-white/[0.06]">⌘V</kbd>). Supports telemetry exports from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">/tps-export</code> and raw session files from <code className="metric-mono text-xs bg-zinc-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded">~/.pi/agent/sessions</code>.
               </p>
               <a
                 href="https://github.com/monotykamary/pi-tps"
