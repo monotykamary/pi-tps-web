@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Play,
   CaretRight,
@@ -309,16 +310,56 @@ function buildTree(rows: unknown[][], columns: string[], groupByCols: string[]):
   return buildLevel('', 0);
 }
 
-function getDetailRows(node: TreeNode, groupByCols: string[], columns: string[], allRows: unknown[][]): unknown[][] {
-  const pathValues = node.path.split(PATH_SEP);
+function buildDetailIndex(groupByCols: string[], columns: string[], allRows: unknown[][]): Map<string, number[]> {
   const groupColIndices = groupByCols.map((c) => columns.indexOf(c));
-  return allRows.filter((row) =>
-    pathValues.every((pathVal, i) => {
-      const colIdx = groupColIndices[i];
-      if (colIdx === -1) return false;
-      return String(row[colIdx] ?? '') === pathVal;
-    })
-  );
+  const index = new Map<string, number[]>();
+  for (let i = 0; i < allRows.length; i++) {
+    const row = allRows[i];
+    const pathParts = groupColIndices.map((idx) => String(row[idx] ?? ''));
+    for (let depth = 0; depth < groupByCols.length; depth++) {
+      const key = pathParts.slice(0, depth + 1).join(PATH_SEP);
+      let arr = index.get(key);
+      if (!arr) { arr = []; index.set(key, arr); }
+      arr.push(i);
+    }
+  }
+  return index;
+}
+
+type VirtualRow =
+  | { type: 'group'; nodeId: number; depth: number }
+  | { type: 'detail'; nodeId: number; depth: number; rowIndex: number }
+  | { type: 'flat'; rowIndex: number };
+
+const ROW_HEIGHTS = {
+  group: 36,
+  detail: 30,
+  flat: 36,
+} as const;
+
+function flattenTree(
+  nodes: TreeNode[],
+  expandedPaths: Set<number>,
+  detailExpandedPaths: Set<number>,
+  detailIndex: Map<string, number[]>,
+  depth: number,
+): VirtualRow[] {
+  const rows: VirtualRow[] = [];
+  for (const node of nodes) {
+    const hasChildren = node.children.length > 0;
+    rows.push({ type: 'group', nodeId: node.id, depth });
+
+    if (hasChildren && expandedPaths.has(node.id)) {
+      rows.push(...flattenTree(node.children, expandedPaths, detailExpandedPaths, detailIndex, depth + 1));
+    } else if (!hasChildren && detailExpandedPaths.has(node.id)) {
+      const indices = detailIndex.get(node.path);
+      const count = indices ? indices.length : 0;
+      for (let i = 0; i < count; i++) {
+        rows.push({ type: 'detail', nodeId: node.id, depth, rowIndex: i });
+      }
+    }
+  }
+  return rows;
 }
 
 function detailColumns(columns: string[]): string[] {
@@ -332,153 +373,6 @@ function SkeletonRow({ cols }: { cols: number }) {
         <div key={i} className="h-3 rounded bg-zinc-200/60 dark:bg-zinc-700/40 animate-pulse" style={{ width: `${60 + (i * 17 % 30)}px` }} />
       ))}
     </div>
-  );
-}
-
-function renderTreeRows({
-  nodes, columns, groupByCols, expandedPaths, onToggle,
-  detailExpandedPaths, onToggleDetail, allRows, depth, allDisplayColumns, theadHeight,
-}: {
-  nodes: TreeNode[];
-  columns: string[];
-  groupByCols: string[];
-  expandedPaths: Set<number>;
-  onToggle: (id: number) => void;
-  detailExpandedPaths: Set<number>;
-  onToggleDetail: (id: number) => void;
-  allRows: unknown[][];
-  depth: number;
-  allDisplayColumns: string[];
-  theadHeight: number;
-}): React.ReactNode[] {
-  const rows: React.ReactNode[] = [];
-  const detailCols = detailColumns(columns);
-  const detailColIndices = detailCols.map((c) => columns.indexOf(c));
-
-  for (const node of nodes) {
-    const hasChildren = node.children.length > 0;
-    const isTreeExpanded = expandedPaths.has(node.id);
-    const isDetailExpanded = detailExpandedPaths.has(node.id);
-
-    rows.push(
-      <tr
-        key={`g-${node.id}`}
-                className="group/row sticky z-[15] cursor-pointer transition-colors duration-150 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-[#28282d]"
-        style={{ top: `${theadHeight - 2}px` }}
-        onClick={() => {
-          if (hasChildren) onToggle(node.id);
-          else onToggleDetail(node.id);
-        }}
-      >
-        <td className="py-2 px-3 sticky left-0 z-[15] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d] border-b border-zinc-200/40 dark:border-white/[0.04]">
-          <div className="flex items-center gap-3" style={{ paddingLeft: `${depth * 16 + 13}px` }}>
-            <div className="w-4 shrink-0 flex items-center justify-center">
-              <div className={`transition-transform duration-200 ${isTreeExpanded || isDetailExpanded ? 'rotate-90' : ''}`}>
-                <CaretRight size={12} className="text-zinc-400 dark:text-zinc-500" />
-              </div>
-            </div>
-            <div className="text-xs font-medium truncate text-zinc-600 dark:text-zinc-300">
-              {node.value === null ? (
-                <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
-              ) : (
-                String(node.value)
-              )}
-            </div>
-          </div>
-        </td>
-        <td colSpan={allDisplayColumns.length - 1} className="py-2 bg-white dark:bg-zinc-800 border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]" />
-      </tr>
-    );
-
-    if (hasChildren && isTreeExpanded) {
-      rows.push(
-        ...renderTreeRows({
-          nodes: node.children, columns, groupByCols, expandedPaths, onToggle,
-          detailExpandedPaths, onToggleDetail, allRows, depth: depth + 1, allDisplayColumns, theadHeight,
-        })
-      );
-    } else if (!hasChildren && isDetailExpanded) {
-      const detailRows = getDetailRows(node, groupByCols, columns, allRows);
-      for (let i = 0; i < Math.min(detailRows.length, 50); i++) {
-        const row = detailRows[i];
-        rows.push(
-          <tr key={`d-${node.id}-${i}`} className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]">
-            {detailColIndices.map((colIdx, j) => {
-              const val = colIdx !== -1 ? row[colIdx] : null;
-              const colName = detailCols[j];
-              const isNum = typeof val === 'number';
-              const isFirstCol = j === 0;
-              return (
-                <td key={j} className={`py-1.5 px-3 text-[11px] whitespace-nowrap ${isNum ? 'metric-mono tabular-nums' : ''} ${isFirstCol ? 'sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : ''}`}>
-                  <div className="flex items-center truncate max-w-[200px]">
-                    {isFirstCol && <span style={{ display: 'inline-block', width: `${(depth + 1) * 16 + 28}px`, flexShrink: 0 }} />}
-                    {val === null || val === undefined ? (
-                      <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
-                    ) : (
-                      <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
-                        {fmtCell(val, colName)}
-                      </span>
-                    )}
-                  </div>
-                </td>
-              );
-            })}
-          </tr>
-        );
-      }
-      if (detailRows.length > 50) {
-        rows.push(
-          <tr key={`d-${node.id}-more`}>
-            <td colSpan={allDisplayColumns.length} className="py-1 px-3 text-[10px] text-zinc-400 dark:text-zinc-500">
-              <span style={{ display: 'inline-block', width: `${(depth + 1) * 16 + 28}px` }} />
-              + {detailRows.length - 50} more rows
-            </td>
-          </tr>
-        );
-      }
-    }
-  }
-
-  return rows;
-}
-
-function RenderFlatTable({ result, displayCols }: { result: QueryResult; displayCols: string[] }) {
-  const pageSize = 200;
-  const visible = result.rows.slice(0, pageSize);
-  const colIndices = displayCols.map((c) => result.columns.indexOf(c));
-
-  return (
-    <>
-      {visible.map((row, i) => (
-        <tr key={i} className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]">
-          {colIndices.map((colIdx, j) => {
-            const val = colIdx !== -1 ? row[colIdx] : null;
-            const col = displayCols[j];
-            const isNum = typeof val === 'number';
-            return (
-              <td key={j} className={`py-2 px-3 text-xs whitespace-nowrap ${isNum ? 'metric-mono tabular-nums' : ''} ${j === 0 ? 'sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : ''}`}>
-                <div className="truncate max-w-[240px]">
-                  {val === null || val === undefined ? (
-                    <span className="italic text-[10px] text-zinc-400 dark:text-zinc-500">NULL</span>
-                  ) : (
-                    <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
-                      {fmtCell(val, col)}
-                    </span>
-                  )}
-                </div>
-              </td>
-            );
-          })}
-        </tr>
-      ))}
-      {result.rowCount > pageSize && (
-        <tr>
-          <td colSpan={displayCols.length} className="px-4 py-3 text-center text-[10px] text-zinc-400 dark:text-zinc-500">
-            Showing first {pageSize.toLocaleString()} of {result.rowCount.toLocaleString()} rows. Add LIMIT to narrow.
-          </td>
-        </tr>
-      )}
-    </>
   );
 }
 
@@ -772,6 +666,88 @@ export default function SqlPlayground() {
     [result],
   );
 
+  const detailIndex = useMemo(
+    () => result && groupByCols.length > 0 ? buildDetailIndex(groupByCols, result.columns, result.rows) : new Map<string, number[]>(),
+    [result, groupByCols],
+  );
+
+  const nodeMap = useMemo(() => {
+    if (!tree) return new Map<number, TreeNode>();
+    const map = new Map<number, TreeNode>();
+    function walk(nodes: TreeNode[]) {
+      for (const n of nodes) {
+        map.set(n.id, n);
+        if (n.children.length > 0) walk(n.children);
+      }
+    }
+    walk(tree);
+    return map;
+  }, [tree]);
+
+  const virtualRows = useMemo(() => {
+    if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree) {
+      return flattenTree(tree, expandedPaths, detailExpandedPaths, detailIndex, 0);
+    }
+    if (result) {
+      return result.rows.map((_, i): VirtualRow => ({ type: 'flat', rowIndex: i }));
+    }
+    return [] as VirtualRow[];
+  }, [tree, groupByCols, isTrivialTree, expandedPaths, detailExpandedPaths, detailIndex, result]);
+
+  const detailColsMemo = useMemo(() => result ? detailColumns(result.columns) : [], [result]);
+  const detailColIndicesMemo = useMemo(() => detailColsMemo.map((c) => result ? result.columns.indexOf(c) : -1), [detailColsMemo, result]);
+  const flatColIndices = useMemo(() => displayColumns.map((c) => result ? result.columns.indexOf(c) : -1), [displayColumns, result]);
+
+   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (i) => {
+      const row = virtualRows[i];
+      if (!row) return 36;
+      return ROW_HEIGHTS[row.type];
+    },
+    overscan: 20,
+  });
+
+  // Compute pinned group overlay: deepest group ancestor scrolled above viewport
+  // Only show the group whose children are currently visible in the viewport
+  const _vi = rowVirtualizer.getVirtualItems();
+  const _scrollOff = rowVirtualizer.scrollOffset ?? 0;
+  const _viewEnd = _scrollOff + (rowVirtualizer.getTotalSize ? rowVirtualizer.getTotalSize() : 0);
+  let pinnedGroup: { nodeId: number; depth: number } | null = null;
+  if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && _vi.length > 0) {
+    // Find the first visible row that isn't a group — its parent group is the one to pin
+    let firstVisibleChildIdx = -1;
+    for (const vi of _vi) {
+      const vRow = virtualRows[vi.index];
+      if (!vRow) continue;
+      if (vRow.type !== 'group') {
+        firstVisibleChildIdx = vi.index;
+        break;
+      }
+      // Group row is visible — pin it only if it's scrolled above
+      if (vi.start + vi.size <= _scrollOff) {
+        pinnedGroup = { nodeId: vRow.nodeId, depth: vRow.depth };
+      } else {
+        // Group is in view — no pin needed
+        pinnedGroup = null;
+        break;
+      }
+    }
+    // If we found a child row, find its nearest group ancestor
+    if (firstVisibleChildIdx >= 0 && !pinnedGroup) {
+      for (let i = firstVisibleChildIdx - 1; i >= 0; i--) {
+        const vRow = virtualRows[i];
+        if (vRow && vRow.type === 'group') {
+          pinnedGroup = { nodeId: vRow.nodeId, depth: vRow.depth };
+          break;
+        }
+      }
+    }
+  }
+
   const clearAll = useCallback(() => {
     setSql('');
     setOriginalSql('');
@@ -804,8 +780,25 @@ export default function SqlPlayground() {
     const mapped = result.rows.map((row) =>
       displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? row[idx] : null; })
     );
-    return measureColWidths(displayColumns, mapped);
-  }, [result, displayColumns]);
+    const widths = measureColWidths(displayColumns, mapped);
+    // Widen first column for tree indentation + caret + count badge
+    if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
+      const maxDepth = (() => {
+        let d = 0;
+        function walk(nodes: TreeNode[], depth: number) {
+          for (const n of nodes) {
+            d = Math.max(d, depth);
+            if (n.children.length > 0) walk(n.children, depth + 1);
+          }
+        }
+        walk(tree, 0);
+        return d;
+      })();
+      const treeOverhead = (maxDepth + 1) * 16 + 24 + 60; // indent + caret + "9,999" count
+      widths[0] = Math.max(widths[0], treeOverhead);
+    }
+    return widths;
+  }, [result, displayColumns, tree, groupByCols, isTrivialTree]);
 
   return (
     <div className="bg-white/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-0 flex-1">
@@ -1043,17 +1036,17 @@ export default function SqlPlayground() {
       {/* Results */}
       {result && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className={`mx-4 mb-4 ${editorCollapsed ? 'mt-0' : 'mt-2'} rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-800 overflow-hidden`}
+          className={'relative mx-4 mb-4 ' + (editorCollapsed ? 'mt-0 ' : 'mt-2 ') + 'rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] flex-1 min-h-0 flex flex-col bg-white dark:bg-zinc-800 overflow-hidden'}
         >
-          <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 max-h-full custom-scrollbar">
+          <div ref={scrollContainerRef} className="overflow-auto flex-1 min-h-0 max-h-full custom-scrollbar" style={{ overscrollBehavior: 'none' }}>
             <table className="text-left" style={{ tableLayout: 'fixed', width: 'auto', minWidth: '100%' }}>
               <colgroup>
                 {displayColumns.map((col, j) => {
                   const w = colWidths[j];
-                  return <col key={col} style={{ width: `${w}px`, minWidth: `${w}px` }} />;
+                  return <col key={col} style={{ width: w + 'px', minWidth: w + 'px' }} />;
                 })}
               </colgroup>
-              <thead ref={theadRef} className="sticky -top-px z-30 bg-white dark:bg-zinc-800 pt-px">
+              <thead ref={theadRef} className="sticky top-0 z-30 bg-white dark:bg-zinc-800">
                 <tr className="border-b border-zinc-200/60 dark:border-white/[0.06]">
                   {displayColumns.map((col, i) => (
                     <th
@@ -1061,26 +1054,192 @@ export default function SqlPlayground() {
                       draggable
                       onDragStart={(e) => handleHeaderDragStart(e, col)}
                       onDragEnd={handleHeaderDragEnd}
-                      className={`px-3 py-2 text-[10px] font-medium tracking-wider cursor-grab active:cursor-grabbing select-none transition-colors hover:text-accent whitespace-nowrap ${i === 0 ? 'sticky left-0 z-40 bg-white dark:bg-zinc-800' : ''} ${draggedCol === col ? 'text-accent' : 'text-zinc-400 dark:text-zinc-500'}`}
+                      className={'px-3 py-2 text-[10px] font-medium tracking-wider cursor-grab active:cursor-grabbing select-none transition-colors hover:text-accent whitespace-nowrap' + (i === 0 ? ' sticky left-0 z-40 bg-white dark:bg-zinc-800' : '') + (draggedCol === col ? ' text-accent' : ' text-zinc-400 dark:text-zinc-500')}
                     >
                       <span className="truncate">{fmtHeader(col)}</span>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="relative z-0">
-                {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? (
-                  renderTreeRows({
-                    nodes: tree, columns: result.columns, groupByCols, expandedPaths,
-                    onToggle: toggleExpanded, detailExpandedPaths, onToggleDetail: toggleDetailExpanded,
-                    allRows: result.rows, depth: 0, allDisplayColumns: displayColumns, theadHeight,
-                  })
-                ) : (
-                  <RenderFlatTable result={result} displayCols={displayColumns} />
-                )}
+              <tbody>
+                {(() => {
+                  const virtualItems = rowVirtualizer.getVirtualItems();
+                  if (virtualItems.length === 0) return null;
+                  const firstOffset = virtualItems[0].start;
+                  const lastItem = virtualItems[virtualItems.length - 1];
+                  const bottomPad = rowVirtualizer.getTotalSize() - (lastItem.start + lastItem.size);
+
+
+                  return (
+                    <>
+                      {firstOffset > 0 && (
+                        <tr><td colSpan={displayColumns.length} style={{ height: firstOffset, padding: 0, border: 'none' }} /></tr>
+                      )}
+                      {virtualItems.map((virtualItem) => {
+                        const vRow = virtualRows[virtualItem.index];
+                        if (!vRow) return null;
+
+                        if (vRow.type === 'group') {
+                          const node = nodeMap.get(vRow.nodeId);
+                          if (!node) return null;
+                          const hasChildren = node.children.length > 0;
+                          const isExpanded = expandedPaths.has(node.id) || detailExpandedPaths.has(node.id);
+                          return (
+                            <tr
+                              key={virtualItem.key}
+                              className="group/row cursor-pointer transition-colors duration-150 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-[#28282d] border-b border-zinc-200/40 dark:border-white/[0.04]"
+                              onClick={() => {
+                                if (hasChildren) toggleExpanded(node.id);
+                                else toggleDetailExpanded(node.id);
+                              }}
+                            >
+                              <td className="py-2 px-3 sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]">
+                                <div className="flex items-center gap-2" style={{ paddingLeft: (vRow.depth * 16) + 'px' }}>
+                                  <div className="shrink-0 flex items-center justify-center w-4">
+                                    <div className={'transition-transform duration-200' + (isExpanded ? ' rotate-90' : '')}>
+                                      <CaretRight size={12} className="text-zinc-400 dark:text-zinc-500" />
+                                    </div>
+                                  </div>
+                                  <div className="text-xs font-medium truncate text-zinc-600 dark:text-zinc-300 min-w-0">
+                                    {node.value === null ? (
+                                      <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                                    ) : (
+                                      String(node.value)
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              {displayColumns.slice(1).map((_, i) => (
+                                <td key={i} className="py-2 bg-white dark:bg-zinc-800 border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]" />
+                              ))}
+                            </tr>
+                          );
+                        }
+
+                        if (vRow.type === 'detail') {
+                          const node = nodeMap.get(vRow.nodeId);
+                          if (!node) return null;
+                          const indices = detailIndex.get(node.path);
+                          const globalIdx = indices?.[vRow.rowIndex];
+                          if (globalIdx === undefined) return null;
+                          const dataRow = result.rows[globalIdx];
+                          if (!dataRow) return null;
+                          return (
+                            <tr
+                              key={virtualItem.key}
+                              className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]"
+                            >
+                              {detailColIndicesMemo.map((colIdx, j) => {
+                                const val = colIdx !== -1 ? dataRow[colIdx] : null;
+                                const colName = detailColsMemo[j];
+                                const isNum = typeof val === 'number';
+                                const isFirst = j === 0;
+                                return (
+                                  <td
+                                    key={j}
+                                    className={'py-1.5 px-3 text-[11px] whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (isFirst ? ' sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
+                                  >
+                                    <div className="flex items-center truncate">
+                                      {isFirst && <span style={{ display: 'inline-block', width: ((vRow.depth + 1) * 16 + 28) + 'px', flexShrink: 0 }} />}
+                                      {val === null || val === undefined ? (
+                                        <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                                      ) : (
+                                        <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
+                                          {fmtCell(val, colName)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        }
+
+                        if (vRow.type === 'flat') {
+                          const dataRow = result.rows[vRow.rowIndex];
+                          if (!dataRow) return null;
+                          return (
+                            <tr
+                              key={virtualItem.key}
+                              className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]"
+                            >
+                              {flatColIndices.map((colIdx, j) => {
+                                const val = colIdx !== -1 ? dataRow[colIdx] : null;
+                                const col = displayColumns[j];
+                                const isNum = typeof val === 'number';
+                                return (
+                                  <td
+                                    key={j}
+                                    className={'py-2 px-3 text-xs whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (j === 0 ? ' sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
+                                  >
+                                    <div className="truncate max-w-[240px]">
+                                      {val === null || val === undefined ? (
+                                        <span className="italic text-[10px] text-zinc-400 dark:text-zinc-500">NULL</span>
+                                      ) : (
+                                        <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
+                                          {fmtCell(val, col)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        }
+
+                        return null;
+                      })}
+                      {bottomPad > 0 && (
+                        <tr><td colSpan={displayColumns.length} style={{ height: bottomPad, padding: 0, border: 'none' }} /></tr>
+                      )}
+                    </>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
+
+          {/* Pinned group overlay */}
+          <AnimatePresence>
+            {pinnedGroup && (() => {
+              const node = nodeMap.get(pinnedGroup.nodeId);
+              if (!node) return null;
+              const hasChildren = node.children.length > 0;
+              const isExpanded = expandedPaths.has(node.id) || detailExpandedPaths.has(node.id);
+              return (
+                <motion.div
+                  key={pinnedGroup.nodeId}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+                  className="absolute left-0 right-0 z-20 cursor-pointer bg-white/95 dark:bg-zinc-800/95 backdrop-blur-sm border-t border-zinc-200/60 dark:border-white/[0.06] border-b border-zinc-200/60 dark:border-white/[0.06] shadow-sm shadow-zinc-200/40 dark:shadow-black/20"
+                  style={{ top: theadHeight - 1 }}
+                  onClick={() => {
+                    if (hasChildren) toggleExpanded(node.id);
+                    else toggleDetailExpanded(node.id);
+                  }}
+                >
+                  <div className="flex items-center gap-2 px-3 py-2" style={{ paddingLeft: (pinnedGroup.depth * 16 + 13) + 'px' }}>
+                    <div className="shrink-0 flex items-center justify-center w-4">
+                      <div className={'transition-transform duration-200' + (isExpanded ? ' rotate-90' : '')}>
+                        <CaretRight size={12} className="text-zinc-400 dark:text-zinc-500" />
+                      </div>
+                    </div>
+                    <div className="text-xs font-medium truncate text-zinc-600 dark:text-zinc-300 min-w-0">
+                      {node.value === null ? (
+                        <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                      ) : (
+                        String(node.value)
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
 
           {/* Footer */}
           <div className="border-t border-zinc-200/60 dark:border-white/[0.06] px-4 py-2 bg-white dark:bg-zinc-800">
@@ -1088,7 +1247,7 @@ export default function SqlPlayground() {
               <span className="text-[10px] tabular-nums flex items-center gap-1.5 metric-mono text-zinc-400 dark:text-zinc-500">
                 {running && <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />}
                 {result.rowCount.toLocaleString()} rows
-                {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? ` · ${groupByCols.length} level${groupByCols.length > 1 ? 's' : ''}` : ''}
+                {tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree ? (' \u00B7 ' + groupByCols.length + ' level' + (groupByCols.length > 1 ? 's' : '')) : ''}
               </span>
               <span className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-500">Drag headers to group bar</span>
             </div>
