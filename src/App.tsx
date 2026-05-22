@@ -801,6 +801,7 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -849,6 +850,7 @@ export default function App() {
   useEffect(() => {
     if (sessions.size === 0) {
       setDbLoading(false);
+      setHasLoaded(false);
       return;
     }
     setDbLoading(true);
@@ -861,6 +863,7 @@ export default function App() {
       loadEvents(allEvts).then(() => {
         setDbVersion(v => v + 1);
         setDbLoading(false);
+        setHasLoaded(true);
       }).catch((err) => {
         console.error('DuckDB load failed:', err);
         setDbLoading(false);
@@ -1006,6 +1009,7 @@ export default function App() {
     setSelectedModel(null);
     setSelectedTpsId(null);
     setDbLoading(false);
+    setHasLoaded(false);
     resetDB().catch(() => {});
   }, []);
 
@@ -1243,20 +1247,25 @@ export default function App() {
         </div>
       )}
 
-      {viewTab === 'sql' && sessions.size > 0 ? (
-          <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 py-6">
-              <SqlPlayground />
-          </div>
-      ) : (
-      <div className="flex-1 min-h-0 overflow-y-auto">
-      {(dbLoading || loading) && !summary ? (
+      {/* SQL Playground — hidden when on dashboard tab, kept in DOM to preserve state */}
+      <div
+        className={`flex-1 min-h-0 flex flex-col px-4 sm:px-6 py-6 ${viewTab === 'sql' && sessions.size > 0 ? '' : 'hidden'}`}
+      >
+          <SqlPlayground />
+      </div>
+
+      {/* Dashboard — hidden when on SQL tab, kept in DOM to preserve state */}
+      <div
+        className={`flex-1 min-h-0 overflow-y-auto ${viewTab === 'sql' && sessions.size > 0 ? 'hidden' : ''}`}
+      >
+      {(hasLoaded || dbLoading || loading) && !summary ? (
           <div className="flex items-center justify-center min-h-[60dvh]">
             <div className="flex flex-col items-center gap-4">
               <div className="w-10 h-10 border-2 border-zinc-200 dark:border-white/[0.06] border-t-accent rounded-full animate-spin" />
               <p className="text-sm text-zinc-400 dark:text-zinc-400 font-medium">Loading telemetry…</p>
             </div>
           </div>
-        ) : !summary ? (
+        ) : !hasLoaded && !summary ? (
           <motion.div
             key="empty"
             initial={{ opacity: 0, y: 20 }}
@@ -1464,7 +1473,6 @@ export default function App() {
           </div>
         )}
       </div>
-      )}
     </div>
   );
 }
