@@ -402,7 +402,7 @@ function renderTreeRows({
       for (let i = 0; i < Math.min(detailRows.length, 50); i++) {
         const row = detailRows[i];
         rows.push(
-          <tr key={`d-${node.id}-${i}`} className="group/row transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]">
+          <tr key={`d-${node.id}-${i}`} className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]">
             {detailColIndices.map((colIdx, j) => {
               const val = colIdx !== -1 ? row[colIdx] : null;
               const colName = detailCols[j];
@@ -535,8 +535,10 @@ export default function SqlPlayground() {
   const [draggedCol, setDraggedCol] = useState<string | null>(null);
   const [lineCount, setLineCount] = useState(1);
   const [editorCollapsed, setEditorCollapsed] = useState(false);
+  const [editorContentHeight, setEditorContentHeight] = useState(0);
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorContentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const theadRef = useRef<HTMLTableSectionElement>(null);
   const [theadHeight, setTheadHeight] = useState(33);
@@ -693,6 +695,19 @@ export default function SqlPlayground() {
     return () => ro.disconnect();
   }, [result]);
 
+  useEffect(() => {
+    const el = editorContentRef.current;
+    if (!el) return;
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setEditorContentHeight(h);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sql, result, lineCount, error, groupByCols, dragOverZone]);
+
   const handleHeaderDragStart = useCallback(
     (e: React.DragEvent, col: string) => {
       setDraggedCol(col);
@@ -829,11 +844,14 @@ export default function SqlPlayground() {
         </div>
       </div>
 
-      {/* Editor area — hidden via CSS to preserve CodeMirror */}
-      <div
-        style={{ display: editorCollapsed ? 'none' : undefined }}
-        className="shrink-0 px-4 pt-3 space-y-2"
+      {/* Editor area — height-animated to preserve CodeMirror */}
+      <motion.div
+        initial={false}
+        animate={editorCollapsed ? { height: 0, opacity: 0 } : { height: editorContentHeight, opacity: 1 }}
+        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+        className="overflow-hidden shrink-0"
       >
+      <div ref={editorContentRef} className="px-4 pt-3 space-y-2">
         {/* SQL editor */}
         <div className="relative rounded-2xl border border-zinc-200/60 dark:border-white/[0.06] bg-white/60 dark:bg-zinc-800/40 overflow-hidden transition-colors focus-within:border-accent/40 dark:focus-within:border-accent/40">
           <div ref={editorRef} className="min-h-[120px] max-h-[280px] overflow-auto" />
@@ -952,6 +970,7 @@ export default function SqlPlayground() {
           </motion.div>
         )}
       </div>
+      </motion.div>
 
       {/* Group-by zone — always visible when editor is collapsed */}
       {editorCollapsed && result && (
