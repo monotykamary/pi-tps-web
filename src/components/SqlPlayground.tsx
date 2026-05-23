@@ -729,14 +729,14 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
         syntaxHighlighting(cmLightHighlight),
         syntaxHighlighting(cmDarkHighlight),
         keymap.of([
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...searchKeymap,
-          ...historyKeymap,
           {
             key: 'Mod-Enter',
             run: () => { runCallbackRef.current(); return true; },
           },
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
         ]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
