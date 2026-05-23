@@ -1007,7 +1007,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
       sampled.push(displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? result.rows[i][idx] : null; }));
     }
     const widths = measureColWidths(displayColumns, sampled);
-    // Widen first column for tree node rows: indent + caret + count + text
+    // Widen first column for tree node rows: indent + caret + text
     if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
       let maxNodeRowW = 0;
       function measureNodes(nodes: TreeNode[], depth: number) {
@@ -1274,13 +1274,13 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
               </colgroup>
               <thead ref={theadRef} className="sticky top-0 z-30 bg-white dark:bg-zinc-800">
                 <tr className="border-b border-zinc-200/60 dark:border-white/[0.06]">
-                  {displayColumns.map((col, i) => (
+                  {displayColumns.map((col) => (
                     <th
                       key={col}
                       draggable
                       onDragStart={(e) => handleHeaderDragStart(e, col)}
                       onDragEnd={handleHeaderDragEnd}
-                      className={'px-3 py-2 text-[10px] font-medium tracking-wider cursor-grab active:cursor-grabbing select-none transition-colors hover:text-accent whitespace-nowrap' + (i === 0 ? ' sticky left-0 z-40 bg-white dark:bg-zinc-800' : '') + (draggedCol === col ? ' text-accent' : ' text-zinc-400 dark:text-zinc-500')}
+                      className={'px-3 py-2 text-[10px] font-medium tracking-wider cursor-grab active:cursor-grabbing select-none transition-colors hover:text-accent whitespace-nowrap' + (draggedCol === col ? ' text-accent' : ' text-zinc-400 dark:text-zinc-500')}
                     >
                       <span className="truncate">{fmtHeader(col)}</span>
                     </th>
@@ -1319,7 +1319,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 else toggleDetailExpanded(node.id);
                               }}
                             >
-                              <td className="py-2 px-3 sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]">
+                              <td className="py-2 px-3 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]">
                                 <div className="flex items-center gap-2" style={{ paddingLeft: (vRow.depth * 16) + 'px' }}>
                                   <div className="shrink-0 flex items-center justify-center w-4">
                                     <div className={'transition-transform duration-200' + (isExpanded ? ' rotate-90' : '')}>
@@ -1336,7 +1336,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 </div>
                               </td>
                               {displayColumns.slice(1).map((_, i) => (
-                                <td key={i} className="py-2 bg-white dark:bg-zinc-800 border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]" />
+                                <td key={i} className="py-2 border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]" />
                               ))}
                             </tr>
                           );
@@ -1363,7 +1363,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 return (
                                   <td
                                     key={j}
-                                    className={'py-1.5 px-3 text-[11px] whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (isFirst ? ' sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
+                                    className={'py-1.5 px-3 text-[11px] whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (isFirst ? ' transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
                                   >
                                     <div className="flex items-center truncate">
                                       {isFirst && <span style={{ display: 'inline-block', width: ((vRow.depth + 1) * 16 + 28) + 'px', flexShrink: 0 }} />}
@@ -1397,7 +1397,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 return (
                                   <td
                                     key={j}
-                                    className={'py-2 px-3 text-xs whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (j === 0 ? ' sticky left-0 z-[5] bg-white dark:bg-zinc-800 transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
+                                    className={'py-2 px-3 text-xs whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (j === 0 ? ' transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
                                   >
                                     <div className="truncate max-w-[240px]">
                                       {val === null || val === undefined ? (
