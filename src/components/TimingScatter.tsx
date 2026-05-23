@@ -1,10 +1,9 @@
-'use client';
-
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
+
 import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
 import { computeEffectiveTps, formatThreshold, formatDuration } from '../lib/parser';
 
@@ -12,6 +11,69 @@ interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
   onPointClick: (id: string) => void;
   thresholds: DataThresholds;
+}
+
+function TimingTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload as Record<string, unknown>;
+  const tps = Number(d.tps);
+  const wallTps = Number(d.wallTps);
+  const loss = tps > 0 ? ((tps - wallTps) / tps) * 100 : 0;
+  const wallShare = tps > 0 ? (wallTps / tps) * 100 : 0;
+  return (
+    <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 220 }}>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
+        Request #{Number(d.index) + 1}
+      </p>
+      <div className="space-y-1.5">
+        <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Total tokens</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{Number(d.x).toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">TTFT</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(Number(d.y))}</span>
+        </div>
+        <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Cache hit</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{(Number(d.cacheRatio) * 100).toFixed(0)}%</span>
+        </div>
+        <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">New input</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{Number(d.input).toLocaleString()}</span>
+        </div>
+      </div>
+      <div className="mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1.5">Speed</p>
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs whitespace-nowrap">
+            <span className="text-zinc-400 dark:text-zinc-400">Active</span>
+            <span className="metric-mono font-semibold text-moss">{tps.toFixed(1)} tok/s</span>
+          </div>
+          <div className="flex justify-between text-xs whitespace-nowrap">
+            <span className="text-zinc-400 dark:text-zinc-400">Wall</span>
+            <span className="metric-mono font-semibold text-accent">{wallTps.toFixed(1)} tok/s</span>
+          </div>
+          <div className="flex justify-between text-xs whitespace-nowrap">
+            <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
+            <span className={`metric-mono font-semibold ${loss > 50 ? 'text-ember' : loss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{loss.toFixed(1)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
+            <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
+          </div>
+        </div>
+      </div>
+      {(d.stallCount as number) > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06]">
+          <div className="flex justify-between text-xs whitespace-nowrap">
+            <span className="text-ember">Stalls</span>
+            <span className="metric-mono font-semibold text-ember">{String(d.stallCount)} · {formatDuration(Number(d.stallMs))}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
@@ -47,7 +109,7 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
         timestamp: e.timestamp,
       };
     });
-  }, [events, cacheThreshold, slowTtft, fastTtft, highNewInputRatio]);
+  }, [events, cacheThreshold, slowTtft, fastTtft, highNewInputRatio, anomalyInputThreshold]);
 
   const colorMap = {
     fast: '#059669',
@@ -83,67 +145,6 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
     return [0, max * 1.05];
   }, [data, scale]);
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0].payload;
-    const loss = d.tps > 0 ? ((d.tps - d.wallTps) / d.tps) * 100 : 0;
-    const wallShare = d.tps > 0 ? (d.wallTps / d.tps) * 100 : 0;
-    return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 220 }}>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
-          Request #{d.index + 1}
-        </p>
-        <div className="space-y-1.5">
-          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Total tokens</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.x.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">TTFT</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(d.y)}</span>
-          </div>
-          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Cache hit</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{(d.cacheRatio * 100).toFixed(0)}%</span>
-          </div>
-          <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">New input</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.input.toLocaleString()}</span>
-          </div>
-        </div>
-        <div className="mt-2 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1.5">Speed</p>
-          <div className="space-y-1">
-            <div className="flex justify-between text-xs whitespace-nowrap">
-              <span className="text-zinc-400 dark:text-zinc-400">Active</span>
-              <span className="metric-mono font-semibold text-moss">{d.tps.toFixed(1)} tok/s</span>
-            </div>
-            <div className="flex justify-between text-xs whitespace-nowrap">
-              <span className="text-zinc-400 dark:text-zinc-400">Wall</span>
-              <span className="metric-mono font-semibold text-accent">{d.wallTps.toFixed(1)} tok/s</span>
-            </div>
-            <div className="flex justify-between text-xs whitespace-nowrap">
-              <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
-              <span className={`metric-mono font-semibold ${loss > 50 ? 'text-ember' : loss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{loss.toFixed(1)}%</span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
-              <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
-              <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
-            </div>
-          </div>
-        </div>
-        {d.stallCount > 0 && (
-          <div className="mt-1.5 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06]">
-            <div className="flex justify-between text-xs whitespace-nowrap">
-              <span className="text-ember">Stalls</span>
-              <span className="metric-mono font-semibold text-ember">{d.stallCount} · {formatDuration(d.stallMs)}</span>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -162,7 +163,9 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
               key={s}
               onClick={() => setScale(s)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                scale === s ? 'bg-white dark:bg-zinc-600 text-zinc-800 dark:text-zinc-300 shadow-sm' : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
+                scale === s
+                  ? 'bg-white dark:bg-zinc-600 text-zinc-800 dark:text-zinc-300 shadow-sm'
+                  : 'text-zinc-400 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
               }`}
             >
               {s === 'log' ? 'Log Scale' : 'Linear'}
@@ -200,8 +203,8 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
             <ZAxis type="number" dataKey="z" range={[40, 200]} />
-            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
-            <Scatter data={displayData} onClick={(d: any) => onPointClick(d.id)}>
+            <Tooltip content={<TimingTooltip />} cursor={{ strokeDasharray: '3 3' }} />
+            <Scatter data={displayData} onClick={(d) => onPointClick((d as unknown as { payload: { id: string } }).payload.id)}>
               {displayData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
@@ -237,4 +240,4 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
   );
 }
 
-export default React.memo(TimingScatterInner);
+export default memo(TimingScatterInner);

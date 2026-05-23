@@ -1,10 +1,9 @@
-'use client';
-
-import React, { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+
 import type { TimingBucket } from '../types';
 
 interface Props {
@@ -12,10 +11,67 @@ interface Props {
   onBucketClick: (bucket: TimingBucket) => void;
 }
 
+const metricConfig = {
+  ttft: { label: 'TTFT', color: '#0891b2', fill: 'rgba(8,145,178,0.08)', unit: 'ms' },
+  total: { label: 'Total Time', color: '#dc2626', fill: 'rgba(220,38,38,0.06)', unit: 'ms' },
+  tps: { label: 'Speed', color: '#059669', fill: 'rgba(5,150,105,0.08)', unit: 't/s' },
+};
+
+function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }>; metric: 'ttft' | 'total' | 'tps' }) {
+  if (!active || !payload?.length) return null;
+  const data = payload[0].payload as Record<string, unknown>;
+  const config = metricConfig[metric];
+  const isTpsMode = metric === 'tps';
+  const wallShare = (data.avgTps as number) > 0 ? ((data.avgWallTps as number) / (data.avgTps as number)) * 100 : 0;
+  return (
+    <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{String(data.label)}</p>
+      <div className="flex items-baseline gap-2">
+        <span className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300">{String(data[metric])}</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-400">{config.unit} {isTpsMode ? '· Active TPS' : ''}</span>
+      </div>
+      {isTpsMode && (
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Active</span>
+            <span className="metric-mono font-semibold text-moss">{String(data.avgTps)} tok/s</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Wall</span>
+            <span className="metric-mono font-semibold text-zinc-500 dark:text-zinc-400">{String(data.tpsWall)} tok/s</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
+            <span className={`metric-mono font-semibold ${(data.tpsLoss as number) > 50 ? 'text-ember' : (data.tpsLoss as number) > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{(data.tpsLoss as number).toFixed(1)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
+            <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
+          </div>
+        </div>
+      )}
+      <div className={`pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06] grid grid-cols-3 gap-3 text-[11px] mt-1.5`}>
+        <div>
+          <span className="text-zinc-400 dark:text-zinc-400">Calls</span>
+          <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{String(data.count)}</p>
+        </div>
+        <div>
+          <span className="text-zinc-400 dark:text-zinc-400">Tokens</span>
+          <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{((data.totalTokens as number) / 1000).toFixed(1)}k</p>
+        </div>
+        <div>
+          <span className="text-zinc-400 dark:text-zinc-400">Avg TPS</span>
+          <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{String(data.avgTps)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TimelineChartInner({ buckets }: Props) {
   const [metric, setMetric] = useState<'ttft' | 'total' | 'tps'>('ttft');
 
-  const chartData = React.useMemo(() => buckets.map(b => ({
+  const chartData = useMemo(() => buckets.map(b => ({
     ...b,
     ttft: b.avgTtft,
     total: b.avgTotal,
@@ -24,63 +80,7 @@ function TimelineChartInner({ buckets }: Props) {
     tpsLoss: b.avgTpsLoss,
   })), [buckets]);
 
-  const metricConfig = {
-    ttft: { label: 'TTFT', color: '#0891b2', fill: 'rgba(8,145,178,0.08)', unit: 'ms' },
-    total: { label: 'Total Time', color: '#dc2626', fill: 'rgba(220,38,38,0.06)', unit: 'ms' },
-    tps: { label: 'Speed', color: '#059669', fill: 'rgba(5,150,105,0.08)', unit: 't/s' },
-  };
-
   const config = metricConfig[metric];
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const data = payload[0]?.payload;
-    const isTpsMode = metric === 'tps';
-    const wallShare = data.avgTps > 0 ? (data.avgWallTps / data.avgTps) * 100 : 0;
-    return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{data.label}</p>
-        <div className="flex items-baseline gap-2">
-          <span className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300">{data[metric]}</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-400">{config.unit} {isTpsMode ? '· Active TPS' : ''}</span>
-        </div>
-        {isTpsMode && (
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-400 dark:text-zinc-400">Active</span>
-              <span className="metric-mono font-semibold text-moss">{data.avgTps} tok/s</span>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-400 dark:text-zinc-400">Wall</span>
-              <span className="metric-mono font-semibold text-zinc-500 dark:text-zinc-400">{data.tpsWall} tok/s</span>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
-              <span className={`metric-mono font-semibold ${data.tpsLoss > 50 ? 'text-ember' : data.tpsLoss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{data.tpsLoss.toFixed(1)}%</span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
-              <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
-              <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
-            </div>
-          </div>
-        )}
-        <div className={`pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06] grid grid-cols-3 gap-3 text-[11px] mt-1.5`}>
-          <div>
-            <span className="text-zinc-400 dark:text-zinc-400">Calls</span>
-            <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{data.count}</p>
-          </div>
-          <div>
-            <span className="text-zinc-400 dark:text-zinc-400">Tokens</span>
-            <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{(data.totalTokens / 1000).toFixed(1)}k</p>
-          </div>
-          <div>
-            <span className="text-zinc-400 dark:text-zinc-400">Avg TPS</span>
-            <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{data.avgTps}</p>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <motion.div
@@ -135,7 +135,7 @@ function TimelineChartInner({ buckets }: Props) {
               dx={-4}
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip metric={metric} />} />
             <Area
               type="monotone"
               dataKey={metric}
@@ -151,4 +151,4 @@ function TimelineChartInner({ buckets }: Props) {
   );
 }
 
-export default React.memo(TimelineChartInner);
+export default memo(TimelineChartInner);

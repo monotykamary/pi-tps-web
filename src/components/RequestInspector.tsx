@@ -442,6 +442,7 @@ function VirtualizedRequestList({ sorted, tpsEvents, thresholds, selectedId, sel
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: sorted.length,
     getScrollElement: () => parentRef.current,

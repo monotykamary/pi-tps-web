@@ -699,7 +699,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
       setExpandedPaths(new Set());
       setDetailExpandedPaths(new Set());
     },
-    [originalSql, ensureDb, runQueryInternal, activeSessionId],
+    [originalSql, runQueryInternal, activeSessionId],
   );
 
   // Initialize CodeMirror
@@ -900,6 +900,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
 
    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: virtualRows.length,
     getScrollElement: () => scrollContainerRef.current,

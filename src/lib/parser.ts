@@ -735,8 +735,8 @@ export function computeSummary(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[
     stalledCalls: sorted.filter(e => e.data.timing.stallCount > 0 || e.data.timing.stallMs > 0).length,
     cachedCalls: sorted.filter(e => e.data.tokens.cacheRead > 0 || e.data.tokens.cacheWrite > 0).length,
     fastCalls: sorted.filter(e => e.data.timing.ttftMs < 3000).length,
-    minTtft: Math.min(...ttfts),
-    maxTtft: Math.max(...ttfts),
+    minTtft: ttfts.length > 0 ? Math.min(...ttfts) : 0,
+    maxTtft: ttfts.length > 0 ? Math.max(...ttfts) : 0,
     model: last?.data.model.modelId ?? 'unknown',
     provider: last?.data.model.provider ?? 'unknown',
     models,
@@ -824,8 +824,6 @@ export function computeMultiSessionSummary(
   let totalAvgTpsSum = 0;
   let totalTtftSum = 0;
   let totalTtftCount = 0;
-  let totalCostUsd: number | null = null;
-  let totalEnergyJoules: number | null = null;
   let hasCost = false;
   let hasEnergy = false;
   let costAccum = 0;
@@ -872,9 +870,6 @@ export function computeMultiSessionSummary(
     }
   }
 
-  totalCostUsd = hasCost ? costAccum : null;
-  totalEnergyJoules = hasEnergy ? energyAccum : null;
-
   const avgTps = totalCalls > 0 ? totalAvgTpsSum / totalCalls : 0;
   const weightedTps = totalWeightedTpsDen > 0 ? totalWeightedTpsNum / totalWeightedTpsDen : 0;
   const avgTtft = totalTtftCount > 0 ? totalTtftSum / totalTtftCount : 0;
@@ -884,8 +879,8 @@ export function computeMultiSessionSummary(
     totalCalls,
     totalTokens,
     totalOutput,
-    totalCostUsd,
-    totalEnergyJoules,
+    totalCostUsd: hasCost ? costAccum : null,
+    totalEnergyJoules: hasEnergy ? energyAccum : null,
     sessions: perSession,
     models: combinedSummary.models,
     avgTps,

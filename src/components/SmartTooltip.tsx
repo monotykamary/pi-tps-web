@@ -60,7 +60,9 @@ export function SmartTooltip({
     setStyle({ opacity: 0, pointerEvents: 'none' });
   }, [clearHideTimer]);
 
-  ourHideRef.current = doHide;
+  useEffect(() => {
+    ourHideRef.current = doHide;
+  }, [doHide]);
 
   const scheduleHide = useCallback(() => {
     clearHideTimer();

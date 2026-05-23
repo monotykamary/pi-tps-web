@@ -28,8 +28,12 @@ export function useDuckQuery<T>(
     let cancelled = false;
 
     if (options.skip) {
-      setLoading(false);
-      return;
+      queueMicrotask(() => {
+        if (!cancelled && mountedRef.current) {
+          setLoading(false);
+        }
+      });
+      return () => { cancelled = true; };
     }
 
     const run = async () => {

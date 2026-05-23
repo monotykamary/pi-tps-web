@@ -24,12 +24,10 @@ import SqlPlayground from './components/SqlPlayground';
 import { loadEvents, resetDB } from './lib/duckdb';
 import {
   querySummary, queryModels, queryDataThresholds, queryTimingBuckets,
-  queryScatter, queryThresholdCrossings, queryAnomalies, queryTimeline,
   queryMultiSessionSummary,
 } from './lib/queries';
 import type {
-  ConversationSummaryRow, DataThresholdsRow, TimingBucketRow, ScatterPoint,
-  ThresholdStat, AnomalyRow, TimelineEventRow, ModelInfoRow, SessionSummaryRow,
+  ConversationSummaryRow, DataThresholdsRow, TimingBucketRow, ModelInfoRow, SessionSummaryRow,
 } from './lib/queries';
 
 export default function App() {
@@ -83,27 +81,34 @@ export default function App() {
   // with the full set of events instead of once per file.
   useEffect(() => {
     if (sessions.size === 0) {
-      setDbLoading(false);
-      setHasLoaded(false);
+      queueMicrotask(() => {
+        setDbLoading(false);
+        setHasLoaded(false);
+      });
       return;
     }
-    setDbLoading(true);
-    setLoading(false); // FileReader phase done, dbLoading takes over
+    queueMicrotask(() => {
+      setDbLoading(true);
+      setLoading(false); // FileReader phase done, dbLoading takes over
+    });
+    let stale = false;
     const timer = setTimeout(() => {
       const allEvts: ParsedEvent[] = [];
       for (const s of sessions.values()) {
         allEvts.push(...s.events);
       }
       loadEvents(allEvts).then(() => {
-        setDbVersion(v => v + 1);
-        setDbLoading(false);
-        setHasLoaded(true);
+        if (!stale) {
+          setDbVersion(v => v + 1);
+          setDbLoading(false);
+          setHasLoaded(true);
+        }
       }).catch((err) => {
         console.error('DuckDB load failed:', err);
-        setDbLoading(false);
+        if (!stale) setDbLoading(false);
       });
     }, 100);
-    return () => clearTimeout(timer);
+    return () => { stale = true; clearTimeout(timer); };
   }, [sessions]);
 
   // ---- DuckDB-powered queries ----
@@ -163,30 +168,11 @@ export default function App() {
     [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
   );
 
-  // Scatter points — replaces pairEnergyWithTps() + TimingScatter useMemo
-  // Scatter points — DuckDB-powered (unused until TimingScatter is wired to it)
-  useDuckQuery<ScatterPoint[]>(
-    () => dataThresholds ? queryScatter(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
-    [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
-  );
-
-  // Threshold crossings — DuckDB-powered (unused until ThresholdAnalysis is wired to it)
-  useDuckQuery<ThresholdStat[]>(
-    () => dataThresholds ? queryThresholdCrossings(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
-    [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
-  );
-
-  // Anomalies — DuckDB-powered (unused until anomaly UI is wired)
-  useDuckQuery<AnomalyRow[]>(
-    () => dataThresholds ? queryAnomalies(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
-    [dbVersion, activeSessionId, selectedModel, dataThresholds], { skip: viewTab === 'sql' }
-  );
-
-  // Timeline — DuckDB-powered (unused until TimelineChart is wired to it)
-  useDuckQuery<TimelineEventRow[]>(
-    () => queryTimeline(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
-  );
+  // TODO: wire DuckDB-powered queries into components when ready
+  //  - queryScatter() → TimingScatter
+  //  - queryThresholdCrossings() → ThresholdAnalysis
+  //  - queryAnomalies() → AnomalyDetector
+  //  - queryTimeline() → RequestInspector / TimelineChart
 
   // Multi-session summary — replaces computeMultiSessionSummary()
   const { data: multiSummary } = useDuckQuery<{
@@ -294,12 +280,10 @@ export default function App() {
       f.name.endsWith('.jsonl') || f.name.endsWith('.json') || f.type === 'text/plain'
     );
     if (files.length === 0) return;
-    let loaded = 0;
     for (const file of files) {
       const reader = new FileReader();
       reader.onload = () => {
         addSession(reader.result as string, file.name);
-        loaded++;
         // Don't clear loading here — dbLoading takes over from the sessions useEffect
       };
       reader.readAsText(file);

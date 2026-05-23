@@ -1,16 +1,66 @@
-'use client';
-
-import React, { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
+
 import type { MultiSessionSummary } from '../types';
 import { formatCurrency, formatDuration, formatTps, formatEnergy } from '../lib/parser';
 
 interface Props {
   multiSummary: MultiSessionSummary;
   onSessionClick: (sessionId: string) => void;
+}
+
+function SessionTooltip({ active, payload, hasCost }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }>; hasCost: boolean }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload as Record<string, unknown>;
+  return (
+    <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
+        {String(d.fileName || String(d.sessionId).slice(0, 24))}
+      </p>
+      <div className="space-y-1.5">
+        <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Requests</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{String(d.totalCalls)}</span>
+        </div>
+        <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Tokens</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{Number(d.totalTokens).toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Wtd TPS</span>
+          <span className="metric-mono font-semibold text-accent">{formatTps(Number(d.weightedTps))}</span>
+        </div>
+        <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Avg TPS</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatTps(Number(d.avgTps))}</span>
+        </div>
+        <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Avg TTFT</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(Math.round(Number(d.avgTtft)))}</span>
+        </div>
+        {hasCost && (
+          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+            <span className="text-zinc-400 dark:text-zinc-400">Cost</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(Number(d.y))}</span>
+          </div>
+        )}
+        {d.energy !== null && (
+          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+            <span className="text-zinc-400 dark:text-zinc-400">Energy</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatEnergy(Number(d.energy))}</span>
+          </div>
+        )}
+        <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
+          <span className="text-zinc-400 dark:text-zinc-400">Model</span>
+          <span className="text-zinc-600 dark:text-zinc-300 truncate max-w-[10rem]">{String(d.model).split('/').pop()}</span>
+        </div>
+      </div>
+      <p className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-2 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06]">Click to focus on this session</p>
+    </div>
+  );
 }
 
 function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
@@ -57,57 +107,6 @@ function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
     const pad = Math.max((max - min) * 0.1, hasCost ? 0.001 : 1000);
     return [Math.max(0, min - pad), max + pad];
   }, [data, hasCost]);
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">
-          {d.fileName || d.sessionId.slice(0, 24)}
-        </p>
-        <div className="space-y-1.5">
-          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Requests</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.totalCalls}</span>
-          </div>
-          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Tokens</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{d.totalTokens.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Wtd TPS</span>
-            <span className="metric-mono font-semibold text-accent">{formatTps(d.weightedTps)}</span>
-          </div>
-          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Avg TPS</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatTps(d.avgTps)}</span>
-          </div>
-          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Avg TTFT</span>
-            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(Math.round(d.avgTtft))}</span>
-          </div>
-          {hasCost && (
-            <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-              <span className="text-zinc-400 dark:text-zinc-400">Cost</span>
-              <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatCurrency(d.y)}</span>
-            </div>
-          )}
-          {d.energy !== null && (
-            <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-              <span className="text-zinc-400 dark:text-zinc-400">Energy</span>
-              <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatEnergy(d.energy)}</span>
-            </div>
-          )}
-          <div className="flex justify-between gap-3 text-xs whitespace-nowrap">
-            <span className="text-zinc-400 dark:text-zinc-400">Model</span>
-            <span className="text-zinc-600 dark:text-zinc-300 truncate max-w-[10rem]">{d.model.split('/').pop()}</span>
-          </div>
-        </div>
-        <p className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-2 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06]">Click to focus on this session</p>
-      </div>
-    );
-  };
 
   if (data.length < 2) return null;
 
@@ -165,8 +164,8 @@ function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
               tickFormatter={yFormatter}
             />
             <ZAxis type="number" dataKey="z" range={[60, 400]} />
-            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
-            <Scatter data={data} onClick={(d: any) => onSessionClick(d.sessionId)}>
+            <Tooltip content={<SessionTooltip hasCost={hasCost} />} cursor={{ strokeDasharray: '3 3' }} />
+            <Scatter data={data} onClick={(d) => onSessionClick((d as unknown as { payload: { sessionId: string } }).payload.sessionId)}>
               {data.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
@@ -195,4 +194,4 @@ function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
   );
 }
 
-export default React.memo(SessionScatterInner);
+export default memo(SessionScatterInner);

@@ -18,43 +18,42 @@ export async function getDuckDB(): Promise<{
 }> {
   if (db && conn) return { db, conn };
 
-  if (initPromise) {
-    await initPromise;
-    if (db && conn) return { db, conn };
+  if (!initPromise) {
+    initPromise = (async () => {
+      // Static assets served from public/duckdb/ — same-origin, no CORS issues
+      const BUNDLES: duckdb.DuckDBBundles = {
+        mvp: {
+          mainModule: '/duckdb/duckdb-mvp.wasm',
+          mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
+        },
+        eh: {
+          mainModule: '/duckdb/duckdb-eh.wasm',
+          mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
+        },
+      };
+
+      const bundle = await duckdb.selectBundle(BUNDLES);
+      if (!bundle.mainWorker) throw new Error('No DuckDB worker bundle found');
+
+      const worker = new Worker(bundle.mainWorker);
+      const logger = new duckdb.ConsoleLogger();
+      db = new duckdb.AsyncDuckDB(logger, worker);
+      await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      await db.open({});
+      conn = await db.connect();
+    })();
   }
-
-  initPromise = (async () => {
-    // Static assets served from public/duckdb/ — same-origin, no CORS issues
-    const BUNDLES: duckdb.DuckDBBundles = {
-      mvp: {
-        mainModule: '/duckdb/duckdb-mvp.wasm',
-        mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
-      },
-      eh: {
-        mainModule: '/duckdb/duckdb-eh.wasm',
-        mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
-      },
-    };
-
-    const bundle = await duckdb.selectBundle(BUNDLES);
-    if (!bundle.mainWorker) throw new Error('No DuckDB worker bundle found');
-
-    const worker = new Worker(bundle.mainWorker);
-    const logger = new duckdb.ConsoleLogger();
-    db = new duckdb.AsyncDuckDB(logger, worker);
-    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    await db.open({});
-    conn = await db.connect();
-  })();
 
   await initPromise;
-  if (!db || !conn) throw new Error('DuckDB initialization failed');
-  // Create a second connection for the SQL playground so user queries
-  // don't block dashboard auto-queries (DuckDB serializes per-connection).
-  if (!sqlConn) {
-    sqlConn = await db.connect();
+  if (db && conn) {
+    // Create a second connection for the SQL playground so user queries
+    // don't block dashboard auto-queries (DuckDB serializes per-connection).
+    if (!sqlConn) {
+      sqlConn = await db.connect();
+    }
+    return { db, conn };
   }
-  return { db, conn };
+  throw new Error('DuckDB initialization failed');
 }
 
 /** Get a dedicated connection for the SQL playground. */

@@ -1,15 +1,24 @@
-'use client';
-
-import React, { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 import { HardDrives } from '@phosphor-icons/react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip
 } from 'recharts';
+
 import type { TpsEvent, EnergyPayload } from '../types';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
+}
+
+function CacheTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0];
+  return (
+    <div className="glass-panel rounded-xl px-3 py-2 text-xs">
+      <span className="font-semibold text-zinc-700 dark:text-zinc-300">{d.name}:</span> <span className="metric-mono">{d.value?.toLocaleString()}</span>
+    </div>
+  );
 }
 
 function CacheEfficiencyInner({ events }: Props) {
@@ -44,16 +53,6 @@ function CacheEfficiencyInner({ events }: Props) {
 
   const cacheHitRate = overall[0].value / overall.reduce((s, v) => s + v.value, 0) * 100;
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0];
-    return (
-      <div className="glass-panel rounded-xl px-3 py-2 text-xs">
-        <span className="font-semibold text-zinc-700 dark:text-zinc-300">{d.name}:</span> <span className="metric-mono">{d.value.toLocaleString()}</span>
-      </div>
-    );
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -87,7 +86,7 @@ function CacheEfficiencyInner({ events }: Props) {
                   <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.85} />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} wrapperStyle={{ zIndex: 10 }} />
+              <Tooltip content={<CacheTooltip />} wrapperStyle={{ zIndex: 10 }} />
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
@@ -148,4 +147,4 @@ function CacheEfficiencyInner({ events }: Props) {
   );
 }
 
-export default React.memo(CacheEfficiencyInner);
+export default memo(CacheEfficiencyInner);

@@ -3,7 +3,7 @@ import type { QueryResult } from './duckdb';
 
 // ─── Shared filter builder ────────────────────────────────────────────────────
 
-/** SQL-escape a string for use in WHERE clauses */
+/** Simple single-quote SQL escape. All query strings originate from user-uploaded JSONL, all in-memory WASM. */
 function escSql(s: string): string {
   return s.replace(/'/g, "''");
 }
@@ -642,34 +642,7 @@ export async function queryCacheEfficiency(sessionFilter?: string | null, modelF
     { name: 'Output', value: output, color: '#059669' },
   ];
 
-  // Over-time intervals
-  const timeSql = `
-    WITH ranked AS (
-      SELECT *,
-        ntile(greatest(6, least(12, ceiling(count(*) over () / 60.0)))) OVER (ORDER BY timestamp) AS bucket
-      FROM tps_paired
-      WHERE 1=1 ${where}
-    )
-    SELECT
-      (row_number() OVER (ORDER BY min(timestamp)))::varchar || '-' ||
-        (sum(count(*)) OVER (ORDER BY min(timestamp)) - count(*) + 1 + count(*) - 1)::varchar AS chunk_label,
-      round(CASE WHEN sum(tokens_total) > 0
-        THEN (sum(tokens_cache_read)::double / sum(tokens_total)) * 100
-        ELSE 0 END) AS hit_rate
-    FROM (
-      SELECT bucket, min(timestamp) AS min_ts,
-        sum(tokens_cache_read) AS cache_read,
-        sum(tokens_total) AS total_tokens,
-        count(*) AS cnt
-      FROM ranked
-      GROUP BY bucket
-    ) sub
-    ORDER BY min_ts
-  `;
-
-  await runQuery(timeSql);
   const overTime: CacheOverTimeInterval[] = [];
-  // Simpler approach: use row-based query
   const timeSql2 = `
     WITH ranked AS (
       SELECT *,
@@ -782,8 +755,18 @@ export async function queryTtftDistribution(sessionFilter?: string | null, model
     { label: 'P99', value: num(pctResult, 0, 'p99') },
   ];
 
-  // Fast/slow counts require thresholds — caller must provide
-  return { bins, fastCount: 0, slowCount: 0, percentiles };
+  // Fast/slow counts
+  const countSql = `
+    SELECT
+      count(*) FILTER (WHERE ttft_ms < 3000) AS fast_count,
+      count(*) FILTER (WHERE ttft_ms > 15000) AS slow_count
+    FROM tps_paired
+    WHERE 1=1 ${where}
+  `;
+  const countResult = await runQuery(countSql);
+  const fastCount = num(countResult, 0, 'fast_count');
+  const slowCount = num(countResult, 0, 'slow_count');
+  return { bins, fastCount, slowCount, percentiles };
 }
 
 /**
@@ -934,8 +917,8 @@ export async function queryAnomalies(
         tokens_total, tokens_input, tokens_cache_read,
         ttft_ms, stall_count, stall_ms,
         energy_cost_usd, cost_total,
-        max(tokens_cache_read) OVER (ORDER BY timestamp ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_max_cache,
-        row_number() OVER (ORDER BY timestamp) - 1 AS idx
+        max(tokens_cache_read) OVER (PARTITION BY session_id ORDER BY timestamp ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_max_cache,
+        row_number() OVER (PARTITION BY session_id ORDER BY timestamp) - 1 AS idx
       FROM tps_paired
       WHERE 1=1 ${where}
     ),

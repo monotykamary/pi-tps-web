@@ -1,6 +1,4 @@
-'use client';
-
-import React from 'react';
+import { useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 
 import {
@@ -12,16 +10,43 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+
 import type { TpsEvent, EnergyPayload } from '../types';
 
 interface Props {
   events: (TpsEvent & { energy?: EnergyPayload })[];
 }
 
-function TokenBreakdownInner({ events }: Props) {
-  const sorted = React.useMemo(() => [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).slice(-30), [events]);
+interface TokenPayloadItem {
+  dataKey: string;
+  name: string;
+  color: string;
+  value: number;
+}
 
-  const data = React.useMemo(() => sorted.map((e, i) => ({
+function TokenTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown>; name?: string; value?: number; color?: string; dataKey?: string }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload as Record<string, unknown>;
+  return (
+    <div className="glass-panel rounded-2xl px-4 py-3 text-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">Request #{String(d.index)}</p>
+      <div className="space-y-1">
+        {(payload as unknown as TokenPayloadItem[]).map((p) => (
+          <div key={p.dataKey} className="flex items-center gap-2 text-xs">
+            <div className="w-2 h-2 rounded-sm" style={{ background: p.color }} />
+            <span className="text-zinc-400 dark:text-zinc-400 w-20">{p.name}</span>
+            <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{p.value?.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TokenBreakdownInner({ events }: Props) {
+  const sorted = useMemo(() => [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).slice(-30), [events]);
+
+  const data = useMemo(() => sorted.map((e, i) => ({
     index: i + 1,
     input: e.data.tokens.input,
     output: e.data.tokens.output,
@@ -30,25 +55,6 @@ function TokenBreakdownInner({ events }: Props) {
     total: e.data.tokens.total,
     ttft: e.data.timing.ttftMs,
   })), [sorted]);
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div className="glass-panel rounded-2xl px-4 py-3 text-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">Request #{d.index}</p>
-        <div className="space-y-1">
-          {payload.map((p: any) => (
-            <div key={p.dataKey} className="flex items-center gap-2 text-xs">
-              <div className="w-2 h-2 rounded-sm" style={{ background: p.color }} />
-              <span className="text-zinc-400 dark:text-zinc-400 w-20">{p.name}</span>
-              <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{p.value?.toLocaleString()}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <motion.div
@@ -83,7 +89,7 @@ function TokenBreakdownInner({ events }: Props) {
               dx={-4}
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<TokenTooltip />} />
             <Bar dataKey="cacheRead" name="Cache Read" stackId="a" fill="#0891b2" fillOpacity={0.8} radius={[0, 0, 0, 0]} />
             <Bar dataKey="input" name="New Input" stackId="a" fill="#3f3f46" fillOpacity={0.8} radius={[0, 0, 0, 0]} />
             <Bar dataKey="output" name="Output" stackId="a" fill="#059669" fillOpacity={0.7} radius={[2, 2, 0, 0]} />
@@ -109,4 +115,4 @@ function TokenBreakdownInner({ events }: Props) {
   );
 }
 
-export default React.memo(TokenBreakdownInner);
+export default memo(TokenBreakdownInner);
