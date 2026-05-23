@@ -14,10 +14,10 @@ import {
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { sql as sqlLang, SQLDialect } from '@codemirror/lang-sql';
-import { oneDarkHighlightStyle, oneDarkTheme } from '@codemirror/theme-one-dark';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
-import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
+import { autocompletion, closeBrackets, closeBracketsKeymap, CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { useTheme } from '../hooks/useTheme';
 import { getSqlConn } from '../lib/duckdb';
@@ -396,9 +396,9 @@ const DUCKDB_COLUMNS: Record<string, string[]> = {
 };
 
 const duckdbDialect = SQLDialect.define({
-  keywords: 'select from where group by order having limit offset as and or not in is null like between exists case when then else end insert into values create table view drop if alter set join on left right inner outer cross union all distinct asc desc over partition window function cast coalesce nullif true false',
-  types: 'varchar bigint double int boolean',
-  builtin: 'count sum avg min max round abs ceil floor row_number rank dense_rank lag lead first_value last_value',
+  keywords: 'select from where group by order having limit offset as and or not in is null like between exists case when then else end insert into values create table view drop if alter set join on left right inner outer cross union all distinct asc desc over partition window function cast coalesce nullif true false with recursive using natural full fetch next rows range unbounded preceding following current row exclude',
+  types: 'varchar bigint double int boolean float date timestamp',
+  builtin: 'count sum avg min max round abs ceil floor row_number rank dense_rank lag lead first_value last_value list unnest struct_extract array_agg string_agg concat coalesce nullif cast try_cast date_trunc now extract interval generate_series read_csv read_parquet count_if',
 });
 
 // CodeMirror themes — light and dark, matching the app
@@ -415,8 +415,149 @@ const cmLightTheme = EditorView.theme({
   '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgba(8, 145, 178, 0.2) !important' },
 });
 
-const cmLightHighlight = syntaxHighlighting(defaultHighlightStyle, { fallback: true });
-const cmDarkHighlight = syntaxHighlighting(oneDarkHighlightStyle);
+const cmDarkTheme = EditorView.theme({
+  '&': { fontSize: '12px', fontFamily: "'Geist Mono', 'JetBrains Mono', monospace", color: '#d4d4d8', backgroundColor: 'transparent' },
+  '.cm-content': { padding: '12px 16px', caretColor: '#06b6d4' },
+  '.cm-focused': { outline: 'none' },
+  '.cm-gutters': { backgroundColor: 'transparent', border: 'none', color: '#52525b', paddingRight: '4px' },
+  '.cm-activeLineGutter': { backgroundColor: 'rgba(6, 182, 212, 0.05)', color: '#71717a' },
+  '.cm-activeLine': { backgroundColor: 'rgba(6, 182, 212, 0.04)' },
+  '.cm-selectionBackground': { backgroundColor: 'rgba(6, 182, 212, 0.15) !important' },
+  '.cm-cursor': { borderLeftColor: '#06b6d4', borderLeftWidth: '2px' },
+  '.cm-matchingBracket': { backgroundColor: 'rgba(6, 182, 212, 0.2)', outline: '1px solid rgba(6, 182, 212, 0.4)' },
+  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgba(6, 182, 212, 0.2) !important' },
+}, { dark: true });
+
+// Custom highlight styles that match the app's cyan/teal + zinc palette
+const cmLightHighlight = HighlightStyle.define([
+  { tag: tags.keyword, color: '#0e7490', fontWeight: '600' },
+  { tag: tags.controlKeyword, color: '#0e7490', fontWeight: '600' },
+  { tag: tags.definitionKeyword, color: '#0e7490', fontWeight: '600' },
+  { tag: tags.operatorKeyword, color: '#0e7490', fontWeight: '600' },
+  { tag: tags.moduleKeyword, color: '#0e7490', fontWeight: '600' },
+  { tag: tags.string, color: '#b45309' },
+  { tag: tags.docString, color: '#b45309' },
+  { tag: tags.character, color: '#b45309' },
+  { tag: tags.number, color: '#9333ea' },
+  { tag: tags.integer, color: '#9333ea' },
+  { tag: tags.float, color: '#9333ea' },
+  { tag: tags.bool, color: '#0e7490', fontStyle: 'italic' },
+  { tag: tags.null, color: '#0e7490', fontStyle: 'italic' },
+  { tag: tags.atom, color: '#0e7490', fontStyle: 'italic' },
+  { tag: tags.typeName, color: '#15803d' },
+  { tag: tags.variableName, color: '#09090b' },
+  { tag: tags.propertyName, color: '#7c3aed' },
+  { tag: tags.function(tags.variableName), color: '#0e7490' },
+  { tag: tags.labelName, color: '#7c3aed' },
+  { tag: tags.operator, color: '#52525b' },
+  { tag: tags.arithmeticOperator, color: '#52525b' },
+  { tag: tags.compareOperator, color: '#52525b' },
+  { tag: tags.logicOperator, color: '#0e7490' },
+  { tag: tags.punctuation, color: '#a1a1aa' },
+  { tag: tags.bracket, color: '#a1a1aa' },
+  { tag: tags.separator, color: '#a1a1aa' },
+  { tag: tags.comment, color: '#a1a1aa', fontStyle: 'italic' },
+  { tag: tags.lineComment, color: '#a1a1aa', fontStyle: 'italic' },
+  { tag: tags.blockComment, color: '#a1a1aa', fontStyle: 'italic' },
+  { tag: tags.special(tags.string), color: '#0e7490' },
+  { tag: tags.escape, color: '#0e7490' },
+  { tag: tags.meta, color: '#71717a' },
+  { tag: tags.invalid, color: '#dc2626' },
+], { themeType: 'light' });
+
+const cmDarkHighlight = HighlightStyle.define([
+  { tag: tags.keyword, color: '#22d3ee', fontWeight: '600' },
+  { tag: tags.controlKeyword, color: '#22d3ee', fontWeight: '600' },
+  { tag: tags.definitionKeyword, color: '#22d3ee', fontWeight: '600' },
+  { tag: tags.operatorKeyword, color: '#22d3ee', fontWeight: '600' },
+  { tag: tags.moduleKeyword, color: '#22d3ee', fontWeight: '600' },
+  { tag: tags.string, color: '#fbbf24' },
+  { tag: tags.docString, color: '#fbbf24' },
+  { tag: tags.character, color: '#fbbf24' },
+  { tag: tags.number, color: '#c084fc' },
+  { tag: tags.integer, color: '#c084fc' },
+  { tag: tags.float, color: '#c084fc' },
+  { tag: tags.bool, color: '#22d3ee', fontStyle: 'italic' },
+  { tag: tags.null, color: '#22d3ee', fontStyle: 'italic' },
+  { tag: tags.atom, color: '#22d3ee', fontStyle: 'italic' },
+  { tag: tags.typeName, color: '#4ade80' },
+  { tag: tags.variableName, color: '#d4d4d8' },
+  { tag: tags.propertyName, color: '#c084fc' },
+  { tag: tags.function(tags.variableName), color: '#22d3ee' },
+  { tag: tags.labelName, color: '#c084fc' },
+  { tag: tags.operator, color: '#a1a1aa' },
+  { tag: tags.arithmeticOperator, color: '#a1a1aa' },
+  { tag: tags.compareOperator, color: '#a1a1aa' },
+  { tag: tags.logicOperator, color: '#22d3ee' },
+  { tag: tags.punctuation, color: '#71717a' },
+  { tag: tags.bracket, color: '#71717a' },
+  { tag: tags.separator, color: '#71717a' },
+  { tag: tags.comment, color: '#52525b', fontStyle: 'italic' },
+  { tag: tags.lineComment, color: '#52525b', fontStyle: 'italic' },
+  { tag: tags.blockComment, color: '#52525b', fontStyle: 'italic' },
+  { tag: tags.special(tags.string), color: '#22d3ee' },
+  { tag: tags.escape, color: '#22d3ee' },
+  { tag: tags.meta, color: '#71717a' },
+  { tag: tags.invalid, color: '#f87171' },
+], { themeType: 'dark' });
+
+// Custom completion source that always suggests tables, columns, and SQL keywords.
+// Using override because sqlLang's built-in source only offers table names after FROM/JOIN.
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET',
+  'AS', 'AND', 'OR', 'NOT', 'IN', 'IS', 'NULL', 'LIKE', 'BETWEEN', 'EXISTS',
+  'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'INSERT', 'INTO', 'VALUES', 'CREATE',
+  'TABLE', 'VIEW', 'DROP', 'IF', 'ALTER', 'SET', 'JOIN', 'ON', 'LEFT', 'RIGHT',
+  'INNER', 'OUTER', 'CROSS', 'UNION', 'ALL', 'DISTINCT', 'ASC', 'DESC', 'OVER',
+  'PARTITION', 'WINDOW', 'FUNCTION', 'CAST', 'COALESCE', 'NULLIF', 'TRUE', 'FALSE',
+  'WITH', 'RECURSIVE', 'USING', 'NATURAL', 'FULL', 'FETCH', 'NEXT', 'ROWS',
+  'RANGE', 'UNBOUNDED', 'PRECEDING', 'FOLLOWING', 'CURRENT', 'ROW', 'EXCLUDE',
+];
+
+const SQL_BUILTINS = [
+  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'ROUND', 'ABS', 'CEIL', 'FLOOR',
+  'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LAG', 'LEAD', 'FIRST_VALUE', 'LAST_VALUE',
+  'LIST', 'UNNEST', 'STRUCT_EXTRACT', 'ARRAY_AGG', 'STRING_AGG', 'CONCAT',
+  'COALESCE', 'NULLIF', 'CAST', 'TRY_CAST', 'DATE_TRUNC', 'NOW', 'EXTRACT',
+  'INTERVAL', 'GENERATE_SERIES', 'READ_CSV', 'READ_PARQUET', 'COUNT_IF',
+];
+
+const SQL_TYPES = [
+  'VARCHAR', 'BIGINT', 'DOUBLE', 'INTEGER', 'BOOLEAN', 'FLOAT', 'DATE', 'TIMESTAMP',
+];
+
+function duckdbCompletions(context: CompletionContext): CompletionResult | null {
+  const word = context.matchBefore(/[\w.]+/);
+  const from = word ? word.from : context.pos;
+
+  if (!word && !context.explicit) return null;
+
+  const options: { label: string; type: string; detail?: string }[] = [];
+
+  for (const kw of SQL_KEYWORDS) {
+    options.push({ label: kw, type: 'keyword', detail: 'keyword' });
+  }
+  for (const fn of SQL_BUILTINS) {
+    options.push({ label: fn, type: 'function', detail: 'function' });
+  }
+  for (const tp of SQL_TYPES) {
+    options.push({ label: tp, type: 'type', detail: 'type' });
+  }
+  for (const table of DUCKDB_TABLES) {
+    options.push({ label: table, type: 'class', detail: 'table' });
+  }
+  for (const [table, cols] of Object.entries(DUCKDB_COLUMNS)) {
+    for (const col of cols) {
+      options.push({ label: col, type: 'property', detail: table });
+    }
+  }
+
+  return {
+    from,
+    options,
+    filter: true,
+  };
+}
 
 interface SqlPlaygroundProps {
   dbVersion: number;
@@ -452,7 +593,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
   const theadRef = useRef<HTMLTableSectionElement>(null);
   const [theadHeight, setTheadHeight] = useState(33);
   const themeCompartment = useRef(new Compartment());
-  const styleCompartment = useRef(new Compartment());
+  const completionCompartment = useRef(new Compartment());
   const runCallbackRef = useRef<() => void>(() => {});
 
   const ensureDb = useCallback(async () => {
@@ -577,8 +718,16 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
         closeBrackets(),
         highlightSelectionMatches(),
         sqlLang({ dialect: duckdbDialect, tables: DUCKDB_TABLES.map(t => ({ label: t, type: 'table', columns: DUCKDB_COLUMNS[t]?.map(c => ({ label: c, type: 'column' })) ?? [] })) }),
-        themeCompartment.current.of(isDark ? [oneDarkTheme, cmDarkHighlight] : cmLightTheme),
-        styleCompartment.current.of(isDark ? cmDarkHighlight : cmLightHighlight),
+        completionCompartment.current.of(
+          autocompletion({
+            override: [duckdbCompletions],
+            activateOnTyping: true,
+            tooltipClass: () => 'cm-tps-autocomplete',
+          }),
+        ),
+        themeCompartment.current.of(isDark ? cmDarkTheme : cmLightTheme),
+        syntaxHighlighting(cmLightHighlight),
+        syntaxHighlighting(cmDarkHighlight),
         keymap.of([
           ...closeBracketsKeymap,
           ...defaultKeymap,
@@ -617,8 +766,14 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
     const isDark = theme === 'dark';
     viewRef.current.dispatch({
       effects: [
-        themeCompartment.current.reconfigure(isDark ? [oneDarkTheme, cmDarkHighlight] : cmLightTheme),
-        styleCompartment.current.reconfigure(isDark ? cmDarkHighlight : cmLightHighlight),
+        completionCompartment.current.reconfigure(
+          autocompletion({
+            override: [duckdbCompletions],
+            activateOnTyping: true,
+            tooltipClass: () => 'cm-tps-autocomplete',
+          }),
+        ),
+        themeCompartment.current.reconfigure(isDark ? cmDarkTheme : cmLightTheme),
       ],
     });
   }, [theme]);

@@ -171,3 +171,75 @@ body {
     background-color: rgba(113, 113, 122, 0.4);
   }
 }
+
+/* CodeMirror SQL autocomplete tooltip — light theme (default) */
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete {
+  background-color: #ffffff;
+  border: 1px solid rgba(228, 228, 231, 0.6);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px -2px rgba(0,0,0,0.08), 0 20px 40px -15px rgba(0,0,0,0.1);
+}
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li {
+  padding: 4px 8px;
+  color: #09090b;
+  font-family: 'Geist Mono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li[aria-selected] {
+  background-color: rgba(8, 145, 178, 0.08);
+  color: #0891b2;
+}
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li .cm-completionLabel {
+  color: #09090b;
+}
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li[aria-selected] .cm-completionLabel {
+  color: #0891b2;
+}
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li .cm-completionDetail {
+  color: #a1a1aa;
+  font-style: normal;
+}
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: #71717a;
+}
+
+/* Autocomplete icons — light */
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-class::after { content: '●' !important; font-size: 10px !important; color: #0e7490; }
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-property::after { content: '▪' !important; font-size: 9px !important; color: #7c3aed; }
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-keyword::after { content: '◆' !important; font-size: 9px !important; color: #0e7490; }
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-function::after { content: 'ƒ' !important; color: #9333ea; }
+.cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-type::after { content: '⟩' !important; color: #15803d; }
+
+/* CodeMirror SQL autocomplete tooltip — dark theme */
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete {
+  background-color: #27272a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px -2px rgba(0,0,0,0.3), 0 8px 24px -8px rgba(0,0,0,0.5);
+}
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li {
+  color: #d4d4d8;
+}
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li[aria-selected] {
+  background-color: rgba(6, 182, 212, 0.12);
+  color: #22d3ee;
+}
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li .cm-completionLabel {
+  color: #d4d4d8;
+}
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li[aria-selected] .cm-completionLabel {
+  color: #22d3ee;
+}
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li .cm-completionDetail {
+  color: #52525b;
+}
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: #71717a;
+}
+
+/* Autocomplete icons — dark */
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-class::after { content: '●' !important; font-size: 10px !important; color: #22d3ee; }
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-property::after { content: '▪' !important; font-size: 9px !important; color: #c084fc; }
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-keyword::after { content: '◆' !important; font-size: 9px !important; color: #22d3ee; }
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-function::after { content: 'ƒ' !important; color: #c084fc; }
+.dark .cm-tooltip.cm-tooltip-autocomplete.cm-tps-autocomplete .cm-completionIcon-type::after { content: '⟩' !important; color: #4ade80; }
