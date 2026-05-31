@@ -185,9 +185,10 @@ function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
   const sampleSize = 500;
   const step = allRows.length <= sampleSize ? 1 : Math.ceil(allRows.length / sampleSize);
   return columns.map((col, j) => {
-    let maxW = fmtHeader(col).length * charWidth + padding;
+    let maxW = col.length * charWidth + padding;
     for (let i = 0; i < allRows.length; i += step) {
-      const s = fmtCell(allRows[i][j], columns[j]);
+      const v = allRows[i][j];
+      const s = v === null || v === undefined ? 'NULL' : String(v);
       maxW = Math.max(maxW, Math.min(s.length * charWidth + padding, maxCellW));
     }
     return maxW;
