@@ -168,7 +168,7 @@ function isTimestampCol(name: string): boolean {
 
 function fmtCell(val: unknown, col: string): string {
   if (val === null || val === undefined) return 'NULL';
-  if (typeof val === 'number' && isTimestampCol(col) && val > 1_000_000_000_000) {
+  if (typeof val === 'number' && isTimestampCol(col) && Number.isFinite(val) && val > 1_000_000_000_000) {
     return new Date(val).toISOString().replace('T', ' ').slice(0, 19);
   }
   if (typeof val === 'number') {
@@ -181,15 +181,38 @@ function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
   const charWidth = 7;
   const padding = 24;
   const maxCellW = 300;
-  // Sample at most 500 rows to avoid blocking the main thread on large results
   const sampleSize = 500;
   const step = allRows.length <= sampleSize ? 1 : Math.ceil(allRows.length / sampleSize);
+  // Timestamp column names for inline width matching with fmtCell
+  const tsCols = new Set(['timestamp', 'time', 'createdat', 'updatedat', 'created_at', 'updated_at', 'session_start', 'session_end']);
   return columns.map((col, j) => {
-    let maxW = col.length * charWidth + padding;
+    const colLower = col.toLowerCase();
+    // Inline fmtHeader: Split snake_case into words, expand acronyms, title-case
+    const headerWords = col.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/\s+/).filter(Boolean);
+    const headerLen = headerWords.reduce((sum, w) => {
+      const l = w.toLowerCase();
+      return sum + (ACRONYMS[l] || (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())).length;
+    }, headerWords.length - 1); // spaces between words
+    let maxW = headerLen * charWidth + padding;
+    const isTsCol = tsCols.has(colLower);
     for (let i = 0; i < allRows.length; i += step) {
       const v = allRows[i][j];
-      const s = v === null || v === undefined ? 'NULL' : String(v);
-      maxW = Math.max(maxW, Math.min(s.length * charWidth + padding, maxCellW));
+      let len: number;
+      if (v === null || v === undefined) {
+        len = 4; // "NULL"
+      } else if (typeof v === 'number') {
+        // Inline fmtCell number formatting to avoid cross-reference minification issues
+        if (isTsCol && Number.isFinite(v) && v > 1e12) {
+          len = 19; // ISO format "YYYY-MM-DD HH:MM:SS"
+        } else if (v % 1 !== 0) {
+          len = v.toFixed(4).length;
+        } else {
+          len = v.toLocaleString().length;
+        }
+      } else {
+        len = String(v).length;
+      }
+      maxW = Math.max(maxW, Math.min(len * charWidth + padding, maxCellW));
     }
     return maxW;
   });
