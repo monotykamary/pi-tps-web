@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect, memo } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -206,6 +207,49 @@ function detectLongTextCols(columns: string[], allRows: unknown[][]): Set<string
   }
   return longCols;
 }
+
+const MD_RE = /[*_`>\[\]#]/;
+
+const MarkdownSpan = memo(function MarkdownSpan({ text }: { text: string }) {
+  if (!MD_RE.test(text)) {
+    return <span className="text-zinc-600 dark:text-zinc-300">{text}</span>;
+  }
+  return (
+    <ReactMarkdown
+      disallowedElements={['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img']}
+      unwrapDisallowed
+      components={{
+        p: ({ children }) => <span>{children}</span>,
+        a: ({ href, children }) => (
+          <a href={href} className="text-accent underline" target="_blank" rel="noopener noreferrer">{children}</a>
+        ),
+        strong: ({ children }) => <strong className="font-semibold text-zinc-800 dark:text-zinc-200">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ className, children }) => {
+          if (!className || !className.startsWith('language-')) {
+            return <code className="bg-zinc-100 dark:bg-zinc-900 rounded px-1 font-mono text-[11px]">{children}</code>;
+          }
+          const lang = className.replace('language-', '');
+          return (
+            <pre className="bg-zinc-100 dark:bg-zinc-900 rounded px-1.5 py-0.5 my-0.5 overflow-x-auto">
+              {lang && <div className="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5">{lang}</div>}
+              <code className="font-mono text-[11px]">{children}</code>
+            </pre>
+          );
+        },
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-zinc-300 dark:border-zinc-600 pl-2 italic text-zinc-500 dark:text-zinc-400 my-0.5">{children}</blockquote>
+        ),
+        ul: ({ children }) => <ul className="list-disc pl-4 my-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-4 my-0.5">{children}</ol>,
+        li: ({ children }) => <li>{children}</li>,
+        br: () => <br />,
+      } as Components}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+});
 
 function fmtCell(val: unknown, col: string): string {
   if (val === null || val === undefined) return 'NULL';
@@ -1445,6 +1489,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                       {isFirst && <span style={{ display: 'inline-block', width: ((vRow.depth + 1) * 16 + 28) + 'px', flexShrink: 0 }} />}
                                       {val === null || val === undefined ? (
                                         <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
+                                      ) : longText && typeof val === 'string' ? (
+                                        <MarkdownSpan text={val} />
                                       ) : (
                                         <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
                                           {fmtCell(val, colName)}
@@ -1481,6 +1527,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                     <div className={longText ? '' : 'truncate max-w-[240px]'}>
                                       {val === null || val === undefined ? (
                                         <span className="italic text-[10px] text-zinc-400 dark:text-zinc-500">NULL</span>
+                                      ) : longText && typeof val === 'string' ? (
+                                        <MarkdownSpan text={val} />
                                       ) : (
                                         <span className={isNum ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-300'}>
                                           {fmtCell(val, col)}
