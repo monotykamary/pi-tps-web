@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -216,6 +217,7 @@ const MarkdownSpan = memo(function MarkdownSpan({ text }: { text: string }) {
   }
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       disallowedElements={['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'img']}
       unwrapDisallowed
       components={{
