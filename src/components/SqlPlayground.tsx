@@ -137,7 +137,7 @@ ORDER BY total_joules DESC`,
   timestamp,
   message_role,
   message_model,
-  LEFT(message_content, 200) AS content_preview
+  message_content
 FROM messages_flat
 ORDER BY timestamp
 LIMIT 100`,
@@ -149,7 +149,7 @@ LIMIT 100`,
   t.tokens_output,
   t.model_id,
   t.tps,
-  LEFT(m.message_content, 120) AS content_preview
+  m.message_content
 FROM messages_flat m
 LEFT JOIN tps_flat t ON m.session_id = t.session_id AND m.id = t.parent_id
 WHERE m.message_role = 'assistant'
@@ -191,9 +191,20 @@ function isTimestampCol(name: string): boolean {
     || n === 'created_at' || n === 'updated_at' || n === 'session_start' || n === 'session_end';
 }
 
-function isLongTextCol(name: string): boolean {
-  const n = name.toLowerCase();
-  return n.endsWith('_content') || n.endsWith('_summary') || n.includes('text') || n.includes('summary');
+function detectLongTextCols(columns: string[], allRows: unknown[][]): Set<string> {
+  const LONG_TEXT_THRESHOLD = 60;
+  const longCols = new Set<string>();
+  for (let j = 0; j < columns.length; j++) {
+    const col = columns[j];
+    for (let i = 0; i < allRows.length; i++) {
+      const val = allRows[i][j];
+      if (typeof val === 'string' && val.length > LONG_TEXT_THRESHOLD) {
+        longCols.add(col);
+        break;
+      }
+    }
+  }
+  return longCols;
 }
 
 function fmtCell(val: unknown, col: string): string {
@@ -207,7 +218,7 @@ function fmtCell(val: unknown, col: string): string {
   return String(val);
 }
 
-function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
+function measureColWidths(columns: string[], allRows: unknown[][], longTextCols: Set<string>): number[] {
   const charWidth = 7;
   const padding = 24;
   const maxCellW = 300;
@@ -243,7 +254,7 @@ function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
       } else {
         len = String(v).length;
       }
-      const cap = isLongTextCol(col) ? maxLongTextW : maxCellW;
+      const cap = longTextCols.has(col) ? maxLongTextW : maxCellW;
       maxW = Math.max(maxW, Math.min(len * charWidth + padding, cap));
     }
     return maxW;
@@ -1057,8 +1068,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
   const expandEditor = useCallback(() => setEditorCollapsed(false), []);
   const collapseEditor = useCallback(() => setEditorCollapsed(true), []);
 
-  const colWidths = useMemo(() => {
-    if (!result) return [];
+  const { colWidths, longTextCols } = useMemo(() => {
+    if (!result) return { colWidths: [] as number[], longTextCols: new Set<string>() };
     // Build sampled rows directly to avoid O(N*cols) full copy
     const sampleSize = 500;
     const step = result.rows.length <= sampleSize ? 1 : Math.ceil(result.rows.length / sampleSize);
@@ -1066,7 +1077,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
     for (let i = 0; i < result.rows.length; i += step) {
       sampled.push(displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? result.rows[i][idx] : null; }));
     }
-    const widths = measureColWidths(displayColumns, sampled);
+    const lt = detectLongTextCols(displayColumns, sampled);
+    const widths = measureColWidths(displayColumns, sampled, lt);
     // Widen first column for tree node rows: indent + caret + text
     if (tree && tree.length > 0 && groupByCols.length > 0 && !isTrivialTree && widths.length > 0) {
       let maxNodeRowW = 0;
@@ -1083,7 +1095,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
       measureNodes(tree, 0);
       widths[0] = Math.max(widths[0], maxNodeRowW);
     }
-    return widths;
+    return { colWidths: widths, longTextCols: lt };
   }, [result, displayColumns, tree, groupByCols, isTrivialTree]);
 
   return (
@@ -1423,7 +1435,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 const colName = detailColsMemo[j];
                                 const isNum = typeof val === 'number';
                                 const isFirst = j === 0;
-                                const longText = isLongTextCol(colName);
+                                const longText = longTextCols.has(colName);
                                 return (
                                   <td
                                     key={j}
@@ -1460,7 +1472,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 const val = colIdx !== -1 ? dataRow[colIdx] : null;
                                 const col = displayColumns[j];
                                 const isNum = typeof val === 'number';
-                                const longText = isLongTextCol(col);
+                                const longText = longTextCols.has(col);
                                 return (
                                   <td
                                     key={j}
