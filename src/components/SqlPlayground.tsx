@@ -191,6 +191,11 @@ function isTimestampCol(name: string): boolean {
     || n === 'created_at' || n === 'updated_at' || n === 'session_start' || n === 'session_end';
 }
 
+function isLongTextCol(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.endsWith('_content') || n.endsWith('_summary') || n.includes('text') || n.includes('summary');
+}
+
 function fmtCell(val: unknown, col: string): string {
   if (val === null || val === undefined) return 'NULL';
   if (typeof val === 'number' && isTimestampCol(col) && Number.isFinite(val) && val > 1_000_000_000_000) {
@@ -206,6 +211,7 @@ function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
   const charWidth = 7;
   const padding = 24;
   const maxCellW = 300;
+  const maxLongTextW = 520;
   const sampleSize = 500;
   const step = allRows.length <= sampleSize ? 1 : Math.ceil(allRows.length / sampleSize);
   // Timestamp column names for inline width matching with fmtCell
@@ -237,7 +243,8 @@ function measureColWidths(columns: string[], allRows: unknown[][]): number[] {
       } else {
         len = String(v).length;
       }
-      maxW = Math.max(maxW, Math.min(len * charWidth + padding, maxCellW));
+      const cap = isLongTextCol(col) ? maxLongTextW : maxCellW;
+      maxW = Math.max(maxW, Math.min(len * charWidth + padding, cap));
     }
     return maxW;
   });
@@ -957,8 +964,10 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
     estimateSize: (i) => {
       const row = virtualRows[i];
       if (!row) return 36;
+      if (row.type === 'group') return ROW_HEIGHTS.group;
       return ROW_HEIGHTS[row.type];
     },
+    measureElement: (el) => el.getBoundingClientRect().height,
     overscan: 20,
   });
 
@@ -1364,6 +1373,7 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                           return (
                             <tr
                               key={virtualItem.key}
+                              data-index={virtualItem.index}
                               className="group/row cursor-pointer transition-colors duration-150 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-[#28282d] border-b border-zinc-200/40 dark:border-white/[0.04]"
                               onClick={() => {
                                 if (hasChildren) toggleExpanded(node.id);
@@ -1404,6 +1414,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                           return (
                             <tr
                               key={virtualItem.key}
+                              data-index={virtualItem.index}
+                              ref={rowVirtualizer.measureElement}
                               className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]"
                             >
                               {detailColIndicesMemo.map((colIdx, j) => {
@@ -1411,12 +1423,13 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                                 const colName = detailColsMemo[j];
                                 const isNum = typeof val === 'number';
                                 const isFirst = j === 0;
+                                const longText = isLongTextCol(colName);
                                 return (
                                   <td
                                     key={j}
-                                    className={'py-1.5 px-3 text-[11px] whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (isFirst ? ' transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
+                                    className={'py-1.5 px-3 text-[11px] align-top' + (longText ? ' whitespace-pre-wrap break-words leading-relaxed' : ' whitespace-nowrap') + (isNum ? ' metric-mono tabular-nums' : '') + (isFirst ? ' transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
                                   >
-                                    <div className="flex items-center truncate">
+                                    <div className={longText ? '' : 'flex items-center truncate'}>
                                       {isFirst && <span style={{ display: 'inline-block', width: ((vRow.depth + 1) * 16 + 28) + 'px', flexShrink: 0 }} />}
                                       {val === null || val === undefined ? (
                                         <span className="italic text-zinc-400 dark:text-zinc-500">NULL</span>
@@ -1439,18 +1452,21 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
                           return (
                             <tr
                               key={virtualItem.key}
+                              data-index={virtualItem.index}
+                              ref={rowVirtualizer.measureElement}
                               className="group/row border-b border-zinc-200/40 dark:border-white/[0.04] transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-[#28282d]"
                             >
                               {flatColIndices.map((colIdx, j) => {
                                 const val = colIdx !== -1 ? dataRow[colIdx] : null;
                                 const col = displayColumns[j];
                                 const isNum = typeof val === 'number';
+                                const longText = isLongTextCol(col);
                                 return (
                                   <td
                                     key={j}
-                                    className={'py-2 px-3 text-xs whitespace-nowrap' + (isNum ? ' metric-mono tabular-nums' : '') + (j === 0 ? ' transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
+                                    className={'py-2 px-3 text-xs align-top' + (longText ? ' whitespace-pre-wrap break-words leading-relaxed' : ' whitespace-nowrap') + (isNum ? ' metric-mono tabular-nums' : '') + (j === 0 ? ' transition-colors duration-150 group-hover/row:bg-zinc-50 dark:group-hover/row:bg-[#28282d]' : '')}
                                   >
-                                    <div className="truncate max-w-[240px]">
+                                    <div className={longText ? '' : 'truncate max-w-[240px]'}>
                                       {val === null || val === undefined ? (
                                         <span className="italic text-[10px] text-zinc-400 dark:text-zinc-500">NULL</span>
                                       ) : (
