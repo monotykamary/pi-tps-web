@@ -219,10 +219,12 @@ function markdownTier(text: string): 0 | 1 | 2 {
   return 1;
 }
 
+// Fast inline-only tokenizer. Each alternative uses a lazy quantifier bounded by
+// a fixed closing delimiter — no nested quantifiers, so backtracking is linear.
 const INLINE_RE = /(\*\*[^*]+?\*\*|__[^_]+?__|~~[^~]+?~~|\*[^*]+?\*|_[^_]+?_|`[^`]+?`|\[.+?\]\(.+?\))/g;
 
 const InlineMarkdown = memo(function InlineMarkdown({ text }: { text: string }) {
-  const tokens = text.split(INLINE_RE);
+  const tokens = text.split(INLINE_RE).filter(Boolean);
   return (
     <span className="text-zinc-600 dark:text-zinc-300">
       {tokens.map((tok, i) => {
