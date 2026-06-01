@@ -209,11 +209,46 @@ function detectLongTextCols(columns: string[], allRows: unknown[][]): Set<string
   return longCols;
 }
 
-const MD_RE = /[*_`>\[\]#]/;
+const MD_RE = /[*_`>\[\]#~|]/;
+const BLOCK_RE = /^[>|#*\-+] |^\d+\. |^```/m;
+
+function markdownTier(text: string): 0 | 1 | 2 {
+  if (!MD_RE.test(text)) return 0;
+  if (BLOCK_RE.test(text)) return 2;
+  if (/\|/.test(text) && /\n/.test(text)) return 2;
+  return 1;
+}
+
+const INLINE_RE = /(\*\*[^*]+?\*\*|__[^_]+?__|~~[^~]+?~~|\*[^*]+?\*|_[^_]+?_|`[^`]+?`|\[.+?\]\(.+?\))/g;
+
+const InlineMarkdown = memo(function InlineMarkdown({ text }: { text: string }) {
+  const tokens = text.split(INLINE_RE);
+  return (
+    <span className="text-zinc-600 dark:text-zinc-300">
+      {tokens.map((tok, i) => {
+        if (tok.startsWith('**')) return <strong key={i} className="font-semibold text-zinc-800 dark:text-zinc-200">{tok.slice(2, -2)}</strong>;
+        if (tok.startsWith('__')) return <strong key={i} className="font-semibold text-zinc-800 dark:text-zinc-200">{tok.slice(2, -2)}</strong>;
+        if (tok.startsWith('~~')) return <del key={i}>{tok.slice(2, -2)}</del>;
+        if (tok.startsWith('*')) return <em key={i} className="italic">{tok.slice(1, -1)}</em>;
+        if (tok.startsWith('_')) return <em key={i} className="italic">{tok.slice(1, -1)}</em>;
+        if (tok.startsWith('`')) return <code key={i} className="bg-zinc-100 dark:bg-zinc-900 rounded px-1 font-mono text-[11px]">{tok.slice(1, -1)}</code>;
+        if (tok.startsWith('[')) {
+          const m = tok.match(/\[(.+?)\]\((.+?)\)/);
+          if (m) return <a key={i} href={m[2]} className="text-accent underline" target="_blank" rel="noopener noreferrer">{m[1]}</a>;
+        }
+        return <span key={i}>{tok}</span>;
+      })}
+    </span>
+  );
+});
 
 const MarkdownSpan = memo(function MarkdownSpan({ text }: { text: string }) {
-  if (!MD_RE.test(text)) {
+  const tier = markdownTier(text);
+  if (tier === 0) {
     return <span className="text-zinc-600 dark:text-zinc-300">{text}</span>;
+  }
+  if (tier === 1) {
+    return <InlineMarkdown text={text} />;
   }
   return (
     <ReactMarkdown
