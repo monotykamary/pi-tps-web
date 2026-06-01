@@ -216,7 +216,7 @@ const MarkdownSpan = memo(function MarkdownSpan({ text }: { text: string }) {
   }
   return (
     <ReactMarkdown
-      disallowedElements={['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img']}
+      disallowedElements={['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'img']}
       unwrapDisallowed
       components={{
         p: ({ children }) => <span>{children}</span>,
@@ -243,6 +243,12 @@ const MarkdownSpan = memo(function MarkdownSpan({ text }: { text: string }) {
         ul: ({ children }) => <ul className="list-disc pl-4 my-0.5">{children}</ul>,
         ol: ({ children }) => <ol className="list-decimal pl-4 my-0.5">{children}</ol>,
         li: ({ children }) => <li>{children}</li>,
+        table: ({ children }) => <table className="border-collapse text-[11px] my-1 w-full">{children}</table>,
+        thead: ({ children }) => <thead className="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200/60 dark:border-white/[0.06]">{children}</thead>,
+        tbody: ({ children }) => <tbody>{children}</tbody>,
+        tr: ({ children }) => <tr className="border-b border-zinc-200/40 dark:border-white/[0.04]">{children}</tr>,
+        th: ({ children }) => <th className="px-2 py-1 text-left font-medium text-zinc-600 dark:text-zinc-300">{children}</th>,
+        td: ({ children }) => <td className="px-2 py-1 text-zinc-600 dark:text-zinc-300">{children}</td>,
         br: () => <br />,
       } as Components}
     >
