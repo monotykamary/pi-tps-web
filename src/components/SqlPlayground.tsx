@@ -131,6 +131,31 @@ JOIN energy_flat e ON t.session_id = e.session_id AND t.id = e.parent_id
 GROUP BY t.model_id
 ORDER BY total_joules DESC`,
   },
+  {
+    label: 'Conversation messages',
+    sql: `SELECT
+  timestamp,
+  message_role,
+  message_model,
+  LEFT(message_content, 200) AS content_preview
+FROM messages_flat
+ORDER BY timestamp
+LIMIT 100`,
+  },
+  {
+    label: 'Messages + telemetry',
+    sql: `SELECT
+  m.timestamp,
+  t.tokens_output,
+  t.model_id,
+  t.tps,
+  LEFT(m.message_content, 120) AS content_preview
+FROM messages_flat m
+LEFT JOIN tps_flat t ON m.session_id = t.session_id AND m.id = t.parent_id
+WHERE m.message_role = 'assistant'
+ORDER BY m.timestamp
+LIMIT 100`,
+  },
 ];
 
 const PATH_SEP = '\x1F';
@@ -404,18 +429,20 @@ function SkeletonRow({ cols }: { cols: number }) {
 }
 
 // DuckDB SQL dialect hints for autocomplete
-const DUCKDB_TABLES = ['events', 'tps_flat', 'energy_flat'];
+const DUCKDB_TABLES = ['events', 'tps_flat', 'energy_flat', 'messages_flat'];
 const DUCKDB_COLUMNS: Record<string, string[]> = {
   events: ['session_id', 'id', 'parent_id', 'timestamp', 'type', 'provider', 'model_id',
     'tokens_input', 'tokens_output', 'tokens_cache_read', 'tokens_cache_write', 'tokens_total',
     'ttft_ms', 'total_ms', 'generation_ms', 'stream_ms', 'stall_ms', 'stall_count', 'tps',
     'cost_input', 'cost_output', 'cost_cache_read', 'cost_cache_write', 'cost_total',
-    'energy_joules', 'energy_cost_usd', 'rewind_v', 'from_id', 'summary'],
+    'energy_joules', 'energy_cost_usd', 'rewind_v', 'from_id', 'summary',
+    'message_role', 'message_content', 'message_model'],
   tps_flat: ['session_id', 'id', 'parent_id', 'timestamp', 'provider', 'model_id',
     'tokens_input', 'tokens_output', 'tokens_cache_read', 'tokens_cache_write', 'tokens_total',
     'ttft_ms', 'total_ms', 'generation_ms', 'stream_ms', 'stall_ms', 'stall_count', 'tps',
     'cost_input', 'cost_output', 'cost_cache_read', 'cost_cache_write', 'cost_total'],
   energy_flat: ['session_id', 'id', 'parent_id', 'timestamp', 'energy_joules', 'energy_cost_usd'],
+  messages_flat: ['session_id', 'id', 'parent_id', 'timestamp', 'message_role', 'message_content', 'message_model'],
 };
 
 const duckdbDialect = SQLDialect.define({

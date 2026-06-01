@@ -66,6 +66,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   const { conn: c } = await getDuckDB();
 
   await c.query(`DROP VIEW IF EXISTS tps_paired`);
+  await c.query(`DROP VIEW IF EXISTS messages_flat`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
   await c.query(`DROP TABLE IF EXISTS events`);
@@ -110,7 +111,12 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
 
       -- Branch summary fields
       from_id  VARCHAR,
-      summary  VARCHAR
+      summary  VARCHAR,
+
+      -- Message fields
+      message_role    VARCHAR,
+      message_content VARCHAR,
+      message_model   VARCHAR
     )
   `);
 
@@ -148,6 +154,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL',
           // branch summary
           'NULL', 'NULL',
+          // message
+          'NULL', 'NULL', 'NULL',
         ].join(', ');
         break;
       }
@@ -165,6 +173,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL',
           // branch summary
           'NULL', 'NULL',
+          // message
+          'NULL', 'NULL', 'NULL',
         ].join(', ');
         break;
       }
@@ -182,6 +192,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           num(d.v),
           // branch summary
           'NULL', 'NULL',
+          // message
+          'NULL', 'NULL', 'NULL',
         ].join(', ');
         break;
       }
@@ -199,6 +211,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL',
           // branch summary
           'NULL', 'NULL',
+          // message
+          'NULL', 'NULL', 'NULL',
         ].join(', ');
         break;
       }
@@ -215,6 +229,27 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL',
           // branch summary
           esc(e.fromId), esc(e.summary),
+          // message
+          'NULL', 'NULL', 'NULL',
+        ].join(', ');
+        break;
+      }
+      case 'message': {
+        const d = e.data;
+        row = [
+          esc(e.sessionId), esc(e.id), esc(e.parentId), esc(e.timestamp), esc('message'),
+          // tps fields
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // energy
+          'NULL', 'NULL',
+          // rewind
+          'NULL',
+          // branch summary
+          'NULL', 'NULL',
+          // message
+          esc(d.role), esc(d.content), esc(d.model),
         ].join(', ');
         break;
       }
@@ -249,6 +284,15 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       energy_joules, energy_cost_usd
     FROM events
     WHERE type = 'energy'
+  `);
+
+  await c.query(`
+    CREATE VIEW messages_flat AS
+    SELECT
+      session_id, id, parent_id, timestamp,
+      message_role, message_content, message_model
+    FROM events
+    WHERE type = 'message'
   `);
 
   // Enriched view: TPS rows with effective_tps, wall_tps, effective_ms,
@@ -331,6 +375,7 @@ export async function runQuery(sql: string): Promise<QueryResult> {
 export async function resetDB(): Promise<void> {
   const { conn: c } = await getDuckDB();
   await c.query(`DROP VIEW IF EXISTS tps_paired`);
+  await c.query(`DROP VIEW IF EXISTS messages_flat`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
   await c.query(`DROP TABLE IF EXISTS events`);

@@ -172,6 +172,42 @@ function deriveSessionId(raw: string): string {
   return `session-${Math.abs(hash).toString(36)}`;
 }
 
+const MAX_MESSAGE_LEN = 10000;
+
+/**
+ * Extract human-readable text from a pi message object.
+ * Handles string content, array of content parts, and nested thinking blocks.
+ * Truncates at 10KB to avoid INSERT bloat.
+ */
+function extractMessageText(msg: unknown): string {
+  if (!msg || typeof msg !== 'object') return '';
+  const m = msg as Record<string, unknown>;
+
+  const raw = m.content;
+  if (typeof raw === 'string') return raw.substring(0, MAX_MESSAGE_LEN);
+  if (!Array.isArray(raw)) return '';
+
+  const parts: string[] = [];
+  for (const part of raw) {
+    if (!part || typeof part !== 'object') continue;
+    const p = part as Record<string, unknown>;
+    if (p.type === 'text' && typeof p.text === 'string') {
+      parts.push(p.text);
+    } else if (p.type === 'thinking' && typeof p.thinking === 'string') {
+      parts.push(p.thinking);
+    } else if (p.type === 'toolCall') {
+      const name = typeof p.name === 'string' ? p.name : 'unknown';
+      const args = JSON.stringify(p.arguments ?? {});
+      parts.push(`\n[tool:${name} ${args}]\n`);
+    } else if (p.type === 'toolResult') {
+      parts.push('\n[toolResult]\n');
+    }
+  }
+
+  const joined = parts.join('\n');
+  return joined.substring(0, MAX_MESSAGE_LEN);
+}
+
 /**
  * Ingest JSONL lines into typed events and bookkeeping structures.
  *
@@ -320,6 +356,21 @@ export function ingestJsonl(raw: string, sessionId?: string): IngestResult {
             cost: u.cost || null,
             messageTimestamp: msg.timestamp || 0,
             prevEntryTimestamp,
+          });
+        }
+        // Also capture message content for SQL querying
+        if (msg && typeof msg === 'object') {
+          events.push({
+            sessionId: sid,
+            id: rawEvent.id,
+            parentId: rawEvent.parentId,
+            timestamp: rawEvent.timestamp,
+            type: 'message',
+            data: {
+              role: msg.role || 'unknown',
+              content: extractMessageText(msg),
+              model: msg.model || null,
+            },
           });
         }
       }

@@ -4,7 +4,7 @@ export interface TelemetryEvent {
   id: string;
   parentId: string | null;
   timestamp: string;
-  type: 'tps' | 'energy' | 'rewind' | 'model_change' | 'branch_summary';
+  type: 'tps' | 'energy' | 'rewind' | 'model_change' | 'branch_summary' | 'message';
 }
 
 export interface TpsPayload {
@@ -77,7 +77,18 @@ export interface BranchSummaryEvent extends TelemetryEvent {
   summary: string;
 }
 
-export type ParsedEvent = TpsEvent | EnergyEvent | RewindEvent | ModelChangeEvent | BranchSummaryEvent;
+export interface MessagePayload {
+  role: string;
+  content: string;
+  model: string | null;
+}
+
+export interface MessageEvent extends TelemetryEvent {
+  type: 'message';
+  data: MessagePayload;
+}
+
+export type ParsedEvent = TpsEvent | EnergyEvent | RewindEvent | ModelChangeEvent | BranchSummaryEvent | MessageEvent;
 
 /** Discriminated union for the merged timeline (TPS events carry paired energy data) */
 export type TimelineEvent =
