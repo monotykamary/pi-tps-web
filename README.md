@@ -1,6 +1,17 @@
-# pi-tps-web
+<div align="center">
 
-A static telemetry inspector for pi's tokens-per-second (TPS) exports. Drag a `.jsonl` file straight from a session — no upload, no cloud, no persistence. Everything stays in the browser.
+# 📈 pi-tps-web
+
+**Static telemetry inspector for pi's TPS exports**
+
+_Drag a `.jsonl` session file — no upload, no cloud, no persistence. Everything stays in the browser._
+
+[![pi extension](https://img.shields.io/badge/pi-extension-blueviolet)](https://github.com/earendil-works/pi-coding-agent)
+[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+
+</div>
+
+---
 
 Built for provider engineers to inspect real-world LLM behavior: how cache hit rates shift as conversations grow, where the slow zones live, and whether routing thresholds land where they should.
 
