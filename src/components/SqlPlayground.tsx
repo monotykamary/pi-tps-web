@@ -1183,8 +1183,10 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
       function measureNodes(nodes: TreeNode[], depth: number) {
         for (const n of nodes) {
           const indent = depth * 16;
-          const textLen = (n.value === null ? 4 : String(n.value).length); // 4 = "NULL"
-          const textW = textLen * 7 + 4;
+          const text = n.value === null ? 'NULL' : String(n.value);
+          // Use canvas-style measurement: uppercase + hyphens are wider in
+          // proportional fonts than the 7px/char used for data cells.
+          const textW = text.length * 8 + 8; // 8px/char + buffer
           // indent + px-3(12) + caret(16) + gap(8) + text + right-padding(12)
           maxNodeRowW = Math.max(maxNodeRowW, indent + 48 + textW);
           if (n.children.length > 0) measureNodes(n.children, depth + 1);
