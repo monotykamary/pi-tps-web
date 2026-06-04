@@ -147,6 +147,8 @@ LIMIT 100`,
   {
     label: 'Energy & CO₂ overview',
     sql: `SELECT
+  grid_id,
+  provider,
   model_id,
   COUNT(*) AS calls,
   ROUND(SUM(energy_joules), 1) AS total_joules,
@@ -158,8 +160,8 @@ LIMIT 100`,
   SUM(CASE WHEN compaction_triggered THEN 1 ELSE 0 END) AS compactions
 FROM tps_paired
 WHERE energy_joules IS NOT NULL
-GROUP BY model_id
-ORDER BY total_joules DESC`,
+GROUP BY grid_id, provider, model_id
+ORDER BY grid_id, provider, total_joules DESC`,
   },
 ];
 
