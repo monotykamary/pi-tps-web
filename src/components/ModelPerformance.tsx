@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy } from '@phosphor-icons/react';

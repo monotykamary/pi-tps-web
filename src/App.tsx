@@ -1,14 +1,24 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, Barbell, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database, UploadSimple } from '@phosphor-icons/react';
+import {
+  FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, Barbell, Info,
+  ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database, UploadSimple,
+} from '@phosphor-icons/react';
 import { DEFAULT_THRESHOLDS } from './types';
-import type { ParsedEvent, ModelInfo, MultiSessionSummary, DataThresholds, SessionState } from './types';
-import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, pairEnergyWithTps, buildTimeline, exportMultiSessionCsv } from './lib/parser';
-import { formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts } from './lib/format/format';
+import type { ModelInfo, MultiSessionSummary, DataThresholds } from './types';
+import { getTpsEvents, exportMultiSessionCsv } from './lib/parser';
+import {
+  formatNumber, formatCurrency, formatDuration, formatTps, formatEnergy, formatEnergyParts,
+} from './lib/format/format';
 import { useTheme } from './hooks/useTheme';
+import { useSessions } from './hooks/useSessions';
+import { useFileHandler } from './hooks/useFileHandler';
 import { useDuckQuery } from './hooks/useDuckQuery';
 import { MetricPill, TpsPill } from './components/metrics/MetricPill';
-import { RequestsTooltip, TotalTimeTooltip, TtftTooltip, StallsTooltip, CostTooltip, EnergyTooltip, TokensTooltip } from './components/tooltips';
+import {
+  RequestsTooltip, TotalTimeTooltip, TtftTooltip, StallsTooltip,
+  CostTooltip, EnergyTooltip, TokensTooltip,
+} from './components/tooltips';
 import TimelineChart from './components/TimelineChart';
 import TimingScatter from './components/TimingScatter';
 import TokenBreakdown from './components/TokenBreakdown';
@@ -21,10 +31,8 @@ import SessionScatter from './components/SessionScatter';
 import ModelPerformance from './components/ModelPerformance';
 import ThemeToggle from './components/ThemeToggle';
 import SqlPlayground from './components/SqlPlayground';
-import { loadEvents, resetDB } from './lib/duckdb';
 import {
-  querySummary, queryModels, queryDataThresholds, queryTimingBuckets,
-  queryMultiSessionSummary,
+  querySummary, queryModels, queryDataThresholds, queryTimingBuckets, queryMultiSessionSummary,
 } from './lib/queries';
 import type {
   ConversationSummaryRow, DataThresholdsRow, TimingBucketRow, ModelInfoRow, SessionSummaryRow,
@@ -32,150 +40,112 @@ import type {
 
 export default function App() {
   const { theme, setTheme } = useTheme();
-  const [sessions, setSessions] = useState<Map<string, SessionState>>(new Map());
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [dbLoading, setDbLoading] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
   const [selectedTpsId, setSelectedTpsId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'dashboard' | 'sql'>('dashboard');
   const headerRef = useRef<HTMLElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
-  // Track DB version — increments when sessions change, triggers re-queries
-  const [dbVersion, setDbVersion] = useState(0);
+  const sessionsData = useSessions(setLoading);
+  const {
+    sessions, activeSessionId, setActiveSessionId,
+    dbLoading, hasLoaded, dbVersion,
+    allTpsEvents, paired, timeline,
+    addSession: rawAddSession, removeSession, clearSessions: rawClearSessions,
+  } = sessionsData;
 
-  // Derived: the events to display — either one session or all merged
-  // Used for per-event detail in components not yet migrated to SQL
-  const events = useMemo<ParsedEvent[] | null>(() => {
-    if (sessions.size === 0) return null;
-    if (activeSessionId) {
-      return sessions.get(activeSessionId)?.events ?? null;
-    }
-    const all: ParsedEvent[] = [];
-    for (const s of sessions.values()) {
-      all.push(...s.events);
-    }
-    return all;
-  }, [sessions, activeSessionId]);
+  const wrappedAddSession = useCallback(
+    (raw: string, fileName?: string) => {
+      rawAddSession(raw, fileName);
+      setSelectedModel(null);
+      setSelectedTpsId(null);
+    },
+    [rawAddSession],
+  );
 
-  const allTpsEvents = useMemo(() => events ? getTpsEvents(events) : [], [events]);
-  const allEnergyEvents = useMemo(() => events ? getEnergyEvents(events) : [], [events]);
+  const wrappedClearSessions = useCallback(() => {
+    rawClearSessions();
+    setSelectedModel(null);
+    setSelectedTpsId(null);
+  }, [rawClearSessions]);
 
-  // JS-derived paired data for components not yet migrated to SQL
-  const paired = useMemo(() => pairEnergyWithTps(allTpsEvents, allEnergyEvents), [allTpsEvents, allEnergyEvents]);
+  const fileData = useFileHandler(wrappedAddSession, setLoading);
+  const {
+    dragOver, pasteFlash, fileInputRef,
+    handleDrop, handleDragOver, handleDragLeave, handleFileSelect, loadSample,
+  } = fileData;
 
   // Filtered TPS events for components still using JS-based data
   const tpsEvents = useMemo(
-    () => selectedModel ? allTpsEvents.filter(e => e.data.model.modelId === selectedModel) : allTpsEvents,
-    [allTpsEvents, selectedModel]
+    () => (selectedModel ? allTpsEvents.filter((e) => e.data.model.modelId === selectedModel) : allTpsEvents),
+    [allTpsEvents, selectedModel],
   );
-
-  const timeline = useMemo(() => events ? buildTimeline(events, paired) : [], [events, paired]);
-
-  // Load events into DuckDB whenever sessions change
-  // Debounced: when multiple files are dropped in quick succession, each addSession
-  // triggers this effect. We batch them by delaying 100ms so loadEvents runs once
-  // with the full set of events instead of once per file.
-  useEffect(() => {
-    if (sessions.size === 0) {
-      queueMicrotask(() => {
-        setDbLoading(false);
-        setHasLoaded(false);
-      });
-      return;
-    }
-    queueMicrotask(() => {
-      setDbLoading(true);
-      setLoading(false); // FileReader phase done, dbLoading takes over
-    });
-    let stale = false;
-    const timer = setTimeout(() => {
-      const allEvts: ParsedEvent[] = [];
-      for (const s of sessions.values()) {
-        allEvts.push(...s.events);
-      }
-      loadEvents(allEvts).then(() => {
-        if (!stale) {
-          setDbVersion(v => v + 1);
-          setDbLoading(false);
-          setHasLoaded(true);
-        }
-      }).catch((err) => {
-        console.error('DuckDB load failed:', err);
-        if (!stale) setDbLoading(false);
-      });
-    }, 100);
-    return () => { stale = true; clearTimeout(timer); };
-  }, [sessions]);
 
   // ---- DuckDB-powered queries ----
 
-  // Summary metrics — replaces computeSummary()
   const { data: summary } = useDuckQuery<ConversationSummaryRow | null>(
     () => querySummary(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
+    [dbVersion, activeSessionId, selectedModel],
+    { skip: viewTab === 'sql' },
   );
 
-  // Models for header dropdown + tooltip breakdown
   const { data: queryModelsResult } = useDuckQuery<ModelInfoRow[]>(
     () => queryModels(activeSessionId),
-    [dbVersion, activeSessionId], { skip: viewTab === 'sql' }
+    [dbVersion, activeSessionId],
+    { skip: viewTab === 'sql' },
   );
 
-  // Per-model list for header dropdown
   const modelList = queryModelsResult ?? [];
 
-  // Adapt ModelInfoRow → ModelInfo for tooltip compatibility
-  const summaryModels: ModelInfo[] = queryModelsResult?.map(m => ({
-    modelId: m.modelId,
-    provider: m.provider,
-    callCount: m.callCount,
-    totalTokens: m.totalTokens,
-    energyCostUsd: m.energyCostUsd,
-    energyJoules: m.energyJoules,
-    blendedCostUsd: m.blendedCostUsd,
-    costSource: m.costSource,
-  })) ?? [];
+  const summaryModels: ModelInfo[] = useMemo(
+    () =>
+      queryModelsResult?.map((m) => ({
+        modelId: m.modelId,
+        provider: m.provider,
+        callCount: m.callCount,
+        totalTokens: m.totalTokens,
+        energyCostUsd: m.energyCostUsd,
+        energyJoules: m.energyJoules,
+        blendedCostUsd: m.blendedCostUsd,
+        costSource: m.costSource,
+      })) ?? [],
+    [queryModelsResult],
+  );
 
-  // Thresholds — replaces deriveDataThresholds()
   const { data: dataThresholds } = useDuckQuery<DataThresholdsRow>(
     () => queryDataThresholds(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
+    [dbVersion, activeSessionId, selectedModel],
+    { skip: viewTab === 'sql' },
   );
 
-  // Adapt DataThresholdsRow → DataThresholds for components still using JS types
-  const dataThresholdsJs = useMemo(() => dataThresholds ? {
-    cacheThreshold: dataThresholds.cacheThreshold,
-    lowContext: dataThresholds.lowContext,
-    slowTtft: dataThresholds.slowTtft,
-    fastTtft: dataThresholds.fastTtft,
-    highNewInputRatio: dataThresholds.highNewInputRatio,
-    anomalyInputThreshold: dataThresholds.anomalyInputThreshold,
-    cacheDropMinTotal: dataThresholds.cacheDropMinTotal,
-    cacheDropMinInput: dataThresholds.cacheDropMinInput,
-    highInputRatio: dataThresholds.highInputRatio,
-    highInputSeverityToken: dataThresholds.highInputSeverityToken,
-    stallCountThreshold: dataThresholds.stallCountThreshold,
-    stallMsSeverity: dataThresholds.stallMsSeverity,
-  } as DataThresholds : undefined, [dataThresholds]);
+  const dataThresholdsJs = useMemo(
+    () =>
+      dataThresholds
+        ? ({
+            cacheThreshold: dataThresholds.cacheThreshold,
+            lowContext: dataThresholds.lowContext,
+            slowTtft: dataThresholds.slowTtft,
+            fastTtft: dataThresholds.fastTtft,
+            highNewInputRatio: dataThresholds.highNewInputRatio,
+            anomalyInputThreshold: dataThresholds.anomalyInputThreshold,
+            cacheDropMinTotal: dataThresholds.cacheDropMinTotal,
+            cacheDropMinInput: dataThresholds.cacheDropMinInput,
+            highInputRatio: dataThresholds.highInputRatio,
+            highInputSeverityToken: dataThresholds.highInputSeverityToken,
+            stallCountThreshold: dataThresholds.stallCountThreshold,
+            stallMsSeverity: dataThresholds.stallMsSeverity,
+          } as DataThresholds)
+        : undefined,
+    [dataThresholds],
+  );
 
-  // Timing buckets — replaces computeTimingBuckets()
   const { data: buckets } = useDuckQuery<TimingBucketRow[]>(
     () => queryTimingBuckets(activeSessionId, selectedModel),
-    [dbVersion, activeSessionId, selectedModel], { skip: viewTab === 'sql' }
+    [dbVersion, activeSessionId, selectedModel],
+    { skip: viewTab === 'sql' },
   );
 
-  // TODO: wire DuckDB-powered queries into components when ready
-  //  - queryScatter() → TimingScatter
-  //  - queryThresholdCrossings() → ThresholdAnalysis
-  //  - queryAnomalies() → AnomalyDetector
-  //  - queryTimeline() → RequestInspector / TimelineChart
-
-  // Multi-session summary — replaces computeMultiSessionSummary()
   const { data: multiSummary } = useDuckQuery<{
     sessionCount: number;
     totalCalls: number;
@@ -199,48 +169,15 @@ export default function App() {
       }
       return queryMultiSessionSummary(fileNames);
     },
-    [dbVersion, sessions.size, activeSessionId], { skip: viewTab === 'sql' }
+    [dbVersion, sessions.size, activeSessionId],
+    { skip: viewTab === 'sql' },
   );
-
-  const addSession = useCallback((raw: string, fileName?: string) => {
-    const ingest = ingestJsonl(raw);
-    const evts = deriveEvents(ingest);
-    const sid = ingest.sessionId;
-    setSessions(prev => {
-      const next = new Map(prev);
-      next.set(sid, { raw, ingest, events: evts, fileName });
-      return next;
-    });
-    setActiveSessionId(null); // show "all sessions" view after adding
-    setSelectedModel(null);
-    setSelectedTpsId(null);
-  }, []);
-
-  const removeSession = useCallback((sid: string) => {
-    setSessions(prev => {
-      const next = new Map(prev);
-      next.delete(sid);
-      return next;
-    });
-    if (activeSessionId === sid) setActiveSessionId(null);
-  }, [activeSessionId]);
-
-  const clearSessions = useCallback(() => {
-    setSessions(new Map());
-    setActiveSessionId(null);
-    setSelectedModel(null);
-    setSelectedTpsId(null);
-    setDbLoading(false);
-    setHasLoaded(false);
-    resetDB().catch(() => {});
-  }, []);
 
   const handleExportCsv = useCallback(() => {
     if (!multiSummary) return;
-    // Transform DuckDB result shape (timeRangeStart/timeRangeEnd) to expected shape (timeRange.start/timeRange.end)
     const adapted: MultiSessionSummary = {
       ...multiSummary,
-      sessions: multiSummary.sessions.map(s => ({
+      sessions: multiSummary.sessions.map((s) => ({
         ...s,
         models: [],
         timeRange: { start: s.timeRangeStart, end: s.timeRangeEnd },
@@ -258,75 +195,8 @@ export default function App() {
   }, [multiSummary]);
 
   const handlePointClick = useCallback((id: string | null) => setSelectedTpsId(id), []);
-  const handleSessionClick = useCallback((sid: string) => setActiveSessionId(sid), []);
+  const handleSessionClick = useCallback((sid: string) => setActiveSessionId(sid), [setActiveSessionId]);
   const handleBucketClick = useCallback(() => {}, []);
-
-  const loadSample = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/sample.jsonl');
-      const text = await res.text();
-      addSession(text, 'sample.jsonl');
-    } catch (e) {
-      console.error('Failed to load sample', e);
-      setLoading(false);
-    }
-    // Don't set setLoading(false) here — dbLoading takes over from the sessions useEffect
-  }, [addSession]);
-
-  const handleFiles = useCallback((files: File[]) => {
-    const valid = files.filter(f =>
-      f.name.endsWith('.jsonl') || f.name.endsWith('.json') || f.type === 'text/plain'
-    );
-    if (valid.length === 0) return;
-    for (const file of valid) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        addSession(reader.result as string, file.name);
-        // Don't clear loading here — dbLoading takes over from the sessions useEffect
-      };
-      reader.readAsText(file);
-    }
-    if (valid.length > 0) setLoading(true);
-  }, [addSession]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    handleFiles(Array.from(e.dataTransfer.files));
-  }, [handleFiles]);
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    handleFiles(Array.from(e.target.files ?? []));
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [handleFiles]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setDragOver(false);
-  }, []);
-
-  const [pasteFlash, setPasteFlash] = useState(false);
-
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      const text = e.clipboardData?.getData('text/plain');
-      if (!text || text.trim()[0] !== '{') return;
-      // Looks like JSONL — try to parse
-      const parsed = parseJsonl(text);
-      if (parsed.length === 0) return;
-      e.preventDefault();
-      addSession(text);
-      setPasteFlash(true);
-      setTimeout(() => setPasteFlash(false), 600);
-    };
-    document.addEventListener('paste', handlePaste);
-    return () => document.removeEventListener('paste', handlePaste);
-  }, [addSession]);
 
   // Measure header height for sticky session strip offset
   useEffect(() => {
@@ -338,6 +208,11 @@ export default function App() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  const getTpsCount = useCallback(
+    (sid: string) => getTpsEvents(sessions.get(sid)?.events ?? []).length,
+    [sessions],
+  );
 
   return (
     <div
@@ -354,6 +229,7 @@ export default function App() {
         className="hidden"
         onChange={handleFileSelect}
       />
+
       {/* Header */}
       <header ref={headerRef} className="sticky top-0 z-40 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/60 dark:border-white/[0.08]">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2">
@@ -413,7 +289,7 @@ export default function App() {
                     className="appearance-none bg-transparent dark:bg-transparent border-0 rounded-md pl-2 pr-5 py-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[10rem] truncate"
                   >
                     <option value="">All models</option>
-                    {modelList.map(m => (
+                    {modelList.map((m) => (
                       <option key={m.modelId} value={m.modelId}>
                         ({m.provider}) {m.modelId.split('/')?.pop()}
                       </option>
@@ -427,74 +303,70 @@ export default function App() {
         </div>
       </header>
 
-      {/* Session strip — shows when multiple sessions loaded */}
+      {/* Session strip */}
       {sessions.size > 0 && (
         <div style={{ top: headerHeight ? `${headerHeight}px` : 0 }} className="sticky z-30 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/40 dark:border-white/[0.06]">
           <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center gap-2">
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2 flex-1 min-w-0">
-            <FolderOpen size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" weight="bold" />
-            <button
-              onClick={() => setActiveSessionId(null)}
-              className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-medium ${
-                activeSessionId === null
-                  ? 'bg-accent/10 text-accent dark:bg-accent/15'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
-              }`}
-            >
-              All ({sessions.size})
-            </button>
-            {Array.from(sessions.entries()).map(([sid, s]) => {
-              const tpsCount = getTpsEvents(s.events).length;
-              const label = s.fileName
-                ? s.fileName.replace(/\.(jsonl|json)$/, '')
-                : sid.length > 16 ? sid.slice(0, 16) + '…' : sid;
-              return (
-                <div
-                  key={sid}
-                  className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium cursor-pointer ${
-                    activeSessionId === sid
-                      ? 'bg-accent/10 text-accent dark:bg-accent/15'
-                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
-                  }`}
-                  onClick={() => setActiveSessionId(activeSessionId === sid ? null : sid)}
-                >
-                  <span className="truncate max-w-[12rem]">{label}</span>
-                  <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-500">{tpsCount} req</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeSession(sid); }}
-                    className="ml-0.5 p-0.5 rounded hover:bg-zinc-200/60 dark:hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                    title="Remove session"
+              <FolderOpen size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" weight="bold" />
+              <button
+                onClick={() => setActiveSessionId(null)}
+                className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-medium ${
+                  activeSessionId === null
+                    ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+                }`}
+              >
+                All ({sessions.size})
+              </button>
+              {Array.from(sessions.entries()).map(([sid, s]) => {
+                const tpsCount = getTpsCount(sid);
+                const label = s.fileName
+                  ? s.fileName.replace(/\.(jsonl|json)$/, '')
+                  : sid.length > 16 ? sid.slice(0, 16) + '…' : sid;
+                return (
+                  <div
+                    key={sid}
+                    className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium cursor-pointer ${
+                      activeSessionId === sid
+                        ? 'bg-accent/10 text-accent dark:bg-accent/15'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]'
+                    }`}
+                    onClick={() => setActiveSessionId(activeSessionId === sid ? null : sid)}
                   >
-                    <X size={10} weight="bold" />
-                  </button>
-                </div>
-              );
-            })}
+                    <span className="truncate max-w-[12rem]">{label}</span>
+                    <span className="text-[9px] metric-mono text-zinc-400 dark:text-zinc-500">{tpsCount} req</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeSession(sid); }}
+                      className="ml-0.5 p-0.5 rounded hover:bg-zinc-200/60 dark:hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                      title="Remove session"
+                    >
+                      <X size={10} weight="bold" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
             <div className="shrink-0 flex items-center gap-1.5 py-2 border-l border-zinc-200/40 dark:border-white/[0.06] pl-3 ml-1">
-            <button
-              onClick={clearSessions}
-              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-ember hover:bg-ember/5 dark:hover:bg-ember/10 transition-colors"
-            >
-              Clear all
-            </button>
+              <button
+                onClick={wrappedClearSessions}
+                className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium text-zinc-400 dark:text-zinc-500 hover:text-ember hover:bg-ember/5 dark:hover:bg-ember/10 transition-colors"
+              >
+                Clear all
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SQL Playground — hidden when on dashboard tab, kept in DOM to preserve state */}
-      <div
-        className={`flex-1 min-h-0 flex flex-col px-4 sm:px-6 py-6 ${viewTab === 'sql' && sessions.size > 0 ? '' : 'hidden'}`}
-      >
-          <SqlPlayground dbVersion={dbVersion} activeSessionId={activeSessionId} />
+      {/* SQL Playground */}
+      <div className={`flex-1 min-h-0 flex flex-col px-4 sm:px-6 py-6 ${viewTab === 'sql' && sessions.size > 0 ? '' : 'hidden'}`}>
+        <SqlPlayground dbVersion={dbVersion} activeSessionId={activeSessionId} />
       </div>
 
-      {/* Dashboard — hidden when on SQL tab, kept in DOM to preserve state */}
-      <div
-        className={`flex-1 min-h-0 overflow-y-auto ${viewTab === 'sql' && sessions.size > 0 ? 'hidden' : ''}`}
-      >
-      {(hasLoaded || dbLoading || loading) && !summary ? (
+      {/* Dashboard */}
+      <div className={`flex-1 min-h-0 overflow-y-auto ${viewTab === 'sql' && sessions.size > 0 ? 'hidden' : ''}`}>
+        {(hasLoaded || dbLoading || loading) && !summary ? (
           <div className="flex items-center justify-center min-h-[60dvh]">
             <div className="flex flex-col items-center gap-4">
               <div className="w-10 h-10 border-2 border-zinc-200 dark:border-white/[0.06] border-t-accent rounded-full animate-spin" />
@@ -563,9 +435,7 @@ export default function App() {
             </div>
           </motion.div>
         ) : (
-          <div
-            className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8 rounded-[2rem] ${dragOver ? 'border-2 border-dashed border-accent bg-accent/5 dark:border-accent dark:bg-accent/10' : ''}`}
-          >
+          <div className={`max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8 rounded-[2rem] ${dragOver ? 'border-2 border-dashed border-accent bg-accent/5 dark:border-accent dark:bg-accent/10' : ''}`}>
             {/* Metrics Strip */}
             {summary && (
               <motion.div
@@ -575,15 +445,15 @@ export default function App() {
                 className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2"
               >
                 <MetricPill icon={Pulse} label="Requests" value={formatNumber(summary.totalCalls)} tooltip={
-  <RequestsTooltip
-    total={summary.totalCalls}
-    models={summaryModels}
-    avgTokensPerCall={summary.avgTokensPerCall}
-    stalledCalls={summary.stalledCalls}
-    cachedCalls={summary.cachedCalls}
-    fastCalls={summary.fastCalls}
-  />
-} />
+                  <RequestsTooltip
+                    total={summary.totalCalls}
+                    models={summaryModels}
+                    avgTokensPerCall={summary.avgTokensPerCall}
+                    stalledCalls={summary.stalledCalls}
+                    cachedCalls={summary.cachedCalls}
+                    fastCalls={summary.fastCalls}
+                  />
+                } />
                 <MetricPill icon={Timer} label="Total Time" value={formatDuration(summary.wallClockMs)} tooltip={<TotalTimeTooltip wallClockMs={summary.wallClockMs} totalTimeMs={summary.totalTimeMs} generationMs={summary.totalGenerationMs} />} />
                 <TpsPill icon={Gauge} label="Avg TPS" activeTps={summary.avgTps} wallTps={summary.avgWallTps} lossPct={summary.tpsLoss} mode="avg" />
                 <TpsPill icon={Barbell} label="Wtd TPS" activeTps={summary.weightedTps} wallTps={summary.weightedWallTps} lossPct={summary.weightedTpsLoss} accent mode="weighted" />
@@ -606,7 +476,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* Per-Session Breakdown — only in "All sessions" merged view */}
+            {/* Per-Session Breakdown */}
             {multiSummary && multiSummary.sessionCount > 1 && (
               <motion.div
                 initial={{ opacity: 0, y: 12 }}

@@ -25,15 +25,12 @@ export function useDuckQuery<T>(
 
   useEffect(() => {
     mountedRef.current = true;
-    let cancelled = false;
 
     if (options.skip) {
       queueMicrotask(() => {
-        if (!cancelled && mountedRef.current) {
-          setLoading(false);
-        }
+        if (mountedRef.current) setLoading(false);
       });
-      return () => { cancelled = true; };
+      return;
     }
 
     const run = async () => {
@@ -41,16 +38,16 @@ export function useDuckQuery<T>(
       setError(null);
       try {
         const result = await queryFn();
-        if (!cancelled && mountedRef.current) {
+        if (mountedRef.current) {
           setData(result);
           setError(null);
         }
       } catch (e) {
-        if (!cancelled && mountedRef.current) {
+        if (mountedRef.current) {
           setError(e instanceof Error ? e : new Error(String(e)));
         }
       } finally {
-        if (!cancelled && mountedRef.current) {
+        if (mountedRef.current) {
           setLoading(false);
         }
       }
@@ -59,14 +56,10 @@ export function useDuckQuery<T>(
     run();
 
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, options.skip]);
-
-  useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
 
   return { data, loading, error };
 }

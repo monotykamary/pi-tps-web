@@ -16,13 +16,12 @@ function escSql(s: string): string {
 function buildWhere(
   sessionFilter?: string | null,
   modelFilter?: string | null,
-  prefix = 'WHERE',
 ): string {
   const conds: string[] = [];
   if (sessionFilter) conds.push(`session_id = '${escSql(sessionFilter)}'`);
   if (modelFilter) conds.push(`model_id = '${escSql(modelFilter)}'`);
-  if (conds.length === 0) return '';
-  return `${prefix} ${conds.join(' AND ')}`;
+  if (conds.length === 0) return 'WHERE 1=1';
+  return `WHERE 1=1 AND ${conds.join(' AND ')}`;
 }
 
 // ─── Row mappers: convert QueryResult rows → typed objects ──────────────────
@@ -132,36 +131,55 @@ export interface AnomalyRow {
   tokenCostUsd: number | null;
 }
 
-export interface TimelineEventRow {
-  id: string;
-  sessionId: string;
-  timestamp: string;
-  type: 'tps' | 'model_change' | 'rewind' | 'branch_summary';
-  // TPS fields
-  provider?: string;
-  modelId?: string;
-  tokensInput?: number;
-  tokensOutput?: number;
-  tokensCacheRead?: number;
-  tokensCacheWrite?: number;
-  tokensTotal?: number;
-  ttftMs?: number;
-  totalMs?: number;
-  generationMs?: number;
-  stallMs?: number;
-  stallCount?: number;
-  effectiveTps?: number;
-  wallTps?: number;
-  tps?: number;
-  costTotal?: number | null;
-  energyJoules?: number | null;
-  energyCostUsd?: number | null;
-  cacheRatio?: number;
-  // Structural fields
-  rewindV?: number;
-  fromId?: string;
-  summary?: string;
-}
+export type TimelineEventRow =
+  | {
+      id: string;
+      sessionId: string;
+      timestamp: string;
+      type: 'tps';
+      provider: string;
+      modelId: string;
+      tokensInput: number;
+      tokensOutput: number;
+      tokensCacheRead: number;
+      tokensCacheWrite: number;
+      tokensTotal: number;
+      ttftMs: number;
+      totalMs: number;
+      generationMs: number;
+      stallMs: number;
+      stallCount: number;
+      effectiveTps: number;
+      wallTps: number;
+      tps: number;
+      costTotal: number | null;
+      energyJoules: number | null;
+      energyCostUsd: number | null;
+      cacheRatio: number;
+    }
+  | {
+      id: string;
+      sessionId: string;
+      timestamp: string;
+      type: 'model_change';
+      provider: string;
+      modelId: string;
+    }
+  | {
+      id: string;
+      sessionId: string;
+      timestamp: string;
+      type: 'rewind';
+      rewindV: number;
+    }
+  | {
+      id: string;
+      sessionId: string;
+      timestamp: string;
+      type: 'branch_summary';
+      fromId: string;
+      summary: string;
+    };
 
 export interface SessionSummaryRow {
   sessionId: string;
@@ -469,7 +487,7 @@ export async function queryScatter(
   sessionFilter?: string | null,
   modelFilter?: string | null,
 ): Promise<ScatterPoint[]> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
   const sql = `
     SELECT
       id,
@@ -495,7 +513,7 @@ export async function queryScatter(
         ELSE 'normal'
       END AS category
     FROM tps_paired
-    WHERE 1=1 ${where}
+    ${where}
     ORDER BY timestamp
   `;
 
@@ -531,13 +549,13 @@ export async function queryScatter(
  * Timing buckets for the timeline chart — replaces computeTimingBuckets().
  */
 export async function queryTimingBuckets(sessionFilter?: string | null, modelFilter?: string | null): Promise<TimingBucketRow[]> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
   const sql = `
     WITH ranked AS (
       SELECT *,
         ntile(20) OVER (ORDER BY timestamp) AS bucket
       FROM tps_paired
-      WHERE 1=1 ${where}
+      ${where}
     )
     SELECT
       min(timestamp)::varchar || '-' || max(timestamp)::varchar AS range,
@@ -578,7 +596,7 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
  * Token composition for the stacked bar chart — last 30 requests.
  */
 export async function queryTokenComposition(sessionFilter?: string | null, modelFilter?: string | null): Promise<TokenCompositionRow[]> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
   const sql = `
     SELECT
       tokens_input  AS input,
@@ -588,7 +606,7 @@ export async function queryTokenComposition(sessionFilter?: string | null, model
       tokens_total  AS total,
       ttft_ms       AS ttft
     FROM tps_paired
-    WHERE 1=1 ${where}
+    ${where}
     ORDER BY timestamp
     LIMIT 30
   `;
@@ -617,7 +635,7 @@ export async function queryCacheEfficiency(sessionFilter?: string | null, modelF
   overTime: CacheOverTimeInterval[];
   hitRate: number;
 }> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
 
   // Overall totals
   const overallSql = `
@@ -626,7 +644,7 @@ export async function queryCacheEfficiency(sessionFilter?: string | null, modelF
       COALESCE(sum(tokens_input), 0)      AS new_input,
       COALESCE(sum(tokens_output), 0)      AS output
     FROM tps_paired
-    WHERE 1=1 ${where}
+    ${where}
   `;
 
   const overallResult = await runQuery(overallSql);
@@ -649,7 +667,7 @@ export async function queryCacheEfficiency(sessionFilter?: string | null, modelF
         ntile(greatest(6, least(12, ceiling(count(*) over () / 60.0)))) OVER (ORDER BY timestamp) AS bucket,
         row_number() OVER (ORDER BY timestamp) AS rn
       FROM tps_paired
-      WHERE 1=1 ${where}
+      ${where}
     )
     SELECT
       min(rn)::varchar || '-' || max(rn)::varchar AS label,
@@ -681,7 +699,7 @@ export async function queryTtftDistribution(sessionFilter?: string | null, model
   slowCount: number;
   percentiles: { label: string; value: number }[];
 }> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
 
   // Bin counts
   const binSql = `
@@ -706,7 +724,7 @@ export async function queryTtftDistribution(sessionFilter?: string | null, model
       END AS bin_order,
       count(*) AS cnt
     FROM tps_paired
-    WHERE 1=1 ${where}
+    ${where}
     GROUP BY label, bin_order
     ORDER BY bin_order
   `;
@@ -744,7 +762,7 @@ export async function queryTtftDistribution(sessionFilter?: string | null, model
       percentile_cont(0.90) WITHIN GROUP (ORDER BY ttft_ms) AS p90,
       percentile_cont(0.99) WITHIN GROUP (ORDER BY ttft_ms) AS p99
     FROM tps_paired
-    WHERE 1=1 ${where}
+    ${where}
   `;
 
   const pctResult = await runQuery(pctSql);
@@ -761,7 +779,7 @@ export async function queryTtftDistribution(sessionFilter?: string | null, model
       count(*) FILTER (WHERE ttft_ms < 3000) AS fast_count,
       count(*) FILTER (WHERE ttft_ms > 15000) AS slow_count
     FROM tps_paired
-    WHERE 1=1 ${where}
+    ${where}
   `;
   const countResult = await runQuery(countSql);
   const fastCount = num(countResult, 0, 'fast_count');
@@ -777,8 +795,8 @@ export async function queryThresholdCrossings(
   sessionFilter?: string | null,
   modelFilter?: string | null,
 ): Promise<ThresholdStat[]> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
-  const maxTokensSql = `SELECT COALESCE(max(tokens_total), 80000) AS max_tokens FROM tps_paired WHERE 1=1 ${where}`;
+  const where = buildWhere(sessionFilter, modelFilter);
+  const maxTokensSql = `SELECT COALESCE(max(tokens_total), 80000) AS max_tokens FROM tps_paired ${where}`;
   const maxResult = await runQuery(maxTokensSql);
   const maxTokens = num(maxResult, 0, 'max_tokens');
 
@@ -789,9 +807,7 @@ export async function queryThresholdCrossings(
     Math.round((thresholds.cacheThreshold + (maxTokens - thresholds.cacheThreshold) * 0.5) / 1000) * 1000,
   ];
 
-  const stats: ThresholdStat[] = [];
-
-  for (const threshold of displayThresholds) {
+  const queries = displayThresholds.map((threshold) => {
     const sql = `
       SELECT
         count(*) FILTER (WHERE tokens_total >= ${threshold}) AS above_count,
@@ -803,39 +819,38 @@ export async function queryThresholdCrossings(
         avg(tokens_cache_read::double / NULLIF(tokens_total, 0)) FILTER (WHERE tokens_total >= ${threshold}) AS above_avg_cache_ratio,
         avg(tokens_cache_read::double / NULLIF(tokens_total, 0)) FILTER (WHERE tokens_total < ${threshold})  AS below_avg_cache_ratio
       FROM tps_paired
-      WHERE 1=1 ${where}
+      ${where}
     `;
-
-    const result = await runQuery(sql);
-    const aboveTtft = num(result, 0, 'above_avg_ttft') || 0;
-    const belowTtft = num(result, 0, 'below_avg_ttft') || 0;
-
-    stats.push({
-      threshold,
-      above: {
-        count: num(result, 0, 'above_count'),
-        avgTtft: aboveTtft,
-        avgTps: num(result, 0, 'above_avg_tps') || 0,
-        avgCacheRatio: num(result, 0, 'above_avg_cache_ratio') || 0,
-      },
-      below: {
-        count: num(result, 0, 'below_count'),
-        avgTtft: belowTtft,
-        avgTps: num(result, 0, 'below_avg_tps') || 0,
-        avgCacheRatio: num(result, 0, 'below_avg_cache_ratio') || 0,
-      },
-      ttftDelta: aboveTtft - belowTtft,
+    return runQuery(sql).then((result) => {
+      const aboveTtft = num(result, 0, 'above_avg_ttft') || 0;
+      const belowTtft = num(result, 0, 'below_avg_ttft') || 0;
+      return {
+        threshold,
+        above: {
+          count: num(result, 0, 'above_count'),
+          avgTtft: aboveTtft,
+          avgTps: num(result, 0, 'above_avg_tps') || 0,
+          avgCacheRatio: num(result, 0, 'above_avg_cache_ratio') || 0,
+        },
+        below: {
+          count: num(result, 0, 'below_count'),
+          avgTtft: belowTtft,
+          avgTps: num(result, 0, 'below_avg_tps') || 0,
+          avgCacheRatio: num(result, 0, 'below_avg_cache_ratio') || 0,
+        },
+        ttftDelta: aboveTtft - belowTtft,
+      };
     });
-  }
+  });
 
-  return stats;
+  return Promise.all(queries);
 }
 
 /**
  * Adaptive data thresholds — replaces deriveDataThresholds().
  */
 export async function queryDataThresholds(sessionFilter?: string | null, modelFilter?: string | null): Promise<DataThresholdsRow> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
 
   const sql = `
     WITH stats AS (
@@ -850,7 +865,7 @@ export async function queryDataThresholds(sessionFilter?: string | null, modelFi
         avg(stall_count) FILTER (WHERE stall_count > 0) AS avg_stall_count,
         avg(stall_ms) FILTER (WHERE stall_ms > 0)        AS avg_stall_ms
       FROM tps_paired
-      WHERE 1=1 ${where}
+      ${where}
     )
     SELECT
       round(((min_tokens + (max_tokens - min_tokens) * 0.66)) / 1000) * 1000 AS cache_threshold,
@@ -902,7 +917,7 @@ export async function queryAnomalies(
   sessionFilter?: string | null,
   modelFilter?: string | null,
 ): Promise<AnomalyRow[]> {
-  const where = buildWhere(sessionFilter, modelFilter, "AND");
+  const where = buildWhere(sessionFilter, modelFilter);
   const {
     slowTtft, cacheThreshold, cacheDropMinTotal, cacheDropMinInput,
     highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity,
@@ -920,7 +935,7 @@ export async function queryAnomalies(
         max(tokens_cache_read) OVER (PARTITION BY session_id ORDER BY timestamp ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_max_cache,
         row_number() OVER (PARTITION BY session_id ORDER BY timestamp) - 1 AS idx
       FROM tps_paired
-      WHERE 1=1 ${where}
+      ${where}
     ),
     detected AS (
       SELECT
@@ -1005,7 +1020,7 @@ export async function queryAnomalies(
  * Full timeline — merged TPS + structural events for the Request Inspector.
  */
 export async function queryTimeline(sessionFilter?: string | null, modelFilter?: string | null): Promise<TimelineEventRow[]> {
-  const tpsWhere = buildWhere(sessionFilter, modelFilter, "AND");
+  const tpsWhere = buildWhere(sessionFilter, modelFilter);
   const sql = `
     SELECT
       id, session_id, timestamp, 'tps' AS type,
@@ -1014,9 +1029,12 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       ttft_ms, total_ms, generation_ms, stall_ms, stall_count,
       effective_tps, wall_tps, tps,
       cost_total, energy_joules, energy_cost_usd,
-      CASE WHEN tokens_total > 0 THEN tokens_cache_read::double / tokens_total ELSE 0 END AS cache_ratio
+      CASE WHEN tokens_total > 0 THEN tokens_cache_read::double / tokens_total ELSE 0 END AS cache_ratio,
+      NULL::bigint AS rewind_v,
+      NULL::varchar AS from_id,
+      NULL::varchar AS summary
     FROM tps_paired
-    WHERE 1=1 ${tpsWhere}
+    ${tpsWhere}
 
     UNION ALL
 
@@ -1027,7 +1045,10 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       NULL, NULL, NULL, NULL, NULL,
       NULL, NULL, NULL,
       NULL, NULL, NULL,
-      NULL
+      NULL,
+      rewind_v,
+      from_id,
+      summary
     FROM events
     WHERE type IN ('model_change', 'rewind', 'branch_summary')
 
@@ -1038,31 +1059,57 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
   const rows: TimelineEventRow[] = [];
   for (let i = 0; i < result.rowCount; i++) {
     const type = str(result, i, 'type') as TimelineEventRow['type'];
-    rows.push({
+    const base = {
       id: str(result, i, 'id'),
       sessionId: str(result, i, 'session_id'),
       timestamp: str(result, i, 'timestamp'),
       type,
-      provider: type === 'tps' ? str(result, i, 'provider') || undefined : undefined,
-      modelId: type === 'tps' ? str(result, i, 'model_id') || undefined : undefined,
-      tokensInput: maybeNum(result, i, 'tokens_input') ?? undefined,
-      tokensOutput: maybeNum(result, i, 'tokens_output') ?? undefined,
-      tokensCacheRead: maybeNum(result, i, 'tokens_cache_read') ?? undefined,
-      tokensCacheWrite: maybeNum(result, i, 'tokens_cache_write') ?? undefined,
-      tokensTotal: maybeNum(result, i, 'tokens_total') ?? undefined,
-      ttftMs: maybeNum(result, i, 'ttft_ms') ?? undefined,
-      totalMs: maybeNum(result, i, 'total_ms') ?? undefined,
-      generationMs: maybeNum(result, i, 'generation_ms') ?? undefined,
-      stallMs: maybeNum(result, i, 'stall_ms') ?? undefined,
-      stallCount: maybeNum(result, i, 'stall_count') ?? undefined,
-      effectiveTps: maybeNum(result, i, 'effective_tps') ?? undefined,
-      wallTps: maybeNum(result, i, 'wall_tps') ?? undefined,
-      tps: maybeNum(result, i, 'tps') ?? undefined,
-      costTotal: maybeNum(result, i, 'cost_total'),
-      energyJoules: maybeNum(result, i, 'energy_joules'),
-      energyCostUsd: maybeNum(result, i, 'energy_cost_usd'),
-      cacheRatio: maybeNum(result, i, 'cache_ratio') ?? undefined,
-    });
+    };
+    if (type === 'tps') {
+      rows.push({
+        ...base,
+        type: 'tps',
+        provider: str(result, i, 'provider'),
+        modelId: str(result, i, 'model_id'),
+        tokensInput: num(result, i, 'tokens_input'),
+        tokensOutput: num(result, i, 'tokens_output'),
+        tokensCacheRead: num(result, i, 'tokens_cache_read'),
+        tokensCacheWrite: num(result, i, 'tokens_cache_write'),
+        tokensTotal: num(result, i, 'tokens_total'),
+        ttftMs: num(result, i, 'ttft_ms'),
+        totalMs: num(result, i, 'total_ms'),
+        generationMs: num(result, i, 'generation_ms'),
+        stallMs: num(result, i, 'stall_ms'),
+        stallCount: num(result, i, 'stall_count'),
+        effectiveTps: num(result, i, 'effective_tps'),
+        wallTps: num(result, i, 'wall_tps'),
+        tps: num(result, i, 'tps'),
+        costTotal: maybeNum(result, i, 'cost_total'),
+        energyJoules: maybeNum(result, i, 'energy_joules'),
+        energyCostUsd: maybeNum(result, i, 'energy_cost_usd'),
+        cacheRatio: num(result, i, 'cache_ratio'),
+      });
+    } else if (type === 'model_change') {
+      rows.push({
+        ...base,
+        type: 'model_change',
+        provider: str(result, i, 'provider'),
+        modelId: str(result, i, 'model_id'),
+      });
+    } else if (type === 'rewind') {
+      rows.push({
+        ...base,
+        type: 'rewind',
+        rewindV: num(result, i, 'rewind_v'),
+      });
+    } else {
+      rows.push({
+        ...base,
+        type: 'branch_summary',
+        fromId: str(result, i, 'from_id'),
+        summary: str(result, i, 'summary'),
+      });
+    }
   }
   return rows;
 }

@@ -209,7 +209,7 @@ function detectLongTextCols(columns: string[], allRows: unknown[][]): Set<string
   return longCols;
 }
 
-const MD_RE = /[*_`>\[\]#~|]/;
+const MD_RE = /[*_`>[\]#~|]/;
 const BLOCK_RE = /^[>|#*\-+] |^\d+\. |^```/m;
 
 function markdownTier(text: string): 0 | 1 | 2 {
@@ -1162,9 +1162,12 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
     // Build sampled rows directly to avoid O(N*cols) full copy
     const sampleSize = 500;
     const step = result.rows.length <= sampleSize ? 1 : Math.ceil(result.rows.length / sampleSize);
+    // Precompute column indices once instead of N×C indexOf calls
+    const colIndices = displayColumns.map((c) => result.columns.indexOf(c));
     const sampled: unknown[][] = [];
     for (let i = 0; i < result.rows.length; i += step) {
-      sampled.push(displayColumns.map((c) => { const idx = result.columns.indexOf(c); return idx !== -1 ? result.rows[i][idx] : null; }));
+      const row = result.rows[i];
+      sampled.push(colIndices.map((idx) => (idx !== -1 ? row[idx] : null)));
     }
     const lt = detectLongTextCols(displayColumns, sampled);
     const widths = measureColWidths(displayColumns, sampled, lt);

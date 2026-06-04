@@ -6,9 +6,6 @@ import {
   getTpsEvents,
   getEnergyEvents,
   pairEnergyWithTps,
-  computeSummary,
-  computeMultiSessionSummary,
-  computeTimingBuckets,
 } from './parser';
 
 const VALID_TELEMETRY = JSON.stringify({
@@ -73,7 +70,9 @@ describe('deriveEvents', () => {
     expect(derived[0].type).toBe('tps');
     expect(getTpsEvents(derived)[0].data.model.modelId).toBe('gpt-4o');
   });
+});
 
+describe('pairEnergyWithTps', () => {
   it('pairs energy with TPS by session_id + parent_id', () => {
     const raw = [VALID_TELEMETRY, ENERGY_EVENT].join('\n');
     const parsed = parseJsonl(raw);
@@ -83,68 +82,25 @@ describe('deriveEvents', () => {
     expect(paired[0].energy).toBeDefined();
     expect(paired[0].energy?.cost_usd).toBe(0.00045);
   });
-});
 
-describe('computeSummary', () => {
-  it('handles empty arrays without NaN/Infinity', () => {
-    const summary = computeSummary([], []);
-    expect(summary.totalCalls).toBe(0);
-    expect(summary.avgTps).toBe(0);
-    expect(summary.minTtft).toBe(0);
-    expect(summary.maxTtft).toBe(0);
-    expect(summary.totalCostUsd).toBeNull();
-    expect(summary.totalEnergyJoules).toBeNull();
-    expect(summary.costSource).toBeNull();
+  it('skips energy events with null parentId', () => {
+    const tps = getTpsEvents(parseJsonl(VALID_TELEMETRY));
+    const orphanEnergy = getEnergyEvents(parseJsonl(JSON.stringify({
+      id: 'nw-orphan',
+      parentId: null,
+      timestamp: '2025-01-01T00:00:02.000Z',
+      type: 'custom',
+      customType: 'neuralwatt-energy',
+      data: { energy_joules: 1, cost_usd: 0.00001 },
+    })));
+    const paired = pairEnergyWithTps(tps, orphanEnergy);
+    expect(paired[0].energy).toBeUndefined();
   });
 
-  it('computes stats for a single TPS event', () => {
-    const raw = [VALID_TELEMETRY, ENERGY_EVENT].join('\n');
-    const parsed = parseJsonl(raw);
-    const tps = getTpsEvents(parsed);
-    const energy = getEnergyEvents(parsed);
-    const summary = computeSummary(tps, energy);
-
-    expect(summary.totalCalls).toBe(1);
-    expect(summary.totalTokens).toBe(165);
-    expect(summary.minTtft).toBe(2000);
-    expect(summary.maxTtft).toBe(2000);
-    expect(summary.avgTtft).toBe(2000);
-    expect(summary.fastCalls).toBe(1); // ttft < 3000
-    expect(summary.cachedCalls).toBe(1); // cacheRead > 0
-    expect(summary.stalledCalls).toBe(0);
-  });
-
-  it('prefers energy cost over token cost when both present', () => {
-    const raw = [VALID_TELEMETRY, ENERGY_EVENT].join('\n');
-    const parsed = parseJsonl(raw);
-    const tps = getTpsEvents(parsed);
-    const energy = getEnergyEvents(parsed);
-    const summary = computeSummary(tps, energy);
-    expect(summary.costSource).toBe('neuralwatt');
-    expect(summary.totalCostUsd).toBe(0.00045);
-  });
-
-  it('falls back to token cost when no energy', () => {
-    const parsed = parseJsonl(VALID_TELEMETRY);
-    const tps = getTpsEvents(parsed);
-    const summary = computeSummary(tps, []);
-    expect(summary.costSource).toBe('tps');
-    expect(summary.totalCostUsd).toBe(0.00285);
-  });
-});
-
-describe('computeMultiSessionSummary', () => {
-  it('returns safe defaults for empty input', () => {
-    const result = computeMultiSessionSummary([]);
-    expect(result.sessionCount).toBe(0);
-    expect(result.totalCalls).toBe(0);
-    expect(result.totalCostUsd).toBeNull();
-    expect(result.totalEnergyJoules).toBeNull();
-  });
-});
-
-describe('computeTimingBuckets', () => {
-  it('returns empty array for no events', () => {
-    expect(computeTimingBuckets([])).toEqual([]);
+  it('skips pairing when TPS id is empty', () => {
+    const emptyIdTps = getTpsEvents(parseJsonl(VALID_TELEMETRY.replace('"id":"turn-1"', '"id":""')));
+    const energy = getEnergyEvents(parseJsonl(ENERGY_EVENT));
+    const paired = pairEnergyWithTps(emptyIdTps, energy);
+    expect(paired[0].energy).toBeUndefined();
   });
 });

@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useMemo, useRef, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
@@ -65,9 +63,8 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
     return bins;
   }, [cacheHitRates]);
 
-  const sorted = useMemo(() => {
-    return [...timeline].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [timeline]);
+  // timeline is already sorted by buildTimeline()
+  const sorted = timeline;
 
   const selectedRef = useRef<HTMLDivElement>(null);
 
