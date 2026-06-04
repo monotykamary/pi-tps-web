@@ -1,14 +1,16 @@
-import { useMemo, memo } from 'react';
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { HardDrives } from '@phosphor-icons/react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip
 } from 'recharts';
 
-import type { TpsEvent, EnergyPayload } from '../types';
+import type { CacheOverallSlice, CacheOverTimeInterval } from '../lib/queries';
 
 interface Props {
-  events: (TpsEvent & { energy?: EnergyPayload })[];
+  overall: CacheOverallSlice[];
+  overTime: CacheOverTimeInterval[];
+  hitRate: number;
 }
 
 function CacheTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) {
@@ -21,38 +23,7 @@ function CacheTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   );
 }
 
-function CacheEfficiencyInner({ events }: Props) {
-  const sorted = useMemo(() => {
-    return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [events]);
-
-  const overall = useMemo(() => {
-    const totalCache = sorted.reduce((s, e) => s + e.data.tokens.cacheRead, 0);
-    const totalNew = sorted.reduce((s, e) => s + e.data.tokens.input, 0);
-    const totalOut = sorted.reduce((s, e) => s + e.data.tokens.output, 0);
-    return [
-      { name: 'Cache Read', value: totalCache, color: '#0891b2' },
-      { name: 'New Input', value: totalNew, color: '#3f3f46' },
-      { name: 'Output', value: totalOut, color: '#059669' },
-    ];
-  }, [sorted]);
-
-  const cacheOverTime = useMemo(() => {
-    const intervals = Math.min(12, Math.max(6, Math.ceil(sorted.length / 60)));
-    const chunkSize = Math.ceil(sorted.length / intervals);
-    const chunks: { label: string; hitRate: number }[] = [];
-    for (let i = 0; i < sorted.length; i += chunkSize) {
-      const slice = sorted.slice(i, Math.min(i + chunkSize, sorted.length));
-      const cache = slice.reduce((s, e) => s + e.data.tokens.cacheRead, 0);
-      const total = slice.reduce((s, e) => s + e.data.tokens.total, 0);
-      const hitRate = total > 0 ? (cache / total) * 100 : 0;
-      chunks.push({ label: `${i + 1}-${Math.min(i + chunkSize, sorted.length)}`, hitRate: Math.round(hitRate) });
-    }
-    return chunks;
-  }, [sorted]);
-
-  const cacheHitRate = overall[0].value / overall.reduce((s, v) => s + v.value, 0) * 100;
-
+function CacheEfficiencyInner({ overall, overTime, hitRate }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -90,30 +61,34 @@ function CacheEfficiencyInner({ events }: Props) {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
-            <span className="metric-mono text-2xl font-bold text-zinc-800 dark:text-zinc-300">{cacheHitRate.toFixed(0)}%</span>
+            <span className="metric-mono text-2xl font-bold text-zinc-800 dark:text-zinc-300">{hitRate.toFixed(0)}%</span>
             <span className="text-[10px] text-zinc-400 dark:text-zinc-400 font-medium uppercase tracking-wider">cache hit</span>
           </div>
         </div>
 
         {/* Bars */}
         <div className="flex flex-col justify-center gap-2.5">
-          {overall.map(item => (
-            <div key={item.name}>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-zinc-500 dark:text-zinc-400 font-medium">{item.name}</span>
-                <span className="metric-mono text-zinc-700 dark:text-zinc-300 font-semibold">{((item.value / overall.reduce((s, v) => s + v.value, 0)) * 100).toFixed(0)}%</span>
+          {overall.map(item => {
+            const total = overall.reduce((s, v) => s + v.value, 0);
+            const pct = total > 0 ? (item.value / total) * 100 : 0;
+            return (
+              <div key={item.name}>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-zinc-500 dark:text-zinc-400 font-medium">{item.name}</span>
+                  <span className="metric-mono text-zinc-700 dark:text-zinc-300 font-semibold">{pct.toFixed(0)}%</span>
+                </div>
+                <div className="h-1.5 bg-zinc-100 dark:bg-white/[0.06] rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: item.color }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 bg-zinc-100 dark:bg-white/[0.06] rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: item.color }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(item.value / overall.reduce((s, v) => s + v.value, 0)) * 100}%` }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -121,7 +96,7 @@ function CacheEfficiencyInner({ events }: Props) {
       <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-white/[0.06]">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-3">Cache hit rate over time (by request range)</p>
         <div className="space-y-1.5">
-          {cacheOverTime.map((c, i) => {
+          {overTime.map((c, i) => {
             const color = c.hitRate >= 80 ? 'bg-moss' : c.hitRate >= 50 ? 'bg-accent' : c.hitRate >= 20 ? 'bg-amber' : 'bg-ember';
             const textColor = c.hitRate >= 80 ? 'text-moss' : c.hitRate >= 50 ? 'text-accent' : c.hitRate >= 20 ? 'text-amber' : 'text-ember';
             return (

@@ -1,61 +1,17 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Gauge, TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
-import type { TpsEvent, DataThresholds } from '../types';
-import { computeEffectiveTps, formatThreshold, formatDuration } from '../lib/parser';
+import type { ThresholdStat } from '../lib/queries';
+import { formatThreshold, formatDuration } from '../lib/parser';
 
 interface Props {
-  events: TpsEvent[];
-  thresholds: DataThresholds;
+  stats: ThresholdStat[];
 }
 
-
-
-function ThresholdAnalysisInner({ events, thresholds: dt }: Props) {
-  // Derive 4 display thresholds from data-derived boundaries
-  const displayThresholds = useMemo(() => {
-    const maxTokens = events.length ? Math.max(...events.map(e => e.data.tokens.total)) : 80000;
-    return [
-      Math.round(dt.lowContext * 0.5 / 1000) * 1000,
-      dt.lowContext,
-      dt.cacheThreshold,
-      Math.round((dt.cacheThreshold + (maxTokens - dt.cacheThreshold) * 0.5) / 1000) * 1000,
-    ];
-  }, [events, dt]);
-
-  const stats = useMemo(() => {
-    const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return displayThresholds.map(threshold => {
-      const above = sorted.filter(e => e.data.tokens.total >= threshold);
-      const below = sorted.filter(e => e.data.tokens.total < threshold);
-
-      const avgTtftAbove = above.length ? above.reduce((s, e) => s + e.data.timing.ttftMs, 0) / above.length : 0;
-      const avgTtftBelow = below.length ? below.reduce((s, e) => s + e.data.timing.ttftMs, 0) / below.length : 0;
-
-      const avgTpsAbove = above.length ? above.reduce((s, e) => s + computeEffectiveTps(e.data), 0) / above.length : 0;
-      const avgTpsBelow = below.length ? below.reduce((s, e) => s + computeEffectiveTps(e.data), 0) / below.length : 0;
-
-      const avgCacheRatioAbove = above.length ? above.reduce((s, e) => s + e.data.tokens.cacheRead / e.data.tokens.total, 0) / above.length : 0;
-      const avgCacheRatioBelow = below.length ? below.reduce((s, e) => s + e.data.tokens.cacheRead / e.data.tokens.total, 0) / below.length : 0;
-
-      const ttftDelta = avgTtftAbove - avgTtftBelow;
-
-      return {
-        threshold,
-        above: { count: above.length, avgTtft: avgTtftAbove, avgTps: avgTpsAbove, avgCacheRatio: avgCacheRatioAbove },
-        below: { count: below.length, avgTtft: avgTtftBelow, avgTps: avgTpsBelow, avgCacheRatio: avgCacheRatioBelow },
-        firstAboveIndex: sorted.findIndex(e => e.data.tokens.total >= threshold),
-        ttftDelta,
-      };
-    });
-  }, [events, displayThresholds]);
-
+function ThresholdAnalysisInner({ stats }: Props) {
   // Find the threshold with the strongest improvement (largest negative delta = above is faster)
-  const strongest = useMemo(() => {
-    const improving = stats.filter(s => s.ttftDelta < 0 && s.above.count > 0 && s.below.count > 0);
-    if (!improving.length) return null;
-    return improving.reduce((best, s) => s.ttftDelta < best.ttftDelta ? s : best, improving[0]);
-  }, [stats]);
+  const strongest = stats.filter(s => s.ttftDelta < 0 && s.above.count > 0 && s.below.count > 0)
+    .reduce<typeof stats[0] | null>((best, s) => !best || s.ttftDelta < best.ttftDelta ? s : best, null);
 
   return (
     <motion.div

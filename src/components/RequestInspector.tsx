@@ -3,39 +3,39 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binoculars } from '@phosphor-icons/react';
 
-/** Format an ISO timestamp to a short time string (HH:MM:SS) */
+import type { TimelineEventRow } from '../lib/queries';
+import type { DataThresholds } from '../types';
+import { formatDuration, formatTps } from '../lib/parser';
+
 const formatTime = (ts: string) => ts.substring(11, 19);
 
-/** Format an ISO timestamp to a readable date+time (e.g. "Apr 30 · 12:34:56") */
 const formatFullTimestamp = (ts: string) => {
   const d = new Date(ts);
   const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const timePart = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return `${datePart} · ${timePart}`;
 };
-import type { TpsEvent, EnergyPayload, DataThresholds, TimelineEvent, ModelChangeEvent, RewindEvent, BranchSummaryEvent } from '../types';
-import { computeEffectiveTps, formatDuration, formatTps } from '../lib/parser';
 
 interface Props {
-  timeline: TimelineEvent[];
+  timeline: TimelineEventRow[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   thresholds: DataThresholds;
 }
 
-function isTpsEvent(e: TimelineEvent): e is TpsEvent & { energy?: EnergyPayload } {
+function isTpsRow(e: TimelineEventRow): e is TimelineEventRow & { type: 'tps' } {
   return e.type === 'tps';
 }
 
 const SPARKLINE_MAX_BARS = 60;
 
 function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: Props) {
-  const tpsEvents = useMemo(() => timeline.filter(isTpsEvent), [timeline]);
+  const tpsEvents = useMemo(() => timeline.filter(isTpsRow), [timeline]);
 
   const cacheHitRates = useMemo(() => {
     return tpsEvents.map(e => {
-      const total = e.data.tokens.total || 1;
-      return (e.data.tokens.cacheRead / total) * 100;
+      const total = e.tokensTotal || 1;
+      return (e.tokensCacheRead / total) * 100;
     });
   }, [tpsEvents]);
 
@@ -63,7 +63,6 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
     return bins;
   }, [cacheHitRates]);
 
-  // timeline is already sorted by buildTimeline()
   const sorted = timeline;
 
   const selectedRef = useRef<HTMLDivElement>(null);
@@ -74,21 +73,19 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
 
   const selectedEvent = selectedId ? sorted.find(e => e.id === selectedId) : null;
 
-  const getCategory = (e: TpsEvent & { energy?: EnergyPayload }) => {
-    const total = e.data.tokens.total;
-    const ttft = e.data.timing.ttftMs;
-    const newRatio = e.data.tokens.input / total;
-    if (e.data.tokens.input > thresholds.anomalyInputThreshold) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
+  const getCategory = (e: TimelineEventRow & { type: 'tps' }) => {
+    const total = e.tokensTotal;
+    const ttft = e.ttftMs;
+    const newRatio = e.tokensInput / total;
+    if (e.tokensInput > thresholds.anomalyInputThreshold) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
     if (ttft > thresholds.slowTtft && total < thresholds.cacheThreshold) return { label: 'slow', color: 'text-ember bg-ember/5 border-ember/20' };
     if (total > thresholds.cacheThreshold && ttft < thresholds.fastTtft && newRatio < thresholds.highNewInputRatio) return { label: 'fast', color: 'text-moss bg-moss/5 border-moss/20' };
     return { label: 'normal', color: 'text-zinc-400 bg-zinc-50/50 dark:bg-white/[0.04] border-zinc-100 dark:border-white/[0.08]' };
   };
 
-  /** Compute effective TPS — delegates to shared logic */
-  const effectiveTps = (e: TpsEvent & { energy?: EnergyPayload }) => computeEffectiveTps(e.data);
-
-  /** Short model name: last segment of a slash-separated ID */
   const shortModel = (modelId: string) => modelId.split('/').pop() ?? modelId;
+
+  const selectedTps = selectedEvent && isTpsRow(selectedEvent) ? selectedEvent : null;
 
   return (
     <motion.div
@@ -126,9 +123,7 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                   ? `#${bin.startIndex + 1} · ${bin.rate.toFixed(0)}% cache hit`
                   : `#${bin.startIndex + 1}–${bin.startIndex + bin.count} · avg ${bin.rate.toFixed(0)}% cache hit`}
               >
-                {/* Hover cursor strip — full column height */}
                 <div className={`absolute inset-0 rounded-sm transition-colors ${isActive ? 'bg-accent/10' : 'group-hover:bg-accent/[0.07]'}`} />
-                {/* Colored bar */}
                 <div className="absolute inset-0 flex items-end">
                   <div
                     className={`w-full rounded-sm ${color} transition-opacity ${isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-90'}`}
@@ -146,7 +141,7 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
       </div>
 
       <div className="flex-1 overflow-hidden" style={{ minHeight: '400px' }}>
-        {selectedEvent && isTpsEvent(selectedEvent) ? (
+        {selectedTps ? (
               <div
                 key="detail"
                 className="h-full w-full overflow-y-auto scrollbar-thin p-5 space-y-5"
@@ -164,67 +159,67 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                   </button>
                 </div>
 
-                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider border ${getCategory(selectedEvent).color}`}>
-                  {getCategory(selectedEvent).label}
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider border ${getCategory(selectedTps).color}`}>
+                  {getCategory(selectedTps).label}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <MetricBox icon={Clock} label="Timestamp" value={formatFullTimestamp(selectedEvent.timestamp)} />
-                  <MetricBox icon={Hash} label="ID" value={selectedEvent.id.substring(0, 8)} />
+                  <MetricBox icon={Clock} label="Timestamp" value={formatFullTimestamp(selectedTps.timestamp)} />
+                  <MetricBox icon={Hash} label="ID" value={selectedTps.id.substring(0, 8)} />
                 </div>
 
                 {/* Model */}
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Model</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <ModelPill label="Provider" value={selectedEvent.data.model.provider} />
-                    <ModelPill label="Model" value={shortModel(selectedEvent.data.model.modelId)} fullValue={selectedEvent.data.model.modelId} />
+                    <ModelPill label="Provider" value={selectedTps.provider} />
+                    <ModelPill label="Model" value={shortModel(selectedTps.modelId)} fullValue={selectedTps.modelId} />
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Token Breakdown</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <TokenPill label="Total" value={selectedEvent.data.tokens.total} color="bg-zinc-800 dark:bg-zinc-300" />
-                    <TokenPill label="New Input" value={selectedEvent.data.tokens.input} color="bg-zinc-600 dark:bg-zinc-400" />
-                    <TokenPill label="Cache Read" value={selectedEvent.data.tokens.cacheRead} color="bg-accent" />
-                    <TokenPill label="Output" value={selectedEvent.data.tokens.output} color="bg-moss" />
+                    <TokenPill label="Total" value={selectedTps.tokensTotal} color="bg-zinc-800 dark:bg-zinc-300" />
+                    <TokenPill label="New Input" value={selectedTps.tokensInput} color="bg-zinc-600 dark:bg-zinc-400" />
+                    <TokenPill label="Cache Read" value={selectedTps.tokensCacheRead} color="bg-accent" />
+                    <TokenPill label="Output" value={selectedTps.tokensOutput} color="bg-moss" />
                   </div>
 
                   <div className="h-2 bg-zinc-100 dark:bg-white/[0.06] rounded-full overflow-hidden flex">
-                    {selectedEvent.data.tokens.total > 0 && (
+                    {selectedTps.tokensTotal > 0 && (
                       <>
-                        <div className="h-full bg-accent" style={{ width: `${(selectedEvent.data.tokens.cacheRead / selectedEvent.data.tokens.total) * 100}%` }} />
-                        <div className="h-full bg-zinc-600 dark:bg-zinc-400" style={{ width: `${(selectedEvent.data.tokens.input / selectedEvent.data.tokens.total) * 100}%` }} />
-                        <div className="h-full bg-moss" style={{ width: `${(selectedEvent.data.tokens.output / selectedEvent.data.tokens.total) * 100}%` }} />
+                        <div className="h-full bg-accent" style={{ width: `${(selectedTps.tokensCacheRead / selectedTps.tokensTotal) * 100}%` }} />
+                        <div className="h-full bg-zinc-600 dark:bg-zinc-400" style={{ width: `${(selectedTps.tokensInput / selectedTps.tokensTotal) * 100}%` }} />
+                        <div className="h-full bg-moss" style={{ width: `${(selectedTps.tokensOutput / selectedTps.tokensTotal) * 100}%` }} />
                       </>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-[10px]">
-                    <span className="text-zinc-400 dark:text-zinc-400">Cache: {((selectedEvent.data.tokens.cacheRead / selectedEvent.data.tokens.total) * 100).toFixed(0)}%</span>
-                    <span className="text-zinc-400 dark:text-zinc-400">New: {((selectedEvent.data.tokens.input / selectedEvent.data.tokens.total) * 100).toFixed(0)}%</span>
-                    <span className="text-zinc-400 dark:text-zinc-400">Out: {((selectedEvent.data.tokens.output / selectedEvent.data.tokens.total) * 100).toFixed(0)}%</span>
+                    <span className="text-zinc-400 dark:text-zinc-400">Cache: {((selectedTps.tokensCacheRead / selectedTps.tokensTotal) * 100).toFixed(0)}%</span>
+                    <span className="text-zinc-400 dark:text-zinc-400">New: {((selectedTps.tokensInput / selectedTps.tokensTotal) * 100).toFixed(0)}%</span>
+                    <span className="text-zinc-400 dark:text-zinc-400">Out: {((selectedTps.tokensOutput / selectedTps.tokensTotal) * 100).toFixed(0)}%</span>
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Timing</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <TimingPill label="TTFT" value={formatDuration(selectedEvent.data.timing.ttftMs)} highlight />
-                    <TimingPill label="Total" value={formatDuration(selectedEvent.data.timing.totalMs)} />
-                    <TimingPill label="Generation" value={formatDuration(selectedEvent.data.timing.generationMs)} />
-                    <TimingPill label="Stall" value={formatDuration(selectedEvent.data.timing.stallMs)} warn={selectedEvent.data.timing.stallMs > 0} />
+                    <TimingPill label="TTFT" value={formatDuration(selectedTps.ttftMs)} highlight />
+                    <TimingPill label="Total" value={formatDuration(selectedTps.totalMs)} />
+                    <TimingPill label="Generation" value={formatDuration(selectedTps.generationMs)} />
+                    <TimingPill label="Stall" value={formatDuration(selectedTps.stallMs)} warn={selectedTps.stallMs > 0} />
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Speed Breakdown</p>
                   {(() => {
-                    const activeTps = effectiveTps(selectedEvent);
-                    const wallTps = selectedEvent.data.timing.totalMs > 0 ? selectedEvent.data.tokens.output / (selectedEvent.data.timing.totalMs / 1000) : 0;
+                    const activeTps = selectedTps.effectiveTps;
+                    const wallTps = selectedTps.wallTps;
                     const lossTps = activeTps > 0 ? ((activeTps - wallTps) / activeTps) * 100 : 0;
                     const wallShare = activeTps > 0 ? (wallTps / activeTps) * 100 : 0;
-                    const stallShare = selectedEvent.data.timing.generationMs > 0 ? (selectedEvent.data.timing.stallMs / selectedEvent.data.timing.generationMs) * 100 : 0;
+                    const stallShare = selectedTps.generationMs > 0 ? (selectedTps.stallMs / selectedTps.generationMs) * 100 : 0;
                     return (
                       <>
                         <div className="grid grid-cols-3 gap-2">
@@ -254,15 +249,15 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                             <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
                           </div>
                         </div>
-                        {selectedEvent.data.timing.stallMs > 0 && (
+                        {selectedTps.stallMs > 0 && (
                           <div className="flex items-center justify-between text-[10px] bg-amber/5 dark:bg-amber/10 rounded-lg px-3 py-2">
                             <span className="text-amber">Stalls</span>
-                            <span className="metric-mono text-amber">{selectedEvent.data.timing.stallCount} · {formatDuration(selectedEvent.data.timing.stallMs)} · {stallShare.toFixed(0)}% gen time</span>
+                            <span className="metric-mono text-amber">{selectedTps.stallCount} · {formatDuration(selectedTps.stallMs)} · {stallShare.toFixed(0)}% gen time</span>
                           </div>
                         )}
-                        {selectedEvent.data.tps !== activeTps && selectedEvent.data.tps > 0 && (
+                        {selectedTps.tps !== selectedTps.effectiveTps && selectedTps.tps > 0 && (
                           <p className="text-[10px] text-zinc-400 dark:text-zinc-500" title="Stored TPS from extension (computed before stall-guard fix, may include inflation)">
-                            Stored raw TPS: {formatTps(selectedEvent.data.tps)}
+                            Stored raw TPS: {formatTps(selectedTps.tps)}
                           </p>
                         )}
                       </>
@@ -273,8 +268,8 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400">Energy & Cost</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <TimingPill label="Energy" value={selectedEvent.energy ? `${selectedEvent.energy.energy_joules.toFixed(1)}J` : '-'} />
-                    <TimingPill label={selectedEvent.data.cost ? 'Cost (est.)' : 'Cost'} value={selectedEvent.energy ? `$${selectedEvent.energy.cost_usd.toFixed(4)}` : selectedEvent.data.cost ? `$${selectedEvent.data.cost.total.toFixed(4)}` : '-'} />
+                    <TimingPill label="Energy" value={selectedTps.energyJoules !== null ? `${selectedTps.energyJoules.toFixed(1)}J` : '-'} />
+                    <TimingPill label={selectedTps.costTotal !== null ? 'Cost (est.)' : 'Cost'} value={selectedTps.energyCostUsd !== null ? `$${selectedTps.energyCostUsd.toFixed(4)}` : selectedTps.costTotal !== null ? `$${selectedTps.costTotal.toFixed(4)}` : '-'} />
                   </div>
                 </div>
               </div>
@@ -287,8 +282,7 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                 selectedRef={selectedRef}
                 onSelect={handleSelect}
                 shortModel={shortModel}
-                effectiveTps={effectiveTps}
-                isTpsEvent={isTpsEvent}
+                isTpsRow={isTpsRow}
               />
             )}
       </div>
@@ -296,21 +290,18 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
   );
 }
 
-// ─── TPS request row ────────────────────────────────────────────────────────
-
-const TpsRow = React.memo(function TpsRow({ event, tpsIndex, thresholds, onSelect, shortModel, effectiveTps }: {
-  event: TpsEvent & { energy?: EnergyPayload };
+const TpsRow = React.memo(function TpsRow({ event, tpsIndex, thresholds, onSelect, shortModel }: {
+  event: TimelineEventRow & { type: 'tps' };
   tpsIndex: number;
   thresholds: DataThresholds;
   onSelect: (id: string) => void;
   shortModel: (modelId: string) => string;
-  effectiveTps: (e: TpsEvent & { energy?: EnergyPayload }) => number;
 }) {
   const cat = useMemo(() => {
-    const total = event.data.tokens.total;
-    const ttft = event.data.timing.ttftMs;
-    const newRatio = event.data.tokens.input / total;
-    if (event.data.tokens.input > thresholds.anomalyInputThreshold) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
+    const total = event.tokensTotal;
+    const ttft = event.ttftMs;
+    const newRatio = event.tokensInput / total;
+    if (event.tokensInput > thresholds.anomalyInputThreshold) return { label: 'anomaly', color: 'text-amber bg-amber/5 border-amber/20' };
     if (ttft > thresholds.slowTtft && total < thresholds.cacheThreshold) return { label: 'slow', color: 'text-ember bg-ember/5 border-ember/20' };
     if (total > thresholds.cacheThreshold && ttft < thresholds.fastTtft && newRatio < thresholds.highNewInputRatio) return { label: 'fast', color: 'text-moss bg-moss/5 border-moss/20' };
     return { label: 'normal', color: 'text-zinc-400 bg-zinc-50/50 dark:bg-white/[0.04] border-zinc-100 dark:border-white/[0.08]' };
@@ -326,11 +317,11 @@ const TpsRow = React.memo(function TpsRow({ event, tpsIndex, thresholds, onSelec
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="metric-mono text-xs font-semibold text-zinc-700 dark:text-zinc-300">{event.data.tokens.total.toLocaleString()}</span>
+          <span className="metric-mono text-xs font-semibold text-zinc-700 dark:text-zinc-300">{event.tokensTotal.toLocaleString()}</span>
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">tokens</span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-          <span className="text-[10px] font-medium text-accent" title={`${event.data.model.provider}/${event.data.model.modelId}`}>
-            {shortModel(event.data.model.modelId)}
+          <span className="text-[10px] font-medium text-accent" title={`${event.provider}/${event.modelId}`}>
+            {shortModel(event.modelId)}
           </span>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
@@ -338,16 +329,16 @@ const TpsRow = React.memo(function TpsRow({ event, tpsIndex, thresholds, onSelec
             {formatTime(event.timestamp)}
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-          <span className={`text-[10px] font-medium ${event.data.timing.ttftMs > thresholds.slowTtft ? 'text-ember' : event.data.timing.ttftMs < thresholds.fastTtft ? 'text-moss' : 'text-zinc-400 dark:text-zinc-400'}`}>
-            ttft {formatDuration(event.data.timing.ttftMs)}
+          <span className={`text-[10px] font-medium ${event.ttftMs > thresholds.slowTtft ? 'text-ember' : event.ttftMs < thresholds.fastTtft ? 'text-moss' : 'text-zinc-400 dark:text-zinc-400'}`}>
+            ttft {formatDuration(event.ttftMs)}
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
-          <span className={`text-[10px] font-medium ${effectiveTps(event) > 40 ? 'text-moss' : effectiveTps(event) > 20 ? 'text-accent' : 'text-ember'}`}>
-            {formatTps(effectiveTps(event))} tps
+          <span className={`text-[10px] font-medium ${event.effectiveTps > 40 ? 'text-moss' : event.effectiveTps > 20 ? 'text-accent' : 'text-ember'}`}>
+            {formatTps(event.effectiveTps)} tps
           </span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700">·</span>
           <span className="text-[10px] text-zinc-400 dark:text-zinc-400">
-            {((event.data.tokens.cacheRead / event.data.tokens.total) * 100).toFixed(0)}% cache
+            {((event.tokensCacheRead / event.tokensTotal) * 100).toFixed(0)}% cache
           </span>
         </div>
       </div>
@@ -356,9 +347,7 @@ const TpsRow = React.memo(function TpsRow({ event, tpsIndex, thresholds, onSelec
   );
 });
 
-// ─── Structural event marker rows ───────────────────────────────────────────
-
-function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | BranchSummaryEvent }) {
+function StructuralRow({ event }: { event: TimelineEventRow }) {
   if (event.type === 'model_change') {
     return (
       <div className="flex items-center gap-2.5 px-5 py-2 bg-accent/[0.03] dark:bg-accent/[0.06]">
@@ -378,7 +367,6 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
   }
 
   if (event.type === 'rewind') {
-    const bindingCount = event.data.bindings?.length ?? 0;
     return (
       <div className="flex items-center gap-2.5 px-5 py-2 bg-ember/[0.03] dark:bg-ember/[0.06]">
         <div className="w-7 h-7 flex items-center justify-center shrink-0">
@@ -386,9 +374,7 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
         </div>
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-ember">rewind</span>
-          <span className="text-[10px] text-zinc-400 dark:text-zinc-400">
-            {bindingCount > 0 ? `${bindingCount} entries` : 'navigated'}
-          </span>
+          <span className="text-[10px] text-zinc-400 dark:text-zinc-400">navigated</span>
           <span className="text-[10px] text-zinc-300 dark:text-zinc-700 ml-auto metric-mono">{formatTime(event.timestamp)}</span>
         </div>
       </div>
@@ -417,25 +403,22 @@ function StructuralRow({ event }: { event: ModelChangeEvent | RewindEvent | Bran
 
 export default React.memo(RequestInspectorInner);
 
-// ─── Virtualized list ────────────────────────────────────────────────────────
-
 const TPS_ROW_H = 60;
 const STRUCT_ROW_H = 44;
 
-function getRowHeight(e: TimelineEvent) {
-  return isTpsEvent(e) ? TPS_ROW_H : STRUCT_ROW_H;
+function getRowHeight(e: TimelineEventRow) {
+  return isTpsRow(e) ? TPS_ROW_H : STRUCT_ROW_H;
 }
 
-function VirtualizedRequestList({ sorted, tpsEvents, thresholds, selectedId, selectedRef, onSelect, shortModel, effectiveTps, isTpsEvent: isTps }: {
-  sorted: TimelineEvent[];
-  tpsEvents: (TpsEvent & { energy?: EnergyPayload })[];
+function VirtualizedRequestList({ sorted, tpsEvents, thresholds, selectedId, selectedRef, onSelect, shortModel, isTpsRow: isTps }: {
+  sorted: TimelineEventRow[];
+  tpsEvents: (TimelineEventRow & { type: 'tps' })[];
   thresholds: DataThresholds;
   selectedId: string | null;
   selectedRef: React.RefObject<HTMLDivElement | null>;
   onSelect: (id: string | null) => void;
   shortModel: (modelId: string) => string;
-  effectiveTps: (e: TpsEvent & { energy?: EnergyPayload }) => number;
-  isTpsEvent: (e: TimelineEvent) => e is TpsEvent & { energy?: EnergyPayload };
+  isTpsRow: (e: TimelineEventRow) => e is TimelineEventRow & { type: 'tps' };
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -479,7 +462,6 @@ function VirtualizedRequestList({ sorted, tpsEvents, thresholds, selectedId, sel
                   thresholds={thresholds}
                   onSelect={(id: string) => onSelect(id)}
                   shortModel={shortModel}
-                  effectiveTps={effectiveTps}
                 />
               </div>
             );
@@ -504,8 +486,6 @@ function VirtualizedRequestList({ sorted, tpsEvents, thresholds, selectedId, sel
     </div>
   );
 }
-
-// ─── Sub-components ─────────────────────────────────────────────────────────
 
 function MetricBox({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (

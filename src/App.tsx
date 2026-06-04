@@ -34,9 +34,13 @@ import ThemeToggle from './components/ThemeToggle';
 import SqlPlayground from './components/SqlPlayground';
 import {
   querySummary, queryModels, queryDataThresholds, queryTimingBuckets, queryMultiSessionSummary,
+  queryCacheEfficiency, queryTtftDistribution, queryThresholdCrossings, queryAnomalies,
+  queryScatter, queryTokenComposition, queryTimeline,
 } from './lib/queries';
 import type {
   ConversationSummaryRow, DataThresholdsRow, TimingBucketRow, ModelInfoRow, SessionSummaryRow,
+  CacheOverallSlice, CacheOverTimeInterval, TtftBinRow, ThresholdStat, AnomalyRow,
+  ScatterPoint, TokenCompositionRow, TimelineEventRow,
 } from './lib/queries';
 
 export default function App() {
@@ -52,7 +56,6 @@ export default function App() {
   const {
     sessions, activeSessionId, setActiveSessionId,
     dbLoading, hasLoaded, dbVersion,
-    allTpsEvents, paired, timeline,
     addSession: rawAddSession, removeSession, clearSessions: rawClearSessions,
   } = sessionsData;
 
@@ -76,12 +79,6 @@ export default function App() {
     dragOver, pasteFlash, fileInputRef,
     handleDrop, handleDragOver, handleDragLeave, handleFileSelect, loadSample,
   } = fileData;
-
-  // Filtered TPS events for components still using JS-based data
-  const tpsEvents = useMemo(
-    () => (selectedModel ? allTpsEvents.filter((e) => e.data.model.modelId === selectedModel) : allTpsEvents),
-    [allTpsEvents, selectedModel],
-  );
 
   // ---- DuckDB-powered queries ----
 
@@ -171,6 +168,59 @@ export default function App() {
       return queryMultiSessionSummary(fileNames);
     },
     [dbVersion, sessions.size, activeSessionId],
+    { skip: viewTab === 'sql' },
+  );
+
+  // ---- DuckDB queries for migrated components ----
+
+  const { data: cacheEfficiency } = useDuckQuery<{
+    overall: CacheOverallSlice[];
+    overTime: CacheOverTimeInterval[];
+    hitRate: number;
+  }>(
+    () => queryCacheEfficiency(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel],
+    { skip: viewTab === 'sql' },
+  );
+
+  const { data: tokenComposition } = useDuckQuery<TokenCompositionRow[]>(
+    () => queryTokenComposition(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel],
+    { skip: viewTab === 'sql' },
+  );
+
+  const { data: ttftDistribution } = useDuckQuery<{
+    bins: TtftBinRow[];
+    fastCount: number;
+    slowCount: number;
+    percentiles: { label: string; value: number }[];
+  }>(
+    () => queryTtftDistribution(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel],
+    { skip: viewTab === 'sql' },
+  );
+
+  const { data: thresholdStats } = useDuckQuery<ThresholdStat[]>(
+    () => dataThresholds ? queryThresholdCrossings(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
+    [dbVersion, activeSessionId, selectedModel, dataThresholds],
+    { skip: viewTab === 'sql' || !dataThresholds },
+  );
+
+  const { data: anomalies } = useDuckQuery<AnomalyRow[]>(
+    () => dataThresholds ? queryAnomalies(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
+    [dbVersion, activeSessionId, selectedModel, dataThresholds],
+    { skip: viewTab === 'sql' || !dataThresholds },
+  );
+
+  const { data: scatterData } = useDuckQuery<ScatterPoint[]>(
+    () => dataThresholds ? queryScatter(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
+    [dbVersion, activeSessionId, selectedModel, dataThresholds],
+    { skip: viewTab === 'sql' || !dataThresholds },
+  );
+
+  const { data: timelineRows } = useDuckQuery<TimelineEventRow[]>(
+    () => queryTimeline(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel],
     { skip: viewTab === 'sql' },
   );
 
@@ -556,15 +606,15 @@ export default function App() {
               {/* Left: Charts */}
               <div className="lg:col-span-8 space-y-6">
                 <TimelineChart buckets={buckets ?? []} onBucketClick={handleBucketClick} />
-                <TimingScatter events={paired} onPointClick={handlePointClick} thresholds={dataThresholdsJs ?? DEFAULT_THRESHOLDS} />
+                <TimingScatter data={scatterData ?? []} onPointClick={handlePointClick} thresholds={dataThresholdsJs ?? DEFAULT_THRESHOLDS} />
                 {multiSummary && multiSummary.sessionCount > 1 && (
                   <SessionScatter multiSummary={multiSummary as unknown as MultiSessionSummary} onSessionClick={handleSessionClick} />
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <TimingDistribution events={paired} thresholds={dataThresholdsJs ?? DEFAULT_THRESHOLDS} />
-                  <CacheEfficiency events={paired} />
+                  <TimingDistribution bins={ttftDistribution?.bins ?? []} fastCount={ttftDistribution?.fastCount ?? 0} slowCount={ttftDistribution?.slowCount ?? 0} percentiles={ttftDistribution?.percentiles ?? []} />
+                  <CacheEfficiency overall={cacheEfficiency?.overall ?? []} overTime={cacheEfficiency?.overTime ?? []} hitRate={cacheEfficiency?.hitRate ?? 0} />
                 </div>
-                <TokenBreakdown events={paired} />
+                <TokenBreakdown data={tokenComposition ?? []} />
               </div>
 
               {/* Right: Analysis Panel */}
@@ -577,10 +627,10 @@ export default function App() {
                     totalCalls={summary?.totalCalls ?? 0}
                   />
                 )}
-                <ThresholdAnalysis events={tpsEvents} thresholds={dataThresholdsJs ?? DEFAULT_THRESHOLDS} />
-                <AnomalyDetector events={paired} thresholds={dataThresholdsJs ?? DEFAULT_THRESHOLDS} />
+                <ThresholdAnalysis stats={thresholdStats ?? []} />
+                <AnomalyDetector anomalies={anomalies ?? []} />
                 <RequestInspector
-                  timeline={timeline}
+                  timeline={timelineRows ?? []}
                   selectedId={selectedTpsId}
                   onSelect={handlePointClick}
                   thresholds={dataThresholdsJs ?? DEFAULT_THRESHOLDS}

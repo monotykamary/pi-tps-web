@@ -1,56 +1,17 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Timer } from '@phosphor-icons/react';
-import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
+import type { TtftBinRow } from '../lib/queries';
 import { formatDuration } from '../lib/parser';
 
 interface Props {
-  events: (TpsEvent & { energy?: EnergyPayload })[];
-  thresholds: DataThresholds;
+  bins: TtftBinRow[];
+  fastCount: number;
+  slowCount: number;
+  percentiles: { label: string; value: number }[];
 }
 
-/** Format a TTFT percentile from a sorted array */
-function formatTtft(sorted: number[], p: number): string {
-  if (sorted.length === 0) return '-';
-  const idx = Math.min(Math.floor(sorted.length * p), sorted.length - 1);
-  return formatDuration(sorted[idx]);
-}
-
-function TimingDistributionInner({ events, thresholds }: Props) {
-  const { slowTtft, fastTtft, cacheThreshold } = thresholds;
-
-  const sorted = useMemo(() => {
-    return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [events]);
-
-  const bins = useMemo(() => {
-    const ranges = [
-      { label: '<1s', max: 1000, color: 'bg-moss' },
-      { label: '1-3s', max: 3000, color: 'bg-moss/70' },
-      { label: '3-5s', max: 5000, color: 'bg-accent' },
-      { label: '5-10s', max: 10000, color: 'bg-accent/70' },
-      { label: '10-15s', max: 15000, color: 'bg-amber' },
-      { label: '15-30s', max: 30000, color: 'bg-ember/70' },
-      { label: '>30s', max: Infinity, color: 'bg-ember' },
-    ];
-
-    const counts = ranges.map(r => ({
-      ...r,
-      count: sorted.filter(e => {
-        const prevMax = ranges[ranges.indexOf(r) - 1]?.max ?? 0;
-        return e.data.timing.ttftMs > prevMax && e.data.timing.ttftMs <= r.max;
-      }).length,
-    }));
-
-    const maxCount = Math.max(...counts.map(c => c.count), 1);
-    return counts.map(c => ({ ...c, pct: (c.count / sorted.length) * 100, barPct: (c.count / maxCount) * 100 }));
-  }, [sorted]);
-
-  const sortedTtfts = useMemo(() => sorted.map(e => e.data.timing.ttftMs).sort((a, b) => a - b), [sorted]);
-
-  const slowCount = sorted.filter(e => e.data.timing.ttftMs > slowTtft && e.data.tokens.total < cacheThreshold).length;
-  const fastCount = sorted.filter(e => e.data.tokens.total > cacheThreshold && e.data.timing.ttftMs < fastTtft).length;
-
+function TimingDistributionInner({ bins, fastCount, slowCount, percentiles }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -103,19 +64,20 @@ function TimingDistributionInner({ events, thresholds }: Props) {
 
       <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06]">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-zinc-100 dark:divide-white/[0.06]">
-          {[
-            { label: 'P50', p: 0.50, color: 'text-zinc-700 dark:text-zinc-300' },
-            { label: 'P75', p: 0.75, color: 'text-amber' },
-            { label: 'P90', p: 0.90, color: 'text-accent' },
-            { label: 'P99', p: 0.99, color: 'text-ember' },
-          ].map(({ label, p, color }) => (
-            <div key={label} className="text-center px-3 py-2 first:pl-0 last:pr-0">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{label}</p>
-              <p className={`metric-mono text-sm font-semibold ${color} mt-0.5`}>
-                {formatTtft(sortedTtfts, p)}
-              </p>
-            </div>
-          ))}
+          {percentiles.map(({ label, value }) => {
+            const color = label === 'P50' ? 'text-zinc-700 dark:text-zinc-300'
+              : label === 'P75' ? 'text-amber'
+              : label === 'P90' ? 'text-accent'
+              : 'text-ember';
+            return (
+              <div key={label} className="text-center px-3 py-2 first:pl-0 last:pr-0">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-400">{label}</p>
+                <p className={`metric-mono text-sm font-semibold ${color} mt-0.5`}>
+                  {formatDuration(value)}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
     </motion.div>

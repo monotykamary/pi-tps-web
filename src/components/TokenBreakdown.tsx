@@ -1,4 +1,4 @@
-import { useMemo, memo } from 'react';
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 
 import {
@@ -11,10 +11,10 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-import type { TpsEvent, EnergyPayload } from '../types';
+import type { TokenCompositionRow } from '../lib/queries';
 
 interface Props {
-  events: (TpsEvent & { energy?: EnergyPayload })[];
+  data: TokenCompositionRow[];
 }
 
 interface TokenPayloadItem {
@@ -43,19 +43,7 @@ function TokenTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   );
 }
 
-function TokenBreakdownInner({ events }: Props) {
-  const sorted = useMemo(() => [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).slice(-30), [events]);
-
-  const data = useMemo(() => sorted.map((e, i) => ({
-    index: i + 1,
-    input: e.data.tokens.input,
-    output: e.data.tokens.output,
-    cacheRead: e.data.tokens.cacheRead,
-    cacheWrite: e.data.tokens.cacheWrite,
-    total: e.data.tokens.total,
-    ttft: e.data.timing.ttftMs,
-  })), [sorted]);
-
+function TokenBreakdownInner({ data }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}

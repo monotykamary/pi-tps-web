@@ -4,11 +4,13 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
 
-import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
-import { computeEffectiveTps, formatThreshold, formatDuration } from '../lib/parser';
+import type { ScatterPoint } from '../lib/queries';
+import { formatDuration } from '../lib/parser';
+import type { DataThresholds } from '../types';
+import { formatThreshold } from '../lib/parser';
 
 interface Props {
-  events: (TpsEvent & { energy?: EnergyPayload })[];
+  data: ScatterPoint[];
   onPointClick: (id: string) => void;
   thresholds: DataThresholds;
 }
@@ -16,7 +18,7 @@ interface Props {
 function TimingTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }> }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload as Record<string, unknown>;
-  const tps = Number(d.tps);
+  const tps = Number(d.effectiveTps ?? d.tps);
   const wallTps = Number(d.wallTps);
   const loss = tps > 0 ? ((tps - wallTps) / tps) * 100 : 0;
   const wallShare = tps > 0 ? (wallTps / tps) * 100 : 0;
@@ -28,11 +30,11 @@ function TimingTooltip({ active, payload }: { active?: boolean; payload?: Array<
       <div className="space-y-1.5">
         <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
           <span className="text-zinc-400 dark:text-zinc-400">Total tokens</span>
-          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{Number(d.x).toLocaleString()}</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{Number(d.tokensTotal).toLocaleString()}</span>
         </div>
         <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
           <span className="text-zinc-400 dark:text-zinc-400">TTFT</span>
-          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(Number(d.y))}</span>
+          <span className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{formatDuration(Number(d.ttftMs ?? d.y))}</span>
         </div>
         <div className="flex justify-between gap-2 text-xs whitespace-nowrap">
           <span className="text-zinc-400 dark:text-zinc-400">Cache hit</span>
@@ -64,7 +66,7 @@ function TimingTooltip({ active, payload }: { active?: boolean; payload?: Array<
           </div>
         </div>
       </div>
-      {(d.stallCount as number) > 0 && (
+      {Number(d.stallCount) > 0 && (
         <div className="mt-1.5 pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06]">
           <div className="flex justify-between text-xs whitespace-nowrap">
             <span className="text-ember">Stalls</span>
@@ -76,40 +78,30 @@ function TimingTooltip({ active, payload }: { active?: boolean; payload?: Array<
   );
 }
 
-function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
+function TimingScatterInner({ data, onPointClick, thresholds }: Props) {
   const [scale, setScale] = useState<'linear' | 'log'>('log');
-  const { cacheThreshold, lowContext, slowTtft, fastTtft, highNewInputRatio, anomalyInputThreshold } = thresholds;
+  const { cacheThreshold, lowContext } = thresholds;
 
-  const data = useMemo(() => {
-    const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return sorted.map((e, i) => {
-      const cacheRatio = e.data.tokens.cacheRead / e.data.tokens.total;
-      const newRatio = e.data.tokens.input / e.data.tokens.total;
-      let category: 'fast' | 'normal' | 'slow' | 'anomaly' = 'normal';
-      if (e.data.tokens.input > anomalyInputThreshold) category = 'anomaly';
-      else if (e.data.timing.ttftMs > slowTtft && e.data.tokens.total < cacheThreshold) category = 'slow';
-      else if (e.data.tokens.total > cacheThreshold && e.data.timing.ttftMs < fastTtft && newRatio < highNewInputRatio) category = 'fast';
-
-      return {
-        x: e.data.tokens.total,
-        y: e.data.timing.ttftMs,
-        z: e.data.timing.totalMs,
-        cacheRatio,
-        newRatio,
-        category,
-        index: i,
-        id: e.id,
-        input: e.data.tokens.input,
-        output: e.data.tokens.output,
-        cacheRead: e.data.tokens.cacheRead,
-        tps: computeEffectiveTps(e.data),
-        wallTps: e.data.timing.totalMs > 0 ? e.data.tokens.output / (e.data.timing.totalMs / 1000) : 0,
-        stallCount: e.data.timing.stallCount,
-        stallMs: e.data.timing.stallMs,
-        timestamp: e.timestamp,
-      };
-    });
-  }, [events, cacheThreshold, slowTtft, fastTtft, highNewInputRatio, anomalyInputThreshold]);
+  const chartData = useMemo(() => data.map((e, i) => ({
+    x: e.tokensTotal,
+    y: e.ttftMs,
+    z: e.totalMs,
+    cacheRatio: e.cacheRatio,
+    newRatio: e.newRatio,
+    category: e.category,
+    index: i,
+    id: e.id,
+    input: e.input,
+    output: e.output,
+    cacheRead: e.cacheRead,
+    tps: e.effectiveTps,
+    wallTps: e.wallTps,
+    stallCount: e.stallCount,
+    stallMs: e.stallMs,
+    effectiveTps: e.effectiveTps,
+    ttftMs: e.ttftMs,
+    tokensTotal: e.tokensTotal,
+  })), [data]);
 
   const colorMap = {
     fast: '#059669',
@@ -118,32 +110,28 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
     anomaly: '#d97706',
   };
 
-  // Sample data for rendering — cap at 800 points for smooth DOM/SVG performance.
-  // When the dataset exceeds this, take every N-th point + always include
-  // anomalies and slow-category points so outliers are never dropped.
   const MAX_POINTS = 100;
   const displayData = useMemo(() => {
-    if (data.length <= MAX_POINTS) return data;
-    // Uniformly sample down to MAX_POINTS, preserving order
-    const step = data.length / MAX_POINTS;
-    return data.filter((_, i) => Math.floor(i / step) !== Math.floor((i + 1) / step));
-  }, [data]);
+    if (chartData.length <= MAX_POINTS) return chartData;
+    const step = chartData.length / MAX_POINTS;
+    return chartData.filter((_, i) => Math.floor(i / step) !== Math.floor((i + 1) / step));
+  }, [chartData]);
 
   const xDomain = useMemo(() => {
-    const vals = data.map(d => d.x);
+    const vals = chartData.map(d => d.x);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     if (scale === 'log') return [Math.max(1, min * 0.8), max * 1.1];
     return [0, max * 1.05];
-  }, [data, scale]);
+  }, [chartData, scale]);
 
   const yDomain = useMemo(() => {
-    const vals = data.map(d => d.y);
+    const vals = chartData.map(d => d.y);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     if (scale === 'log') return [Math.max(100, min * 0.8), max * 1.1];
     return [0, max * 1.05];
-  }, [data, scale]);
+  }, [chartData, scale]);
 
   return (
     <motion.div
@@ -155,7 +143,7 @@ function TimingScatterInner({ events, onPointClick, thresholds }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-zinc-800 dark:text-zinc-300">TTFT vs Context Size</h2>
-          <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">Color indicates cache efficiency category derived from data.{data.length > MAX_POINTS ? ` Showing ${displayData.length} of ${data.length} points.` : ''}</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">Color indicates cache efficiency category derived from data.{chartData.length > MAX_POINTS ? ` Showing ${displayData.length} of ${chartData.length} points.` : ''}</p>
         </div>
         <div className="flex items-center gap-1.5 bg-zinc-100/80 dark:bg-white/[0.06] rounded-xl p-1">
           {(['log', 'linear'] as const).map(s => (

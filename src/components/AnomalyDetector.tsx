@@ -1,90 +1,13 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Warning, Lightning } from '@phosphor-icons/react';
-import type { TpsEvent, EnergyPayload, DataThresholds } from '../types';
-import { formatThreshold, formatDuration } from '../lib/parser';
+import type { AnomalyRow } from '../lib/queries';
 
 interface Props {
-  events: (TpsEvent & { energy?: EnergyPayload })[];
-  thresholds: DataThresholds;
+  anomalies: AnomalyRow[];
 }
 
-function AnomalyDetectorInner({ events, thresholds }: Props) {
-  const { slowTtft, lowContext, cacheThreshold, cacheDropMinTotal, cacheDropMinInput, highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity } = thresholds;
-
-  const anomalies = useMemo(() => {
-    const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    const results: {
-      type: 'cache-drop' | 'slow-zone' | 'high-new-input' | 'stall-spike';
-      event: typeof events[0];
-      index: number;
-      description: string;
-      severity: 'high' | 'medium' | 'low';
-    }[] = [];
-
-    let maxCache = 0;
-
-    sorted.forEach((e, i) => {
-      if (e.data.tokens.cacheRead < maxCache * 0.5 && e.data.tokens.total > cacheDropMinTotal && e.data.tokens.input > cacheDropMinInput) {
-        results.push({
-          type: 'cache-drop',
-          event: e,
-          index: i,
-          description: `Cache dropped from ${maxCache.toLocaleString()} to ${e.data.tokens.cacheRead.toLocaleString()} tokens — likely a sub-agent or context reset`,
-          severity: 'high',
-        });
-      }
-
-      const total = e.data.tokens.total;
-      const ttft = e.data.timing.ttftMs;
-      if (total >= lowContext && total < cacheThreshold && ttft > slowTtft) {
-        results.push({
-          type: 'slow-zone',
-          event: e,
-          index: i,
-          description: `TTFT ${Math.round(ttft / 1000)}s at ${formatThreshold(total)} tokens — requests in the ${formatThreshold(lowContext)}–${formatThreshold(cacheThreshold)} range are slower than expected`,
-          severity: 'medium',
-        });
-      }
-
-      const newRatio = e.data.tokens.input / e.data.tokens.total;
-      if (newRatio > highInputRatio && e.data.tokens.input > cacheDropMinInput) {
-        results.push({
-          type: 'high-new-input',
-          event: e,
-          index: i,
-          description: `${(newRatio * 100).toFixed(0)}% new input (${e.data.tokens.input.toLocaleString()} tokens) — minimal cache hit`,
-          severity: e.data.tokens.input > highInputSeverityToken ? 'high' : 'low',
-        });
-      }
-
-      if (e.data.timing.stallCount >= stallCountThreshold) {
-        results.push({
-          type: 'stall-spike',
-          event: e,
-          index: i,
-          description: `${e.data.timing.stallCount} stalls adding ${formatDuration(e.data.timing.stallMs)} of stall time`,
-          severity: e.data.timing.stallMs > stallMsSeverity ? 'high' : 'medium',
-        });
-      }
-
-      if (e.data.tokens.cacheRead > maxCache) {
-        maxCache = e.data.tokens.cacheRead;
-      }
-    });
-
-    const byId = new Map<string, typeof results[0]>();
-    for (const r of results) {
-      const existing = byId.get(r.event.id);
-      if (!existing || severityRank(r.severity) > severityRank(existing.severity)) {
-        byId.set(r.event.id, r);
-      }
-    }
-
-    return [...byId.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
-  }, [events, slowTtft, lowContext, cacheThreshold, cacheDropMinTotal, cacheDropMinInput, highInputRatio, highInputSeverityToken, stallCountThreshold, stallMsSeverity]);
-
+function AnomalyDetectorInner({ anomalies }: Props) {
   if (anomalies.length === 0) {
     return (
       <motion.div
@@ -132,7 +55,7 @@ function AnomalyDetectorInner({ events, thresholds }: Props) {
       <div className="space-y-2.5 max-h-80 overflow-y-auto scrollbar-thin">
         {anomalies.map((a) => (
           <div
-            key={`${a.event.id}-${a.type}`}
+            key={`${a.eventId}-${a.type}`}
             className={`p-3 rounded-xl border ${colorForSeverity(a.severity)}`}
           >
             <div className="flex items-start gap-2.5">
@@ -145,9 +68,9 @@ function AnomalyDetectorInner({ events, thresholds }: Props) {
               <div className="min-w-0">
                 <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{a.description}</p>
                 <p className="text-[10px] metric-mono text-zinc-400 dark:text-zinc-400 mt-1">
-                  #{a.index + 1} · total={a.event.data.tokens.total.toLocaleString()}
-                  {a.event.energy && ` · ${(a.event.energy.cost_usd * 100).toFixed(2)}c`}
-                  {!a.event.energy && a.event.data.cost && ` · ~${(a.event.data.cost.total * 100).toFixed(2)}c`}
+                  #{a.index + 1} · total={a.tokensTotal.toLocaleString()}
+                  {a.energyCostUsd !== null && ` · ${(a.energyCostUsd * 100).toFixed(2)}c`}
+                  {a.energyCostUsd === null && a.tokenCostUsd !== null && ` · ~${(a.tokenCostUsd * 100).toFixed(2)}c`}
                 </p>
               </div>
             </div>
@@ -156,15 +79,6 @@ function AnomalyDetectorInner({ events, thresholds }: Props) {
       </div>
     </motion.div>
   );
-}
-
-function severityRank(s: string): number {
-  switch (s) {
-    case 'high': return 3;
-    case 'medium': return 2;
-    case 'low': return 1;
-    default: return 0;
-  }
 }
 
 export default React.memo(AnomalyDetectorInner);
