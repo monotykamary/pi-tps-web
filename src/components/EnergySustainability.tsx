@@ -7,41 +7,15 @@ import {
   ComposedChart, Bar, PieChart, Pie, Cell,
 } from 'recharts';
 
-import type { TpsEvent, EnergyPayload } from '../types';
+import { useDuckQuery } from '../hooks/useDuckQuery';
+import { queryEnergyDetails } from '../lib/queries';
+import type { EnergyDetailRow, EnergyAggregateRow } from '../lib/queries';
 import { formatEnergy, formatNumber } from '../lib/format/format';
 
 interface Props {
-  events: (TpsEvent & { energy?: EnergyPayload })[];
-}
-
-interface EnergyDetail {
-  index: number;
-  timestamp: string;
-  timeLabel: string;
-  joules: number;
-  costUsd: number;
-  avgPowerWatts: number | null;
-  carbonGCo2eq: number | null;
-  gridCarbonIntensity: number | null;
-  gridId: string | null;
-  apcHitRate: number | null;
-  apcHitTokens: number | null;
-  apcMissTokens: number | null;
-  contextTokens: number | null;
-  compactionTriggered: boolean | null;
-  compactionEnergyJoules: number | null;
-  mcrMode: string | null;
-  cumulativeCarbonG: number;
-  ttftMs: number;
-  totalMs: number;
-  outputTokens: number;
-  uncappedEnergyJoules: number | null;
-  attributionRatio: number | null;
-  ratioWasCapped: boolean | null;
-  mcrOriginalTokens: number | null;
-  mcrCompactedTokens: number | null;
-  currentTurnNewTokens: number | null;
-  attributionMethod: string | null;
+  dbVersion: number;
+  activeSessionId: string | null;
+  selectedModel: string | null;
 }
 
 function Co2Tooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }> }) {
@@ -184,99 +158,39 @@ function formatWatts(w: number | null): string {
   return `${(w / 1000).toFixed(2)} kW`;
 }
 
-function EnergySustainabilityInner({ events }: Props) {
-  const details = useMemo(() => {
-    const sorted = [...events].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
+function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }: Props) {
+  const { data: queryData } = useDuckQuery<{
+    details: EnergyDetailRow[];
+    aggregates: EnergyAggregateRow;
+  } | null>(
+    () => queryEnergyDetails(activeSessionId, selectedModel),
+    [dbVersion, activeSessionId, selectedModel],
+  );
+
+  const details = queryData?.details ?? [];
+  const aggregates = queryData?.aggregates ?? null;
+
+  const { hasCarbonData, hasApcData, hasPowerData, hasMcrData, hasAnySseData } = aggregates ?? { hasCarbonData: false, hasApcData: false, hasPowerData: false, hasMcrData: false, hasAnySseData: false };
+
+  // Compute cumulative carbon and timeLabel for chart usage
+  const enrichedDetails = useMemo(() => {
     let cumulativeCarbon = 0;
-    const result: EnergyDetail[] = [];
-
-    for (let i = 0; i < sorted.length; i++) {
-      const e = sorted[i];
-      const energy = e.energy;
-      const sse = energy?.sse_energy_raw as Record<string, unknown> | undefined;
-      const mcr = sse?.mcr as Record<string, unknown> | undefined;
-
-      const carbonG = (sse?.carbon_g_co2eq as number) ?? null;
-      if (carbonG !== null) cumulativeCarbon += carbonG;
-
-      result.push({
-        index: i + 1,
-        timestamp: e.timestamp,
-        timeLabel: new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        joules: energy?.energy_joules ?? 0,
-        costUsd: energy?.cost_usd ?? 0,
-        avgPowerWatts: (sse?.avg_power_watts as number) ?? null,
-        carbonGCo2eq: carbonG,
-        gridCarbonIntensity: (sse?.grid_carbon_intensity_gco2perkwhr as number) ?? null,
-        gridId: (sse?.grid_id as string) ?? null,
-        apcHitRate: (mcr?.apc_hit_rate as number) ?? (energy?.sse_mcr_session_raw?.apc_hit_rate as number) ?? null,
-        apcHitTokens: (mcr?.apc_hit_tokens as number) ?? (energy?.sse_mcr_session_raw?.apc_hit_tokens as number) ?? null,
-        apcMissTokens: (mcr?.apc_miss_tokens as number) ?? (energy?.sse_mcr_session_raw?.apc_miss_tokens as number) ?? null,
-        contextTokens: (mcr?.context_tokens as number) ?? null,
-        compactionTriggered: (mcr?.compaction_triggered as boolean) ?? null,
-        compactionEnergyJoules: (mcr?.compaction_energy_joules as number) ?? null,
-        mcrMode: (mcr?.mode as string) ?? null,
-        cumulativeCarbonG: cumulativeCarbon,
-        ttftMs: e.data.timing.ttftMs,
-        totalMs: e.data.timing.totalMs,
-        outputTokens: e.data.tokens.output,
-        uncappedEnergyJoules: (sse?.uncapped_energy_joules as number) ?? null,
-        attributionRatio: (sse?.attribution_ratio as number) ?? null,
-        ratioWasCapped: (sse?.ratio_was_capped as boolean) ?? null,
-        mcrOriginalTokens: (mcr?.mcr_original_tokens as number) ?? (mcr?.original_tokens as number) ?? null,
-        mcrCompactedTokens: (mcr?.mcr_compacted_tokens as number) ?? null,
-        currentTurnNewTokens: (mcr?.current_turn_new_tokens as number) ?? null,
-        attributionMethod: (sse?.attribution_method as string) ?? null,
-      });
-    }
-    return result;
-  }, [events]);
-
-  const hasCarbonData = details.some(d => d.carbonGCo2eq !== null);
-  const hasApcData = details.some(d => d.apcHitRate !== null);
-  const hasPowerData = details.some(d => d.avgPowerWatts !== null);
-  const hasMcrData = details.some(d => d.contextTokens !== null);
-
-  const hasAnySseData = hasCarbonData || hasApcData || hasPowerData || hasMcrData;
-
-  const aggregates = useMemo(() => {
-    const totalCarbon = details.reduce((s, d) => s + (d.carbonGCo2eq ?? 0), 0);
-    const totalJoules = details.reduce((s, d) => s + d.joules, 0);
-    const apcDetails = details.filter(d => d.apcHitRate !== null);
-    const avgApcHitRate = apcDetails.length > 0
-      ? apcDetails.reduce((s, d) => s + (d.apcHitRate ?? 0), 0) / apcDetails.length
-      : null;
-    const powerDetails = details.filter(d => d.avgPowerWatts !== null);
-    const avgPowerWatts = powerDetails.length > 0
-      ? powerDetails.reduce((s, d) => s + (d.avgPowerWatts ?? 0), 0) / powerDetails.length
-      : null;
-    const primaryGridId = details.find(d => d.gridId !== null)?.gridId ?? null;
-    const avgGridIntensity = details.filter(d => d.gridCarbonIntensity !== null).length > 0
-      ? details.filter(d => d.gridCarbonIntensity !== null).reduce((s, d) => s + (d.gridCarbonIntensity ?? 0), 0) / details.filter(d => d.gridCarbonIntensity !== null).length
-      : null;
-    const compactionCount = details.filter(d => d.compactionTriggered === true).length;
-    const compactionEnergy = details.reduce((s, d) => s + (d.compactionEnergyJoules ?? 0), 0);
-
-    return {
-      totalCarbon,
-      totalJoules,
-      avgApcHitRate,
-      avgPowerWatts,
-      primaryGridId,
-      avgGridIntensity,
-      compactionCount,
-      compactionEnergy,
-    };
+    return details.map(d => ({
+      ...d,
+      timeLabel: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      cumulativeCarbonG: (cumulativeCarbon += d.carbonGCo2eq ?? 0, cumulativeCarbon),
+    }));
   }, [details]);
 
-  if (!hasAnySseData || details.length === 0) return null;
+  if (!aggregates || !hasAnySseData || details.length === 0) return null;
 
-  const co2ChartData = details.filter(d => d.carbonGCo2eq !== null);
-  const apcChartData = details.filter(d => d.apcHitRate !== null);
-  const powerChartData = details.filter(d => d.avgPowerWatts !== null);
-  const contextChartData = details.filter(d => d.contextTokens !== null);
+  // After this guard, aggregates is non-null
+  const agg = aggregates;
+
+  const co2ChartData = enrichedDetails.filter(d => d.carbonGCo2eq !== null);
+  const apcChartData = enrichedDetails.filter(d => d.apcHitRate !== null);
+  const powerChartData = enrichedDetails.filter(d => d.avgPowerWatts !== null);
+  const contextChartData = enrichedDetails.filter(d => d.contextTokens !== null);
 
   return (
     <motion.div
@@ -303,9 +217,9 @@ function EnergySustainabilityInner({ events }: Props) {
             icon={Leaf}
             label="CO₂ Emissions"
             color="moss"
-            value={formatCarbonShort(aggregates.totalCarbon)}
+            value={formatCarbonShort(agg.totalCarbon)}
             subLabel="/req"
-            subValue={formatCarbonShort(aggregates.totalCarbon / (co2ChartData.length || 1))}
+            subValue={formatCarbonShort(agg.totalCarbon / (co2ChartData.length || 1))}
             tooltip={
               <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
                 <div className="flex items-center justify-between mb-2">
@@ -313,13 +227,13 @@ function EnergySustainabilityInner({ events }: Props) {
                   <Leaf size={12} weight="bold" className="text-moss" />
                 </div>
                 <div className="flex items-baseline gap-2 mb-2.5">
-                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatCarbonShort(aggregates.totalCarbon)}</p>
+                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatCarbonShort(agg.totalCarbon)}</p>
                   <span className="text-[10px] text-zinc-400 dark:text-zinc-500">CO₂ equivalent</span>
                 </div>
                 <div className="flex gap-2 mb-3">
                   <div className="flex-1 min-w-0 rounded-lg bg-moss/5 dark:bg-moss/10 p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-moss">Per request</p>
-                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCarbonShort(aggregates.totalCarbon / (co2ChartData.length || 1))}</p>
+                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCarbonShort(agg.totalCarbon / (co2ChartData.length || 1))}</p>
                   </div>
                   <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Requests</p>
@@ -327,13 +241,13 @@ function EnergySustainabilityInner({ events }: Props) {
                   </div>
                   <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Total energy</p>
-                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(aggregates.totalJoules)}</p>
+                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(agg.totalJoules)}</p>
                   </div>
                 </div>
                 {(() => {
-                  const totalKm = aggregates.totalCarbon / 170;
-                  const phoneCharges = aggregates.totalCarbon / 8.22;
-                  const ledHours = aggregates.totalCarbon / ((aggregates.avgGridIntensity ?? 475) * 9 / 3_600_000);
+                  const totalKm = agg.totalCarbon / 170;
+                  const phoneCharges = agg.totalCarbon / 8.22;
+                  const ledHours = agg.totalCarbon / ((agg.avgGridIntensity ?? 475) * 9 / 3_600_000);
                   return (
                     <div className="space-y-1 mb-3">
                       <div className="flex items-center justify-between text-[10px]">
@@ -360,10 +274,10 @@ function EnergySustainabilityInner({ events }: Props) {
                     </div>
                   );
                 })()}
-                {aggregates.avgGridIntensity !== null && (
+                {agg.avgGridIntensity !== null && (
                   <div className="flex items-center justify-between text-[10px] mb-2">
                     <span className="text-zinc-500 dark:text-zinc-400">Grid carbon intensity</span>
-                    <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{Math.round(aggregates.avgGridIntensity)} gCO₂/kWh</span>
+                    <span className="metric-mono font-medium text-zinc-800 dark:text-zinc-200">{Math.round(agg.avgGridIntensity)} gCO₂/kWh</span>
                   </div>
                 )}
                 <p className="text-[9px] leading-relaxed text-zinc-400 dark:text-zinc-500 pt-2 border-t border-zinc-200/50 dark:border-white/[0.06]">
@@ -374,12 +288,12 @@ function EnergySustainabilityInner({ events }: Props) {
           />
         )}
 
-        {hasApcData && aggregates.avgApcHitRate !== null && (
+        {hasApcData && agg.avgApcHitRate !== null && (
           <MetricPill
             icon={ChartLineUp}
             label="APC Hit Rate"
             color="accent"
-            value={`${(aggregates.avgApcHitRate * 100).toFixed(1)}%`}
+            value={`${(agg.avgApcHitRate * 100).toFixed(1)}%`}
             tooltip={
               <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
                 <div className="flex items-center justify-between mb-2">
@@ -387,7 +301,7 @@ function EnergySustainabilityInner({ events }: Props) {
                   <ChartLineUp size={12} weight="bold" className="text-accent" />
                 </div>
                 <div className="flex items-baseline gap-2 mb-2.5">
-                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{(aggregates.avgApcHitRate * 100).toFixed(1)}%</p>
+                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{(agg.avgApcHitRate * 100).toFixed(1)}%</p>
                   <span className="text-[10px] text-zinc-400 dark:text-zinc-500">avg hit rate</span>
                 </div>
                 {(() => {
@@ -445,14 +359,14 @@ function EnergySustainabilityInner({ events }: Props) {
           />
         )}
 
-        {hasPowerData && aggregates.avgPowerWatts !== null && (
+        {hasPowerData && agg.avgPowerWatts !== null && (
           <MetricPill
             icon={Lightning}
             label="Avg Power Draw"
             color="amber"
-            value={formatWatts(aggregates.avgPowerWatts)}
+            value={formatWatts(agg.avgPowerWatts)}
             subLabel="/req"
-            subValue={formatEnergy(aggregates.totalJoules / (powerChartData.length || 1))}
+            subValue={formatEnergy(agg.totalJoules / (powerChartData.length || 1))}
             tooltip={
               <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
                 <div className="flex items-center justify-between mb-2">
@@ -460,17 +374,17 @@ function EnergySustainabilityInner({ events }: Props) {
                   <Lightning size={12} weight="bold" className="text-amber" />
                 </div>
                 <div className="flex items-baseline gap-2 mb-2.5">
-                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatWatts(aggregates.avgPowerWatts)}</p>
+                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{formatWatts(agg.avgPowerWatts)}</p>
                   <span className="text-[10px] text-zinc-400 dark:text-zinc-500">avg across requests</span>
                 </div>
                 <div className="flex gap-2 mb-3">
                   <div className="flex-1 min-w-0 rounded-lg bg-amber/5 dark:bg-amber/10 p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-amber">Total energy</p>
-                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(aggregates.totalJoules)}</p>
+                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(agg.totalJoules)}</p>
                   </div>
                   <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Energy/req</p>
-                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(aggregates.totalJoules / (powerChartData.length || 1))}</p>
+                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(agg.totalJoules / (powerChartData.length || 1))}</p>
                   </div>
                   <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Peak</p>
@@ -481,9 +395,9 @@ function EnergySustainabilityInner({ events }: Props) {
                   const pows = powerChartData.map(d => d.avgPowerWatts ?? 0);
                   const min = Math.min(...pows);
                   const max = Math.max(...pows);
-                  const kWh = aggregates.totalJoules / 3_600_000;
-                  const phoneCharges = aggregates.totalJoules / 18_000;
-                  const ledHours = aggregates.totalJoules / (9 * 3600);
+                  const kWh = agg.totalJoules / 3_600_000;
+                  const phoneCharges = agg.totalJoules / 18_000;
+                  const ledHours = agg.totalJoules / (9 * 3600);
                   return (
                     <>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
@@ -531,12 +445,12 @@ function EnergySustainabilityInner({ events }: Props) {
           />
         )}
 
-        {aggregates.primaryGridId && (
+        {agg.primaryGridId && (
           <MetricPill
             icon={MapPin}
             label="Grid Region"
-            value={aggregates.primaryGridId}
-            subValue={aggregates.avgGridIntensity !== null ? `${Math.round(aggregates.avgGridIntensity)} gCO₂/kWh` : undefined}
+            value={agg.primaryGridId}
+            subValue={agg.avgGridIntensity !== null ? `${Math.round(agg.avgGridIntensity)} gCO₂/kWh` : undefined}
             tooltip={
               <div className="glass-panel rounded-2xl px-4 py-3 text-xs">
                 <div className="flex items-center justify-between mb-2">
@@ -544,22 +458,22 @@ function EnergySustainabilityInner({ events }: Props) {
                   <MapPin size={12} weight="bold" className="text-accent" />
                 </div>
                 <div className="flex items-baseline gap-2 mb-2.5">
-                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{aggregates.primaryGridId}</p>
+                  <p className="metric-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">{agg.primaryGridId}</p>
                 </div>
                 <div className="flex gap-2 mb-3">
-                  {aggregates.avgGridIntensity !== null && (
+                  {agg.avgGridIntensity !== null && (
                     <div className="flex-1 min-w-0 rounded-lg bg-accent/5 dark:bg-accent/10 p-1.5 text-center">
                       <p className="text-[8px] font-semibold uppercase tracking-wider text-accent">Carbon intensity</p>
-                      <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{Math.round(aggregates.avgGridIntensity)} g/kWh</p>
+                      <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{Math.round(agg.avgGridIntensity)} g/kWh</p>
                     </div>
                   )}
                   <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Total CO₂</p>
-                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCarbonShort(aggregates.totalCarbon)}</p>
+                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatCarbonShort(agg.totalCarbon)}</p>
                   </div>
                   <div className="flex-1 min-w-0 rounded-lg bg-zinc-100 dark:bg-white/[0.06] p-1.5 text-center">
                     <p className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">Total energy</p>
-                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(aggregates.totalJoules)}</p>
+                    <p className="metric-mono text-[13px] font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{formatEnergy(agg.totalJoules)}</p>
                   </div>
                 </div>
                 {(() => {
@@ -695,14 +609,14 @@ function EnergySustainabilityInner({ events }: Props) {
             </div>
 
             {/* CO₂ equivalencies */}
-            {aggregates.totalCarbon > 0 && (
+            {agg.totalCarbon > 0 && (
               <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06]">
                 <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-2">Equivalencies</p>
                 <div className="grid grid-cols-3 gap-3">
                   {(() => {
-                    const totalKm = aggregates.totalCarbon / 170; // ~170g CO₂/km avg car
-                    const phoneCharges = aggregates.totalCarbon / 8.22; // ~8.22g per charge
-                    const ledHours = aggregates.totalCarbon / (aggregates.avgGridIntensity ?? 475) * 1000 / 9;
+                    const totalKm = agg.totalCarbon / 170; // ~170g CO₂/km avg car
+                    const phoneCharges = agg.totalCarbon / 8.22; // ~8.22g per charge
+                    const ledHours = agg.totalCarbon / (agg.avgGridIntensity ?? 475) * 1000 / 9;
                     const items: { label: string; value: string; color: string }[] = [];
                     if (totalKm >= 0.01) items.push({ label: 'Car driven', value: totalKm >= 1 ? `${totalKm.toFixed(1)} km` : `${(totalKm * 1000).toFixed(0)} m`, color: 'text-ember' });
                     if (phoneCharges >= 0.1) items.push({ label: 'Phone charges', value: phoneCharges.toFixed(1), color: 'text-accent' });
@@ -1053,10 +967,10 @@ function EnergySustainabilityInner({ events }: Props) {
                       Ratio-capped: <span className="metric-mono font-semibold text-amber">{capped}/{details.length}</span> reqs
                     </span>
                   )}
-                  {totalUncapped > 0 && aggregates.totalJoules > 0 && (
+                  {totalUncapped > 0 && agg.totalJoules > 0 && (
                     <span>
                       Uncapped: <span className="metric-mono font-semibold text-amber">{formatEnergy(totalUncapped)}</span>
-                      <span className="text-zinc-300 dark:text-zinc-600 ml-1">({(totalUncapped / aggregates.totalJoules).toFixed(1)}×)</span>
+                      <span className="text-zinc-300 dark:text-zinc-600 ml-1">({(totalUncapped / agg.totalJoules).toFixed(1)}×)</span>
                     </span>
                   )}
                   {methods.size > 0 && (
@@ -1147,14 +1061,14 @@ function EnergySustainabilityInner({ events }: Props) {
             </div>
 
             {/* Compaction events */}
-            {(aggregates.compactionCount > 0 || aggregates.compactionEnergy > 0) && (
+            {(agg.compactionCount > 0 || agg.compactionEnergy > 0) && (
               <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/[0.06] flex items-center gap-4 text-[10px]">
                 <span className="text-zinc-400 dark:text-zinc-500">
-                  Compactions: <span className="metric-mono font-semibold text-amber">{aggregates.compactionCount}</span>
+                  Compactions: <span className="metric-mono font-semibold text-amber">{agg.compactionCount}</span>
                 </span>
-                {aggregates.compactionEnergy > 0 && (
+                {agg.compactionEnergy > 0 && (
                   <span className="text-zinc-400 dark:text-zinc-500">
-                    Compaction energy: <span className="metric-mono font-semibold text-amber">{formatEnergy(aggregates.compactionEnergy)}</span>
+                    Compaction energy: <span className="metric-mono font-semibold text-amber">{formatEnergy(agg.compactionEnergy)}</span>
                   </span>
                 )}
               </div>
@@ -1253,16 +1167,16 @@ function EnergySustainabilityInner({ events }: Props) {
         >
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] text-zinc-400 dark:text-zinc-500">
             <span>
-              Total energy: <span className="metric-mono font-semibold text-zinc-600 dark:text-zinc-300">{formatEnergy(aggregates.totalJoules)}</span>
+              Total energy: <span className="metric-mono font-semibold text-zinc-600 dark:text-zinc-300">{formatEnergy(agg.totalJoules)}</span>
             </span>
-            {aggregates.avgGridIntensity !== null && (
+            {agg.avgGridIntensity !== null && (
               <span>
-                Grid intensity: <span className="metric-mono font-semibold text-zinc-600 dark:text-zinc-300">{Math.round(aggregates.avgGridIntensity)} gCO₂/kWh</span>
+                Grid intensity: <span className="metric-mono font-semibold text-zinc-600 dark:text-zinc-300">{Math.round(agg.avgGridIntensity)} gCO₂/kWh</span>
               </span>
             )}
-            {aggregates.primaryGridId && (
+            {agg.primaryGridId && (
               <span>
-                Region: <span className="metric-mono font-semibold text-accent">{aggregates.primaryGridId}</span>
+                Region: <span className="metric-mono font-semibold text-accent">{agg.primaryGridId}</span>
               </span>
             )}
             <span className="ml-auto text-zinc-300 dark:text-zinc-600">

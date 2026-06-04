@@ -1246,3 +1246,178 @@ export async function queryMultiSessionSummary(
     timeRangeEnd: globalEnd,
   };
 }
+
+// ─── Energy & Sustainability queries ─────────────────────────────────────────
+
+export interface EnergyDetailRow {
+  index: number;
+  timestamp: string;
+  joules: number;
+  costUsd: number;
+  ttftMs: number;
+  totalMs: number;
+  generationMs: number;
+  outputTokens: number;
+  avgPowerWatts: number | null;
+  carbonGCo2eq: number | null;
+  gridCarbonIntensity: number | null;
+  gridId: string | null;
+  apcHitRate: number | null;
+  apcHitTokens: number | null;
+  apcMissTokens: number | null;
+  contextTokens: number | null;
+  compactionTriggered: boolean | null;
+  compactionEnergyJoules: number | null;
+  mcrMode: string | null;
+  mcrOriginalTokens: number | null;
+  mcrCompactedTokens: number | null;
+  currentTurnNewTokens: number | null;
+  uncappedEnergyJoules: number | null;
+  attributionMethod: string | null;
+  ratioWasCapped: boolean | null;
+  attributionRatio: number | null;
+}
+
+export interface EnergyAggregateRow {
+  totalCarbon: number;
+  totalJoules: number;
+  avgApcHitRate: number | null;
+  avgPowerWatts: number | null;
+  primaryGridId: string | null;
+  avgGridIntensity: number | null;
+  compactionCount: number;
+  compactionEnergy: number;
+  hasCarbonData: boolean;
+  hasApcData: boolean;
+  hasPowerData: boolean;
+  hasMcrData: boolean;
+  hasAnySseData: boolean;
+}
+
+export async function queryEnergyDetails(sessionFilter?: string | null, modelFilter?: string | null): Promise<{
+  details: EnergyDetailRow[];
+  aggregates: EnergyAggregateRow;
+}> {
+  const where = buildWhere(sessionFilter, modelFilter);
+
+  const detailSql = `
+    SELECT
+      row_number() OVER (ORDER BY timestamp) AS idx,
+      timestamp,
+      COALESCE(energy_joules, 0) AS joules,
+      COALESCE(energy_cost_usd, 0) AS cost_usd,
+      COALESCE(ttft_ms, 0) AS ttft_ms,
+      COALESCE(total_ms, 0) AS total_ms,
+      COALESCE(generation_ms, 0) AS generation_ms,
+      COALESCE(tokens_output, 0) AS output_tokens,
+      avg_power_watts,
+      carbon_g_co2eq,
+      grid_carbon_intensity,
+      grid_id,
+      apc_hit_rate,
+      apc_hit_tokens,
+      apc_miss_tokens,
+      context_tokens,
+      compaction_triggered,
+      compaction_energy_joules,
+      mcr_mode,
+      mcr_original_tokens,
+      mcr_compacted_tokens,
+      current_turn_new_tokens,
+      uncapped_energy_joules,
+      attribution_method,
+      ratio_was_capped,
+      attribution_ratio
+    FROM tps_paired
+    ${where}
+      AND (carbon_g_co2eq IS NOT NULL OR avg_power_watts IS NOT NULL OR apc_hit_rate IS NOT NULL OR context_tokens IS NOT NULL)
+    ORDER BY timestamp
+  `;
+
+  const detailResult = await runQuery(detailSql);
+  const details: EnergyDetailRow[] = [];
+  let cumulativeCarbon = 0;
+
+  for (let i = 0; i < detailResult.rowCount; i++) {
+    const carbonG = maybeNum(detailResult, i, 'carbon_g_co2eq') ?? 0;
+    cumulativeCarbon += carbonG;
+
+    details.push({
+      index: num(detailResult, i, 'idx'),
+      timestamp: str(detailResult, i, 'timestamp'),
+      joules: num(detailResult, i, 'joules'),
+      costUsd: num(detailResult, i, 'cost_usd'),
+      ttftMs: num(detailResult, i, 'ttft_ms'),
+      totalMs: num(detailResult, i, 'total_ms'),
+      generationMs: num(detailResult, i, 'generation_ms'),
+      outputTokens: num(detailResult, i, 'output_tokens'),
+      avgPowerWatts: maybeNum(detailResult, i, 'avg_power_watts'),
+      carbonGCo2eq: maybeNum(detailResult, i, 'carbon_g_co2eq'),
+      gridCarbonIntensity: maybeNum(detailResult, i, 'grid_carbon_intensity'),
+      gridId: str(detailResult, i, 'grid_id') || null,
+      apcHitRate: maybeNum(detailResult, i, 'apc_hit_rate'),
+      apcHitTokens: maybeNum(detailResult, i, 'apc_hit_tokens'),
+      apcMissTokens: maybeNum(detailResult, i, 'apc_miss_tokens'),
+      contextTokens: maybeNum(detailResult, i, 'context_tokens'),
+      compactionTriggered: col(detailResult, i, 'compaction_triggered') as boolean | null,
+      compactionEnergyJoules: maybeNum(detailResult, i, 'compaction_energy_joules'),
+      mcrMode: str(detailResult, i, 'mcr_mode') || null,
+      mcrOriginalTokens: maybeNum(detailResult, i, 'mcr_original_tokens'),
+      mcrCompactedTokens: maybeNum(detailResult, i, 'mcr_compacted_tokens'),
+      currentTurnNewTokens: maybeNum(detailResult, i, 'current_turn_new_tokens'),
+      uncappedEnergyJoules: maybeNum(detailResult, i, 'uncapped_energy_joules'),
+      attributionMethod: str(detailResult, i, 'attribution_method') || null,
+      ratioWasCapped: col(detailResult, i, 'ratio_was_capped') as boolean | null,
+      attributionRatio: maybeNum(detailResult, i, 'attribution_ratio'),
+    });
+  }
+
+  // Aggregates
+  const aggSql = `
+    SELECT
+      COALESCE(sum(carbon_g_co2eq), 0) AS total_carbon,
+      COALESCE(sum(energy_joules), 0) AS total_joules,
+      avg(apc_hit_rate) AS avg_apc_hit_rate,
+      avg(avg_power_watts) AS avg_power_watts,
+      (array_agg(grid_id) FILTER (WHERE grid_id IS NOT NULL) ORDER BY timestamp DESC)[1] AS primary_grid_id,
+      avg(grid_carbon_intensity) FILTER (WHERE grid_carbon_intensity IS NOT NULL) AS avg_grid_intensity,
+      count(*) FILTER (WHERE compaction_triggered = TRUE) AS compaction_count,
+      COALESCE(sum(compaction_energy_joules), 0) AS compaction_energy,
+      max(CASE WHEN carbon_g_co2eq IS NOT NULL THEN 1 ELSE 0 END) AS has_carbon,
+      max(CASE WHEN apc_hit_rate IS NOT NULL THEN 1 ELSE 0 END) AS has_apc,
+      max(CASE WHEN avg_power_watts IS NOT NULL THEN 1 ELSE 0 END) AS has_power,
+      max(CASE WHEN context_tokens IS NOT NULL THEN 1 ELSE 0 END) AS has_mcr,
+      greatest(
+        max(CASE WHEN carbon_g_co2eq IS NOT NULL THEN 1 ELSE 0 END),
+        max(CASE WHEN apc_hit_rate IS NOT NULL THEN 1 ELSE 0 END),
+        max(CASE WHEN avg_power_watts IS NOT NULL THEN 1 ELSE 0 END),
+        max(CASE WHEN context_tokens IS NOT NULL THEN 1 ELSE 0 END)
+      ) AS has_any_sse
+    FROM tps_paired
+    ${where}
+      AND (carbon_g_co2eq IS NOT NULL OR avg_power_watts IS NOT NULL OR apc_hit_rate IS NOT NULL OR context_tokens IS NOT NULL)
+  `;
+
+  const aggResult = await runQuery(aggSql);
+  const aggregates: EnergyAggregateRow = aggResult.rowCount > 0 ? {
+    totalCarbon: num(aggResult, 0, 'total_carbon'),
+    totalJoules: num(aggResult, 0, 'total_joules'),
+    avgApcHitRate: maybeNum(aggResult, 0, 'avg_apc_hit_rate'),
+    avgPowerWatts: maybeNum(aggResult, 0, 'avg_power_watts'),
+    primaryGridId: str(aggResult, 0, 'primary_grid_id') || null,
+    avgGridIntensity: maybeNum(aggResult, 0, 'avg_grid_intensity'),
+    compactionCount: num(aggResult, 0, 'compaction_count'),
+    compactionEnergy: num(aggResult, 0, 'compaction_energy'),
+    hasCarbonData: num(aggResult, 0, 'has_carbon') > 0,
+    hasApcData: num(aggResult, 0, 'has_apc') > 0,
+    hasPowerData: num(aggResult, 0, 'has_power') > 0,
+    hasMcrData: num(aggResult, 0, 'has_mcr') > 0,
+    hasAnySseData: num(aggResult, 0, 'has_any_sse') > 0,
+  } : {
+    totalCarbon: 0, totalJoules: 0, avgApcHitRate: null, avgPowerWatts: null,
+    primaryGridId: null, avgGridIntensity: null, compactionCount: 0, compactionEnergy: 0,
+    hasCarbonData: false, hasApcData: false, hasPowerData: false, hasMcrData: false, hasAnySseData: false,
+  };
+
+  return { details, aggregates };
+}

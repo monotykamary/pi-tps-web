@@ -69,6 +69,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   await c.query(`DROP VIEW IF EXISTS messages_flat`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
+  await c.query(`DROP VIEW IF EXISTS energy_detailed`);
   await c.query(`DROP TABLE IF EXISTS events`);
 
   // All events go into a single table with a discriminator column.
@@ -105,6 +106,33 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       -- Energy fields
       energy_joules DOUBLE,
       energy_cost_usd DOUBLE,
+
+      -- SSE energy raw fields (populated from NeuralWatt profiling)
+      carbon_g_co2eq           DOUBLE,
+      grid_carbon_intensity    DOUBLE,
+      grid_id                  VARCHAR,
+      avg_power_watts          DOUBLE,
+      energy_kwh               DOUBLE,
+      attribution_method       VARCHAR,
+      attribution_ratio        DOUBLE,
+      ratio_was_capped         BOOLEAN,
+      uncapped_energy_joules   DOUBLE,
+      uncapped_energy_kwh      DOUBLE,
+
+      -- SSE MCR raw fields (populated from NeuralWatt MCR data)
+      apc_hit_rate             DOUBLE,
+      apc_hit_tokens           BIGINT,
+      apc_miss_tokens          BIGINT,
+      context_tokens           BIGINT,
+      compaction_triggered     BOOLEAN,
+      compaction_energy_joules DOUBLE,
+      mcr_original_tokens      BIGINT,
+      mcr_compacted_tokens     BIGINT,
+      current_turn_new_tokens  BIGINT,
+      mcr_mode                 VARCHAR,
+      mcr_summaries_used       BIGINT,
+      mcr_session_turns        BIGINT,
+      mcr_all_chunks_cached    BOOLEAN,
 
       -- Rewind fields
       rewind_v BIGINT,
@@ -150,6 +178,10 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           num(d.cost?.total ?? null),
           // energy
           'NULL', 'NULL',
+          // sse energy raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // sse mcr raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -161,6 +193,9 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       }
       case 'energy': {
         const d = e.data;
+        const sse = d.sse_energy_raw;
+        const mcr = d.sse_mcr_session_raw ?? (sse?.mcr as Record<string, unknown> | undefined);
+        const bool = (v: unknown): string => v === true ? 'TRUE' : v === false ? 'FALSE' : 'NULL';
         row = [
           esc(e.sessionId), esc(e.id), esc(e.parentId), esc(e.timestamp), esc('energy'),
           // tps fields
@@ -169,6 +204,31 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           num(d.energy_joules), num(d.cost_usd),
+          // sse energy raw
+          num(sse?.carbon_g_co2eq as number | null | undefined),
+          num(sse?.grid_carbon_intensity_gco2perkwhr as number | null | undefined),
+          esc(sse?.grid_id as string | null | undefined),
+          num(sse?.avg_power_watts as number | null | undefined),
+          num(sse?.energy_kwh as number | null | undefined),
+          esc(sse?.attribution_method as string | null | undefined),
+          num(sse?.attribution_ratio as number | null | undefined),
+          bool(sse?.ratio_was_capped),
+          num(sse?.uncapped_energy_joules as number | null | undefined),
+          num(sse?.uncapped_energy_kwh as number | null | undefined),
+          // sse mcr raw
+          num(mcr?.apc_hit_rate as number | null | undefined),
+          num(mcr?.apc_hit_tokens as number | null | undefined),
+          num(mcr?.apc_miss_tokens as number | null | undefined),
+          num(mcr?.context_tokens as number | null | undefined),
+          bool(mcr?.compaction_triggered),
+          num(mcr?.compaction_energy_joules as number | null | undefined),
+          num(mcr?.mcr_original_tokens as number | null | undefined ?? mcr?.original_tokens as number | null | undefined),
+          num(mcr?.mcr_compacted_tokens as number | null | undefined),
+          num(mcr?.current_turn_new_tokens as number | null | undefined),
+          esc(mcr?.mode as string | null | undefined),
+          num(mcr?.summaries_used as number | null | undefined),
+          num(mcr?.session_turns as number | null | undefined),
+          bool(mcr?.all_chunks_cached),
           // rewind
           'NULL',
           // branch summary
@@ -188,6 +248,10 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
+          // sse energy raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // sse mcr raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           num(d.v),
           // branch summary
@@ -207,6 +271,10 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
+          // sse energy raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // sse mcr raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -225,6 +293,10 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
+          // sse energy raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // sse mcr raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -244,6 +316,10 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
+          // sse energy raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // sse mcr raw
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -287,6 +363,23 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   `);
 
   await c.query(`
+    CREATE VIEW energy_detailed AS
+    SELECT
+      session_id, id, parent_id, timestamp,
+      energy_joules, energy_cost_usd,
+      carbon_g_co2eq, grid_carbon_intensity, grid_id, avg_power_watts,
+      energy_kwh, attribution_method, attribution_ratio, ratio_was_capped,
+      uncapped_energy_joules, uncapped_energy_kwh,
+      apc_hit_rate, apc_hit_tokens, apc_miss_tokens,
+      context_tokens, compaction_triggered, compaction_energy_joules,
+      mcr_original_tokens, mcr_compacted_tokens, current_turn_new_tokens,
+      mcr_mode, mcr_summaries_used, mcr_session_turns, mcr_all_chunks_cached
+    FROM events
+    WHERE type = 'energy'
+      AND (carbon_g_co2eq IS NOT NULL OR avg_power_watts IS NOT NULL OR apc_hit_rate IS NOT NULL OR context_tokens IS NOT NULL)
+  `);
+
+  await c.query(`
     CREATE VIEW messages_flat AS
     SELECT
       session_id, id, parent_id, timestamp,
@@ -320,6 +413,24 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
         t.cost_input, t.cost_output, t.cost_cache_read, t.cost_cache_write, t.cost_total,
         e.energy_joules,
         e.energy_cost_usd,
+        e.carbon_g_co2eq,
+        e.grid_carbon_intensity,
+        e.grid_id,
+        e.avg_power_watts,
+        e.attribution_method,
+        e.attribution_ratio,
+        e.ratio_was_capped,
+        e.uncapped_energy_joules,
+        e.apc_hit_rate,
+        e.apc_hit_tokens,
+        e.apc_miss_tokens,
+        e.context_tokens,
+        e.compaction_triggered,
+        e.compaction_energy_joules,
+        e.mcr_original_tokens,
+        e.mcr_compacted_tokens,
+        e.current_turn_new_tokens,
+        e.mcr_mode,
         CASE
           WHEN t.stream_ms > 0 AND t.stall_ms < t.stream_ms
                AND (t.stream_ms - t.stall_ms) >= 50
@@ -335,7 +446,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           ELSE 0
         END AS effective_ms
       FROM tps_flat t
-      LEFT JOIN energy_flat e
+      LEFT JOIN energy_detailed e
         ON t.session_id = e.session_id AND t.id = e.parent_id
     )
     SELECT
@@ -378,5 +489,6 @@ export async function resetDB(): Promise<void> {
   await c.query(`DROP VIEW IF EXISTS messages_flat`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
+  await c.query(`DROP VIEW IF EXISTS energy_detailed`);
   await c.query(`DROP TABLE IF EXISTS events`);
 }

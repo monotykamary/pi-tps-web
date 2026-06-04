@@ -589,7 +589,7 @@ export default function App() {
             </div>
 
             {/* Energy & Sustainability — only shown when SSE raw data exists */}
-            <EnergySustainability events={paired} />
+            <EnergySustainability dbVersion={dbVersion} activeSessionId={activeSessionId} selectedModel={selectedModel} />
           </div>
         )}
       </div>
