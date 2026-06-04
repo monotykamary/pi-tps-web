@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, Barbell, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database } from '@phosphor-icons/react';
+import { FileArrowUp, Pulse, Timer, Flame, Coins, Lightning, Gauge, Clock, Hash, Barbell, Info, ClipboardText, X, FolderOpen, Rows, DownloadSimple, Database, UploadSimple } from '@phosphor-icons/react';
 import { DEFAULT_THRESHOLDS } from './types';
 import type { ParsedEvent, ModelInfo, MultiSessionSummary, DataThresholds, SessionState } from './types';
 import { ingestJsonl, deriveEvents, parseJsonl, getTpsEvents, getEnergyEvents, pairEnergyWithTps, buildTimeline, exportMultiSessionCsv } from './lib/parser';
@@ -42,6 +42,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'dashboard' | 'sql'>('dashboard');
   const headerRef = useRef<HTMLElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
   // Track DB version — increments when sessions change, triggers re-queries
@@ -273,14 +274,12 @@ export default function App() {
     // Don't set setLoading(false) here — dbLoading takes over from the sessions useEffect
   }, [addSession]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter(f =>
+  const handleFiles = useCallback((files: File[]) => {
+    const valid = files.filter(f =>
       f.name.endsWith('.jsonl') || f.name.endsWith('.json') || f.type === 'text/plain'
     );
-    if (files.length === 0) return;
-    for (const file of files) {
+    if (valid.length === 0) return;
+    for (const file of valid) {
       const reader = new FileReader();
       reader.onload = () => {
         addSession(reader.result as string, file.name);
@@ -288,8 +287,19 @@ export default function App() {
       };
       reader.readAsText(file);
     }
-    if (files.length > 0) setLoading(true);
+    if (valid.length > 0) setLoading(true);
   }, [addSession]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFiles(Array.from(e.dataTransfer.files));
+  }, [handleFiles]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    handleFiles(Array.from(e.target.files ?? []));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [handleFiles]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -336,6 +346,14 @@ export default function App() {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".jsonl,.json,text/plain"
+        multiple
+        className="hidden"
+        onChange={handleFileSelect}
+      />
       {/* Header */}
       <header ref={headerRef} className="sticky top-0 z-40 bg-[#fafafa] dark:bg-[#18181b] border-b border-zinc-200/60 dark:border-white/[0.08]">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-2">
@@ -374,23 +392,35 @@ export default function App() {
                 </button>
               </div>
             )}
+            <div className="flex items-center gap-1 bg-white/60 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg p-0.5">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-200 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
+                title="Upload telemetry files"
+              >
+                <UploadSimple size={12} weight="bold" />
+                Upload
+              </button>
+            </div>
             <ThemeToggle theme={theme} setTheme={setTheme} />
 
             {modelList.length > 0 && (
-              <div className="relative min-w-0">
-                <select
-                  value={selectedModel ?? ''}
-                  onChange={(e) => setSelectedModel(e.target.value || null)}
-                  className="appearance-none bg-white dark:bg-zinc-800/50 border border-zinc-200/40 dark:border-white/[0.06] rounded-lg pl-2 pr-5 py-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[10rem] truncate"
-                >
-                  <option value="">All models</option>
-                  {modelList.map(m => (
-                    <option key={m.modelId} value={m.modelId}>
-                      ({m.provider}) {m.modelId.split('/')?.pop()}
-                    </option>
-                  ))}
-                </select>
-                <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+              <div className="flex items-center bg-white/60 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/[0.06] rounded-lg p-0.5 min-w-0">
+                <div className="relative min-w-0">
+                  <select
+                    value={selectedModel ?? ''}
+                    onChange={(e) => setSelectedModel(e.target.value || null)}
+                    className="appearance-none bg-transparent dark:bg-transparent border-0 rounded-md pl-2 pr-5 py-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[10rem] truncate"
+                  >
+                    <option value="">All models</option>
+                    {modelList.map(m => (
+                      <option key={m.modelId} value={m.modelId}>
+                        ({m.provider}) {m.modelId.split('/')?.pop()}
+                      </option>
+                    ))}
+                  </select>
+                  <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
               </div>
             )}
           </div>
@@ -504,12 +534,21 @@ export default function App() {
                   </p>
                 </div>
               </a>
-              <button
-                onClick={loadSample}
-                className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-dark transition-colors active:scale-[0.98] active:translate-y-[1px]"
-              >
-                Load Sample Data
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-6 py-2.5 bg-white dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-white/[0.08] text-zinc-700 dark:text-zinc-300 text-sm font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-white/[0.06] transition-colors active:scale-[0.98] active:translate-y-[1px] flex items-center gap-2"
+                >
+                  <UploadSimple size={16} weight="bold" />
+                  Upload Files
+                </button>
+                <button
+                  onClick={loadSample}
+                  className="px-6 py-2.5 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-dark transition-colors active:scale-[0.98] active:translate-y-[1px]"
+                >
+                  Load Sample Data
+                </button>
+              </div>
               {pasteFlash && (
                 <motion.div
                   initial={{ opacity: 0, y: 4 }}
