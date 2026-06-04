@@ -44,6 +44,11 @@ export interface TpsPayload {
 export interface EnergyPayload {
   energy_joules: number;
   cost_usd: number;
+  // Raw SSE payloads — present in newer entries. Source of truth for MCR
+  // and any future upstream fields that the provider captures verbatim.
+  sse_energy_raw?: Record<string, unknown>;
+  sse_mcr_session_raw?: Record<string, unknown>;
+  sse_cost_raw?: Record<string, unknown>;
 }
 
 export interface TpsEvent extends TelemetryEvent {
