@@ -145,23 +145,24 @@ ORDER BY timestamp
 LIMIT 100`,
   },
   {
-    label: 'Energy & CO₂ overview',
+    label: 'Energy & CO₂ detail',
     sql: `SELECT
   grid_id,
   provider,
   model_id,
-  COUNT(*) AS calls,
-  ROUND(SUM(energy_joules), 1) AS total_joules,
-  ROUND(SUM(carbon_g_co2eq), 4) AS total_co2_g,
-  ROUND(AVG(apc_hit_rate) * 100, 1) AS avg_apc_pct,
-  ROUND(AVG(avg_power_watts)) AS avg_power_w,
-  ROUND(AVG(context_tokens)) AS avg_ctx_tokens,
-  ROUND(AVG(mcr_original_tokens)) AS avg_mcr_orig,
-  SUM(CASE WHEN compaction_triggered THEN 1 ELSE 0 END) AS compactions
+  energy_joules,
+  carbon_g_co2eq,
+  apc_hit_rate,
+  avg_power_watts,
+  context_tokens,
+  mcr_original_tokens,
+  mcr_compacted_tokens,
+  compaction_triggered,
+  attribution_method,
+  ratio_was_capped
 FROM tps_paired
 WHERE energy_joules IS NOT NULL
-GROUP BY grid_id, provider, model_id
-ORDER BY grid_id, provider, total_joules DESC`,
+ORDER BY timestamp`,
   },
 ];
 
