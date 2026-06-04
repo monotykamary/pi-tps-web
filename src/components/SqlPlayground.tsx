@@ -145,18 +145,21 @@ ORDER BY timestamp
 LIMIT 100`,
   },
   {
-    label: 'Messages + telemetry',
+    label: 'Energy & CO₂ overview',
     sql: `SELECT
-  m.timestamp,
-  t.tokens_output,
-  t.model_id,
-  t.tps,
-  m.message_content
-FROM messages_flat m
-LEFT JOIN tps_flat t ON m.session_id = t.session_id AND m.id = t.parent_id
-WHERE m.message_role = 'assistant'
-ORDER BY m.timestamp
-LIMIT 100`,
+  model_id,
+  COUNT(*) AS calls,
+  ROUND(SUM(energy_joules), 1) AS total_joules,
+  ROUND(SUM(carbon_g_co2eq), 4) AS total_co2_g,
+  ROUND(AVG(apc_hit_rate) * 100, 1) AS avg_apc_pct,
+  ROUND(AVG(avg_power_watts)) AS avg_power_w,
+  ROUND(AVG(context_tokens)) AS avg_ctx_tokens,
+  ROUND(AVG(mcr_original_tokens)) AS avg_mcr_orig,
+  SUM(CASE WHEN compaction_triggered THEN 1 ELSE 0 END) AS compactions
+FROM tps_paired
+WHERE energy_joules IS NOT NULL
+GROUP BY model_id
+ORDER BY total_joules DESC`,
   },
 ];
 
