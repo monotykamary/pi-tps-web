@@ -156,7 +156,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
 
   for (const e of events) {
     const esc = (s: string | null | undefined): string =>
-      s == null ? 'NULL' : `'${s.replace(/'/g, "''")}'`;
+      s == null ? 'NULL' : `'${s.replace(/\\/g, '\\\\').replace(/'/g, "''").replace(/\0/g, '').replace(/\n/g, '\\n').replace(/\r/g, '\\r')}'`;
 
     const num = (n: number | null | undefined): string =>
       n == null ? 'NULL' : String(n);
@@ -194,7 +194,12 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       case 'energy': {
         const d = e.data;
         const sse = d.sse_energy_raw;
-        const mcr = d.sse_mcr_session_raw ?? (sse?.mcr as Record<string, unknown> | undefined);
+        // sse_mcr_session_raw is a summarized view with some fields;
+        // sse.mcr has the full detail. Merge both, preferring session_raw
+        // for fields it defines, but falling back to sse.mcr for the rest.
+        const sessionMcr = d.sse_mcr_session_raw as Record<string, unknown> | undefined;
+        const sseMcr = sse?.mcr as Record<string, unknown> | undefined;
+        const mcr: Record<string, unknown> = { ...(sseMcr ?? {}), ...(sessionMcr ?? {}) };
         const bool = (v: unknown): string => v === true ? 'TRUE' : v === false ? 'FALSE' : 'NULL';
         row = [
           esc(e.sessionId), esc(e.id), esc(e.parentId), esc(e.timestamp), esc('energy'),
@@ -222,7 +227,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           num(mcr?.context_tokens as number | null | undefined),
           bool(mcr?.compaction_triggered),
           num(mcr?.compaction_energy_joules as number | null | undefined),
-          num(mcr?.mcr_original_tokens as number | null | undefined ?? mcr?.original_tokens as number | null | undefined),
+          num(mcr.mcr_original_tokens as number | null | undefined ?? mcr.original_tokens as number | null | undefined),
           num(mcr?.mcr_compacted_tokens as number | null | undefined),
           num(mcr?.current_turn_new_tokens as number | null | undefined),
           esc(mcr?.mode as string | null | undefined),
@@ -334,10 +339,24 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   }
 
   // Batch inserts in chunks of 500 to avoid SQL length limits
+  const COLS = `(session_id, id, parent_id, timestamp, type,
+    provider, model_id, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_total,
+    ttft_ms, total_ms, generation_ms, stream_ms, stall_ms, stall_count, tps,
+    cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total,
+    energy_joules, energy_cost_usd,
+    carbon_g_co2eq, grid_carbon_intensity, grid_id, avg_power_watts,
+    energy_kwh, attribution_method, attribution_ratio, ratio_was_capped,
+    uncapped_energy_joules, uncapped_energy_kwh,
+    apc_hit_rate, apc_hit_tokens, apc_miss_tokens, context_tokens,
+    compaction_triggered, compaction_energy_joules,
+    mcr_original_tokens, mcr_compacted_tokens, current_turn_new_tokens,
+    mcr_mode, mcr_summaries_used, mcr_session_turns, mcr_all_chunks_cached,
+    rewind_v, from_id, summary,
+    message_role, message_content, message_model)`;
   const BATCH = 500;
   for (let i = 0; i < values.length; i += BATCH) {
     const chunk = values.slice(i, i + BATCH);
-    await c.query(`INSERT INTO events VALUES ${chunk.join(',\n')}`);
+    await c.query(`INSERT INTO events ${COLS} VALUES ${chunk.join(',\n')}`);
   }
 
   // Flat views for the most common query patterns
