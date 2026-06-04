@@ -2,7 +2,49 @@ import { SmartTooltip } from '../SmartTooltip';
 import { TpsTooltip } from '../tooltips';
 import { formatTps } from '../../lib/format/format';
 
-export function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent = false }: {
+const COLOR_SCHEMES: Record<string, { bg: string; border: string; iconBg: string; iconText: string }> = {
+  moss: {
+    bg: 'bg-moss/5 dark:bg-moss/10',
+    border: 'border-moss/15 dark:border-moss/20',
+    iconBg: 'bg-moss/10 dark:bg-moss/15',
+    iconText: 'text-moss',
+  },
+  accent: {
+    bg: 'bg-accent/5 dark:bg-accent/10',
+    border: 'border-accent/15 dark:border-accent/20',
+    iconBg: 'bg-accent/10 dark:bg-accent/15',
+    iconText: 'text-accent',
+  },
+  amber: {
+    bg: 'bg-amber/5 dark:bg-amber/10',
+    border: 'border-amber/15 dark:border-amber/20',
+    iconBg: 'bg-amber/10 dark:bg-amber/15',
+    iconText: 'text-amber',
+  },
+  ember: {
+    bg: 'bg-ember/5 dark:bg-ember/10',
+    border: 'border-ember/15 dark:border-ember/20',
+    iconBg: 'bg-ember/10 dark:bg-ember/15',
+    iconText: 'text-ember',
+  },
+};
+
+const DEFAULT_SCHEME = {
+  bg: 'bg-white/60 dark:bg-zinc-800/40',
+  border: 'border-zinc-200/50 dark:border-white/[0.06]',
+  iconBg: 'bg-zinc-100 dark:bg-white/[0.04]',
+  iconText: 'text-zinc-500 dark:text-zinc-400',
+};
+
+const ACCENT_SCHEME = COLOR_SCHEMES.accent;
+
+function getScheme(color?: string, accent?: boolean) {
+  if (color && COLOR_SCHEMES[color]) return COLOR_SCHEMES[color];
+  if (accent) return ACCENT_SCHEME;
+  return DEFAULT_SCHEME;
+}
+
+export function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, accent = false, color }: {
   icon: React.ElementType;
   label: string;
   value: string;
@@ -10,20 +52,14 @@ export function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, a
   subLabel?: string;
   subValue?: string;
   accent?: boolean;
+  color?: 'moss' | 'accent' | 'amber' | 'ember';
 }) {
+  const scheme = getScheme(color, accent);
   return (
     <div
-      className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${
-        accent
-          ? 'bg-accent/5 border-accent/15 dark:bg-accent/10 dark:border-accent/20'
-          : 'bg-white/60 border-zinc-200/50 dark:bg-zinc-800/40 dark:border-white/[0.06]'
-      }`}
+      className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-colors ${scheme.bg} ${scheme.border}`}
     >
-      <div className={`shrink-0 p-1.5 rounded-lg ${
-        accent
-          ? 'bg-accent/10 text-accent dark:bg-accent/15'
-          : 'bg-zinc-100 text-zinc-500 dark:bg-white/[0.04] dark:text-zinc-400'
-      }`}>
+      <div className={`shrink-0 p-1.5 rounded-lg ${scheme.iconBg} ${scheme.iconText}`}>
         <Icon weight="bold" size={14} />
       </div>
       <div className="min-w-0 flex-1">
@@ -44,7 +80,7 @@ export function PillBody({ icon: Icon, label, value, unit, subLabel, subValue, a
   );
 }
 
-export function MetricPill({ icon, label, value, unit, subLabel, subValue, accent = false, tooltip }: {
+export function MetricPill({ icon, label, value, unit, subLabel, subValue, accent = false, color, tooltip }: {
   icon: React.ElementType;
   label: string;
   value: string;
@@ -52,6 +88,7 @@ export function MetricPill({ icon, label, value, unit, subLabel, subValue, accen
   subLabel?: string;
   subValue?: string;
   accent?: boolean;
+  color?: 'moss' | 'accent' | 'amber' | 'ember';
   tooltip?: React.ReactNode;
 }) {
   if (!tooltip) {
@@ -64,6 +101,7 @@ export function MetricPill({ icon, label, value, unit, subLabel, subValue, accen
         subLabel={subLabel}
         subValue={subValue}
         accent={accent}
+        color={color}
       />
     );
   }
@@ -77,6 +115,7 @@ export function MetricPill({ icon, label, value, unit, subLabel, subValue, accen
         subLabel={subLabel}
         subValue={subValue}
         accent={accent}
+        color={color}
       />
     </SmartTooltip>
   );

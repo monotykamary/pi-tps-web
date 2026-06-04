@@ -26,6 +26,7 @@ import ThresholdAnalysis from './components/ThresholdAnalysis';
 import AnomalyDetector from './components/AnomalyDetector';
 import RequestInspector from './components/RequestInspector';
 import CacheEfficiency from './components/CacheEfficiency';
+import EnergySustainability from './components/EnergySustainability';
 import TimingDistribution from './components/TimingDistribution';
 import SessionScatter from './components/SessionScatter';
 import ModelPerformance from './components/ModelPerformance';
@@ -586,6 +587,9 @@ export default function App() {
                 />
               </div>
             </div>
+
+            {/* Energy & Sustainability — only shown when SSE raw data exists */}
+            <EnergySustainability events={paired} />
           </div>
         )}
       </div>
