@@ -664,7 +664,7 @@ export async function queryCacheEfficiency(sessionFilter?: string | null, modelF
   const timeSql2 = `
     WITH ranked AS (
       SELECT *,
-        ntile(greatest(6, least(12, ceiling(count(*) over () / 60.0)))) OVER (ORDER BY timestamp) AS bucket,
+        ntile(greatest(6, least(12, (SELECT ceiling(count(*) / 60.0) FROM tps_paired ${where})))) OVER (ORDER BY timestamp) AS bucket,
         row_number() OVER (ORDER BY timestamp) AS rn
       FROM tps_paired
       ${where}
@@ -977,7 +977,7 @@ export async function queryAnomalies(
         id, session_id, idx, tokens_total, energy_cost_usd, cost_total,
         'stall-spike' AS anomaly_type,
         CASE WHEN stall_ms > ${stallMsSeverity} THEN 'high' ELSE 'medium' END AS severity,
-        stall_count::varchar || ' stalls adding ' || round(stall_ms / 1000 * 10) / 10::varchar || 's of stall time' AS description
+        stall_count::varchar || ' stalls adding ' || (round(stall_ms / 1000 * 10) / 10)::varchar || 's of stall time' AS description
       FROM ordered
       WHERE stall_count >= ${stallCountThreshold}
     ),
@@ -1379,7 +1379,7 @@ export async function queryEnergyDetails(sessionFilter?: string | null, modelFil
       COALESCE(sum(energy_joules), 0) AS total_joules,
       avg(apc_hit_rate) AS avg_apc_hit_rate,
       avg(avg_power_watts) AS avg_power_watts,
-      (array_agg(grid_id) FILTER (WHERE grid_id IS NOT NULL) ORDER BY timestamp DESC)[1] AS primary_grid_id,
+      (array_agg(grid_id ORDER BY timestamp DESC) FILTER (WHERE grid_id IS NOT NULL))[1] AS primary_grid_id,
       avg(grid_carbon_intensity) FILTER (WHERE grid_carbon_intensity IS NOT NULL) AS avg_grid_intensity,
       count(*) FILTER (WHERE compaction_triggered = TRUE) AS compaction_count,
       COALESCE(sum(compaction_energy_joules), 0) AS compaction_energy,
