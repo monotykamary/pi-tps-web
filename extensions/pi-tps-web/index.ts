@@ -235,16 +235,12 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
       // so the handler returns immediately and the TUI stays responsive.
       const entries = full ? ctx.sessionManager.getEntries() : ctx.sessionManager.getBranch();
       const notify = ctx.ui.notify.bind(ctx.ui);
-      const setStatus = ctx.ui.setStatus.bind(ctx.ui);
 
       if (entries.length === 0) {
         const scope = full ? 'all-entries' : 'current-branch';
         ctx.ui.notify(`No entries found in ${scope}`, 'warning');
         return;
       }
-
-      // Show loading state in footer immediately
-      setStatus('tps-web', '⏳ tps-web exporting…');
 
       // Everything below is fire-and-forget — the handler returns now.
       (async () => {
@@ -308,11 +304,10 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
         if (structuralCount > 0) parts.push(`${structuralCount} structural`);
         const summary = parts.length > 0 ? parts.join(' + ') : `${exportedEntries.length} entries`;
 
-        notify(`Exported ${summary} → ${filepath}`, 'info');
+        notify(`Exporting ${summary}…`, 'info');
 
         // Build (if needed), start server, open browser
         if (!(await ensureDist())) {
-          setStatus('tps-web', undefined);
           notify(
             `Web inspector not available: dist/ not built.\n` +
             `Run in the pi-tps-web package directory:\n` +
@@ -327,14 +322,11 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
           if (!server) {
             serverPort = DEFAULT_PORT;
           }
-          setStatus('tps-web', '⏳ tps-web starting server…');
           const port = await startServer();
           const url = `http://localhost:${port}?auto=1&v=${telemetryVersion}`;
           openInSystem(url);
-          notify(`Web inspector: http://localhost:${port}`, 'info');
-          setStatus('tps-web', `📊 tps-web :${port}`);
+          notify(`Exported ${summary} → ${filepath}\nWeb inspector: http://localhost:${port}`, 'info');
         } catch (err) {
-          setStatus('tps-web', undefined);
           notify(`Failed to start web server: ${err}`, 'error');
         }
       })();
