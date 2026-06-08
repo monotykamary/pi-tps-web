@@ -34,6 +34,8 @@ Energy and cost metrics come from the `pi-neuralwatt-provider` extension. If you
 
 ## Usage
 
+### Standalone web app
+
 ```bash
 npm install
 npm run dev       # local dev
@@ -41,6 +43,49 @@ npm run build     # static build to ./dist
 ```
 
 In production, serve `./dist` from any static host. The sample data at `./public/sample.jsonl` is included for demo purposes only and is removed by the existing `.gitignore`.
+
+### As a pi extension (alongside pi-tps)
+
+pi-tps-web doubles as a pi extension that launches a local web server with the telemetry inspector pre-loaded with your session data. It works alongside `pi-tps` — together, pi-tps tracks TPS and pi-tps-web gives you the visual dashboard.
+
+**Install from npm (recommended):**
+
+```bash
+pi install npm:pi-tps-web
+pi install npm:@monotykamary/pi-tps        # for telemetry tracking
+```
+
+**Or install from GitHub:**
+
+```bash
+pi install git:github.com/monotykamary/pi-tps-web
+pi install git:github.com/monotykamary/pi-tps
+```
+
+**Or try with `-e` for a one-shot test:**
+
+```bash
+pi -e /path/to/pi-tps-web
+```
+
+> **Git installs:** The `dist/` directory is not tracked in git. On first `/tps-web` invocation, the extension auto-builds it by running `npm install && npx vite build` in the package directory. This only happens once — the build is cached in the git clone at `~/.pi/agent/git/`.
+
+**Usage:**
+
+Once both extensions are loaded, run the `/tps-web` slash command in pi:
+
+```
+/tps-web           # Export current branch telemetry → web inspector
+/tps-web --full    # Export all branches → web inspector
+```
+
+This will:
+1. Export telemetry JSONL to `~/.cache/pi-telemetry/` (same as `/tps-export`)
+2. Open the folder in Finder/your file manager
+3. Start a local HTTP server on port 3141 (auto-increments if taken)
+4. Open the web inspector in your browser with the data pre-loaded
+
+Re-running `/tps-web` updates the data and the dashboard auto-refreshes. The web app polls `/api/version` in the background and reloads when new data is available.
 
 ## Data format
 

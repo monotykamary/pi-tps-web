@@ -13,6 +13,7 @@ import {
 import { useTheme } from './hooks/useTheme';
 import { useSessions } from './hooks/useSessions';
 import { useFileHandler } from './hooks/useFileHandler';
+import { useExtensionApi } from './hooks/useExtensionApi';
 import { useDuckQuery } from './hooks/useDuckQuery';
 import { MetricPill, TpsPill } from './components/metrics/MetricPill';
 import {
@@ -75,6 +76,7 @@ export default function App() {
   }, [rawClearSessions]);
 
   const fileData = useFileHandler(wrappedAddSession, setLoading);
+  useExtensionApi(wrappedAddSession, setLoading);
   const {
     dragOver, pasteFlash, fileInputRef,
     handleDrop, handleDragOver, handleDragLeave, handleFileSelect, loadSample,
