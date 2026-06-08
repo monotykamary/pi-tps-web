@@ -322,6 +322,7 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
           if (!server) {
             serverPort = DEFAULT_PORT;
           }
+          notify(`Starting web inspector…`, 'info');
           const port = await startServer();
           const url = `http://localhost:${port}?auto=1&v=${telemetryVersion}`;
           openInSystem(url);
