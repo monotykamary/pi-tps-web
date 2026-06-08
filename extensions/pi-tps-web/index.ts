@@ -11,7 +11,7 @@
  * pi-tps-web provides the visual web dashboard.
  */
 
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
 import { writeFileSync, mkdirSync, readFileSync, existsSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { join, extname, resolve, sep } from 'path';
@@ -52,17 +52,24 @@ const DIST_PATH = join(PKG_ROOT, 'dist');
  * in the tarball. For git installs (where dist/ is .gitignored and
  * pi runs npm install --omit=dev), we attempt a full install + build.
  * The build persists in the git clone directory so this only runs once.
+ *
+ * Returns true if dist/ is available (pre-built or after auto-build).
  */
-function ensureDist(): boolean {
+async function ensureDist(): Promise<boolean> {
   if (existsSync(join(DIST_PATH, 'index.html'))) return true;
 
   // Auto-build: need dev deps (vite, typescript, etc.) which
   // --omit=dev skips. Full install + build in the package root.
+  const run = (cmd: string, args: string[]): Promise<void> =>
+    new Promise((res, rej) => {
+      execFile(cmd, args, { cwd: PKG_ROOT, timeout: 180_000 }, (err) =>
+        err ? rej(err) : res(),
+      );
+    });
+
   try {
-    // Install all dependencies (including dev) so vite is available
-    execSync('npm install', { cwd: PKG_ROOT, stdio: 'pipe', timeout: 180_000 });
-    // Build the web app into dist/
-    execSync('npx vite build', { cwd: PKG_ROOT, stdio: 'pipe', timeout: 120_000 });
+    await run('npm', ['install']);
+    await run('npx', ['vite', 'build']);
   } catch {
     return false;
   }
@@ -193,6 +200,22 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
     }
   });
 
+  /**
+   * Open a URL or path with the system's default handler.
+   * Non-blocking — uses execFile instead of execSync.
+   */
+  function openInSystem(target: string): void {
+    const [cmd, args] =
+      process.platform === 'darwin'
+        ? ['open', [target]]
+        : ['xdg-open', [target]];
+    execFile(cmd, args, (err) => {
+      if (err) {
+        // opener not available — ignore silently
+      }
+    });
+  }
+
   pi.registerCommand('tps-web', {
     description:
       'Export telemetry and view in the pi-tps web inspector (--full for all branches)',
@@ -206,88 +229,77 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
       const tokens = args.trim().split(/\s+/).filter(Boolean);
       const full = tokens.includes('--full');
 
-      // Collect entries (same logic as pi-tps's /tps-export)
+      // Snapshot the session data synchronously — this is fast (returns
+      // references to in-memory objects). All heavy processing (filtering,
+      // re-chaining, serializing, file I/O) is deferred to the background
+      // so the handler returns immediately and the TUI stays responsive.
       const entries = full ? ctx.sessionManager.getEntries() : ctx.sessionManager.getBranch();
-      const isStructural = (e: { type: string }) =>
-        e.type === 'model_change' || e.type === 'branch_summary';
+      const notify = ctx.ui.notify.bind(ctx.ui);
+      const setStatus = ctx.ui.setStatus.bind(ctx.ui);
 
-      const exportedEntries = entries.filter(
-        (e: { type: string }) => isStructural(e) || e.type === 'custom',
-      );
-
-      if (exportedEntries.length === 0) {
+      if (entries.length === 0) {
         const scope = full ? 'all-entries' : 'current-branch';
-        ctx.ui.notify(`No matching entries found in ${scope}`, 'warning');
+        ctx.ui.notify(`No entries found in ${scope}`, 'warning');
         return;
       }
 
-      // Re-chain parentIds so the exported entries form a valid tree
-      const byId = new Map(entries.map((e: { id: string }) => [e.id, e]));
-      const exportedIds = new Set(exportedEntries.map((e: { id: string }) => e.id));
+      // Show loading state in footer immediately
+      setStatus('tps-web', '⏳ tps-web exporting…');
 
-      const rechainParentId = (entry: { parentId: string | null }): string | null => {
-        let current: string | null = entry.parentId;
-        while (current) {
-          if (exportedIds.has(current)) return current;
-          const parent = byId.get(current) as { parentId?: string | null } | undefined;
-          current = parent?.parentId ?? null;
-        }
-        return null;
-      };
+      // Everything below is fire-and-forget — the handler returns now.
+      (async () => {
+        const isStructural = (e: { type: string }) =>
+          e.type === 'model_change' || e.type === 'branch_summary';
 
-      const rechained = exportedEntries.map((e: { parentId: string | null }) => ({
-        ...e,
-        parentId: rechainParentId(e),
-      }));
-
-      const content = rechained.map((e: object) => JSON.stringify(e)).join('\n') + '\n';
-
-      // Write JSONL file — keeping the folder opening logic from pi-tps
-      const cacheBase = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
-      const dir = join(cacheBase, 'pi-telemetry');
-      mkdirSync(dir, { recursive: true });
-
-      const sessionId = ctx.sessionManager.getSessionId?.() ?? 'unknown';
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const scope = full ? 'full' : 'branch';
-      const filename = `pi-telemetry-${scope}-${sessionId.slice(0, 8)}-${timestamp}.jsonl`;
-      const filepath = join(dir, filename);
-      writeFileSync(filepath, content);
-
-      // Open the folder containing the exported JSONL
-      try {
-        const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        execSync(`${opener} ${JSON.stringify(dir)}`, { stdio: 'ignore' });
-      } catch {
-        // opener not available — ignore silently
-      }
-
-      // Update in-memory data for the API endpoint
-      telemetryJsonl = content;
-      telemetryVersion++;
-
-      // Ensure the built web app is available
-      if (!ensureDist()) {
-        ctx.ui.notify(
-          `Exported telemetry → ${filepath}\n` +
-          `Web inspector not available: dist/ not built.\n` +
-          `Run in the pi-tps-web package directory:\n` +
-          `  npm install && npm run build\n` +
-          `Then /reload and try again.`,
-          'warning',
+        const exportedEntries = entries.filter(
+          (e: { type: string }) => isStructural(e) || e.type === 'custom',
         );
-        return;
-      }
 
-      // Start server and open browser
-      try {
-        if (!server) {
-          serverPort = DEFAULT_PORT;
+        if (exportedEntries.length === 0) {
+          const scope = full ? 'all-entries' : 'current-branch';
+          notify(`No matching entries found in ${scope}`, 'warning');
+          return;
         }
-        const port = await startServer();
-        const url = `http://localhost:${port}?auto=1&v=${telemetryVersion}`;
-        const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        execSync(`${opener} ${url}`, { stdio: 'ignore' });
+
+        // Re-chain parentIds so the exported entries form a valid tree
+        const byId = new Map(entries.map((e: { id: string }) => [e.id, e]));
+        const exportedIds = new Set(exportedEntries.map((e: { id: string }) => e.id));
+
+        const rechainParentId = (entry: { parentId: string | null }): string | null => {
+          let current: string | null = entry.parentId;
+          while (current) {
+            if (exportedIds.has(current)) return current;
+            const parent = byId.get(current) as { parentId?: string | null } | undefined;
+            current = parent?.parentId ?? null;
+          }
+          return null;
+        };
+
+        const rechained = exportedEntries.map((e: { parentId: string | null }) => ({
+          ...e,
+          parentId: rechainParentId(e),
+        }));
+
+        const content = rechained.map((e: object) => JSON.stringify(e)).join('\n') + '\n';
+
+        // Write JSONL file — keeping the folder opening logic from pi-tps
+        const cacheBase = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
+        const dir = join(cacheBase, 'pi-telemetry');
+        mkdirSync(dir, { recursive: true });
+
+        const sessionId = ctx.sessionManager.getSessionId?.() ?? 'unknown';
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const scope = full ? 'full' : 'branch';
+        const filename = `pi-telemetry-${scope}-${sessionId.slice(0, 8)}-${timestamp}.jsonl`;
+        const filepath = join(dir, filename);
+        writeFileSync(filepath, content);
+
+        // Open the folder containing the exported JSONL
+        openInSystem(dir);
+
+        // Update in-memory data for the API endpoint
+        telemetryJsonl = content;
+        telemetryVersion++;
 
         const structuralCount = exportedEntries.filter((e: { type: string }) => isStructural(e)).length;
         const customCount = exportedEntries.length - structuralCount;
@@ -295,13 +307,37 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
         if (customCount > 0) parts.push(`${customCount} telemetry`);
         if (structuralCount > 0) parts.push(`${structuralCount} structural`);
         const summary = parts.length > 0 ? parts.join(' + ') : `${exportedEntries.length} entries`;
-        ctx.ui.notify(
-          `Exported ${summary} → ${filepath}\nWeb inspector: http://localhost:${port}`,
-          'info',
-        );
-      } catch (err) {
-        ctx.ui.notify(`Failed to start web server: ${err}`, 'error');
-      }
+
+        notify(`Exported ${summary} → ${filepath}`, 'info');
+
+        // Build (if needed), start server, open browser
+        if (!(await ensureDist())) {
+          setStatus('tps-web', undefined);
+          notify(
+            `Web inspector not available: dist/ not built.\n` +
+            `Run in the pi-tps-web package directory:\n` +
+            `  npm install && npm run build\n` +
+            `Then /reload and try again.`,
+            'warning',
+          );
+          return;
+        }
+
+        try {
+          if (!server) {
+            serverPort = DEFAULT_PORT;
+          }
+          setStatus('tps-web', '⏳ tps-web starting server…');
+          const port = await startServer();
+          const url = `http://localhost:${port}?auto=1&v=${telemetryVersion}`;
+          openInSystem(url);
+          notify(`Web inspector: http://localhost:${port}`, 'info');
+          setStatus('tps-web', `📊 tps-web :${port}`);
+        } catch (err) {
+          setStatus('tps-web', undefined);
+          notify(`Failed to start web server: ${err}`, 'error');
+        }
+      })();
     },
   });
 }
