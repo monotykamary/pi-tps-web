@@ -304,7 +304,7 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
         if (structuralCount > 0) parts.push(`${structuralCount} structural`);
         const summary = parts.length > 0 ? parts.join(' + ') : `${exportedEntries.length} entries`;
 
-        notify(`Exporting ${summary}…`, 'info');
+        notify(`Exporting ${summary} + starting web inspector…`, 'info');
 
         // Build (if needed), start server, open browser
         if (!(await ensureDist())) {
@@ -322,7 +322,6 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
           if (!server) {
             serverPort = DEFAULT_PORT;
           }
-          notify(`Starting web inspector…`, 'info');
           const port = await startServer();
           const url = `http://localhost:${port}?auto=1&v=${telemetryVersion}`;
           openInSystem(url);
