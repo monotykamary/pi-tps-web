@@ -767,10 +767,16 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const runQueryVersionRef = useRef(0);
+
   const runQueryInternal = useCallback(
     async (querySql?: string, sessionFilter?: string | null) => {
       const sqlToRun = querySql ?? sql;
       if (!sqlToRun.trim()) return;
+      // Increment version to invalidate any in-flight queries from a
+      // prior dbVersion. This prevents stale results from overwriting
+      // fresh ones when the dbVersion effect fires rapidly.
+      const thisVersion = ++runQueryVersionRef.current;
       setRunning(true);
       setError(null);
       try {
@@ -798,6 +804,8 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
           }
         }
         const r: QueryResult = { columns, rows, rowCount: rows.length };
+        // Discard stale results if a newer query was started while we awaited
+        if (thisVersion !== runQueryVersionRef.current) return;
         if (r.rowCount > 0 || columns.length > 0) {
           setResult(r);
           const detected = detectGroupByCols(sqlToRun, r.columns);
@@ -827,8 +835,23 @@ export default function SqlPlayground({ dbVersion, activeSessionId }: SqlPlaygro
 
   // Re-run the current query when the underlying DB data changes (session add/remove)
   useEffect(() => {
-    if (dbVersion > 0 && result && sql.trim()) {
+    if (dbVersion === 0) return;
+
+    // If the user has already run a query, re-run it with fresh data.
+    // If no query has been run yet, auto-run the "All TPS events" example
+    // so the SQL tab immediately shows something useful.
+    if (result && sql.trim()) {
       runQueryInternal(sql, activeSessionId);
+    } else if (!result && !sql.trim()) {
+      const defaultSql = EXAMPLE_QUERIES[0].sql;
+      setSql(defaultSql);
+      setOriginalSql(defaultSql);
+      if (viewRef.current) {
+        viewRef.current.dispatch({
+          changes: { from: 0, to: viewRef.current.state.doc.length, insert: defaultSql },
+        });
+      }
+      runQueryInternal(defaultSql, activeSessionId);
     }
   // Only trigger on dbVersion changes, not on sql/result changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
