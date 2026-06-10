@@ -154,7 +154,7 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
           const data = telemetryJsonl || '';
           res.writeHead(200, {
             'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-store',
             'Access-Control-Allow-Origin': '*',
           });
           res.end(data);
@@ -165,7 +165,7 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
         if (urlPath === '/api/version') {
           res.writeHead(200, {
             'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-store',
           });
           res.end(JSON.stringify({ version: telemetryVersion }));
           return;

@@ -25,12 +25,14 @@ export function useExtensionApi(
 
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout>;
+    const POLL_INTERVAL_MS = 2000;
+    const POLL_RETRY_MS = 5000;
 
     async function loadFromApi() {
       if (cancelled) return;
       setLoadingRef.current(true);
       try {
-        const res = await fetch('/api/telemetry');
+        const res = await fetch('/api/telemetry', { cache: 'no-cache' });
         if (!res.ok) {
           setLoadingRef.current(false);
           return;
@@ -55,11 +57,14 @@ export function useExtensionApi(
     // Initial load
     loadFromApi();
 
-    // Poll for version changes (detects when user re-runs /tps-web)
+    // Poll for version changes (detects when user re-runs /tps-web).
+    // Retries on error instead of stopping — a transient network blip or
+    // browser tab backgrounding (Safari throttles fetch in background tabs)
+    // should not kill polling permanently.
     let lastVersion: number | null = null;
     function pollVersion() {
       if (cancelled) return;
-      fetch('/api/version')
+      fetch('/api/version', { cache: 'no-cache' })
         .then((res) => res.json())
         .then((data: { version: number }) => {
           if (cancelled) return;
@@ -68,10 +73,12 @@ export function useExtensionApi(
             loadFromApi();
           }
           lastVersion = data.version;
-          pollTimer = setTimeout(pollVersion, 2000);
+          pollTimer = setTimeout(pollVersion, POLL_INTERVAL_MS);
         })
         .catch(() => {
-          // API not available — stop polling
+          // API not available — retry after a longer interval instead of
+          // stopping permanently
+          pollTimer = setTimeout(pollVersion, POLL_RETRY_MS);
         });
     }
 
