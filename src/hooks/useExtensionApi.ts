@@ -6,8 +6,11 @@ import { parseJsonl } from '../lib/parser';
  * the URL contains `?auto=1`. This hook detects that and auto-loads
  * telemetry data from the extension's /api/telemetry endpoint.
  *
- * It also polls /api/version to detect when the user re-runs /tps-web
- * with updated data, and auto-refreshes the dashboard.
+ * Update detection uses two mechanisms:
+ * 1. Server-Sent Events (primary): /api/events pushes version changes
+ *    to the browser immediately, eliminating polling latency.
+ * 2. Polling fallback (secondary): If SSE is unavailable or drops,
+ *    polls /api/version every 2s. Retries on error instead of dying.
  */
 export function useExtensionApi(
   addSession: (raw: string, fileName?: string) => void,
@@ -57,11 +60,40 @@ export function useExtensionApi(
     // Initial load
     loadFromApi();
 
-    // Poll for version changes (detects when user re-runs /tps-web).
-    // Retries on error instead of stopping — a transient network blip or
-    // browser tab backgrounding (Safari throttles fetch in background tabs)
-    // should not kill polling permanently.
     let lastVersion: number | null = null;
+
+    function onVersionChanged() {
+      if (cancelled) return;
+      loadFromApi();
+    }
+
+    // Primary: Server-Sent Events for real-time push notifications.
+    // When /tps-web updates the telemetry, the server pushes the new
+    // version to all connected clients immediately.
+    let sse: EventSource | null = null;
+    try {
+      sse = new EventSource('/api/events');
+      sse.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (typeof data.version === 'number') {
+            if (lastVersion !== null && data.version !== lastVersion) {
+              onVersionChanged();
+            }
+            lastVersion = data.version;
+          }
+        } catch { /* ignore malformed SSE data */ }
+      };
+      sse.onerror = () => {
+        // SSE dropped — polling (started below) continues as fallback
+      };
+    } catch {
+      // EventSource not available — polling alone
+    }
+
+    // Secondary: Poll for version changes as fallback.
+    // Retries on error — a transient network blip or browser tab
+    // backgrounding should not kill the poller permanently.
     function pollVersion() {
       if (cancelled) return;
       fetch('/api/version', { cache: 'no-cache' })
@@ -69,25 +101,23 @@ export function useExtensionApi(
         .then((data: { version: number }) => {
           if (cancelled) return;
           if (lastVersion !== null && data.version !== lastVersion) {
-            // Version changed — reload telemetry
-            loadFromApi();
+            onVersionChanged();
           }
           lastVersion = data.version;
           pollTimer = setTimeout(pollVersion, POLL_INTERVAL_MS);
         })
         .catch(() => {
-          // API not available — retry after a longer interval instead of
-          // stopping permanently
           pollTimer = setTimeout(pollVersion, POLL_RETRY_MS);
         });
     }
 
-    // Start polling after a short delay
+    // Start polling after a short delay (SSE is the primary channel)
     pollTimer = setTimeout(pollVersion, 3000);
 
     return () => {
       cancelled = true;
       clearTimeout(pollTimer);
+      sse?.close();
     };
   }, []);
 }

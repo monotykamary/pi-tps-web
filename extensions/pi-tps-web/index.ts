@@ -142,6 +142,9 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
   let telemetryJsonl: string | null = null;
   let telemetryVersion = 0;
 
+  // Connected SSE clients for real-time push notifications.
+  const sseClients = new Set<import('http').ServerResponse>();
+
   function startServer(): Promise<number> {
     if (server) return Promise.resolve(serverPort);
 
@@ -171,6 +174,24 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
           return;
         }
 
+        // API: Server-Sent Events stream for real-time push.
+        // When /tps-web updates the telemetry, the server pushes
+        // the new version to all connected clients immediately,
+        // eliminating the 2s polling latency.
+        if (urlPath === '/api/events') {
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            'Connection': 'keep-alive',
+          });
+          res.write('');
+          sseClients.add(res);
+          req.on('close', () => {
+            sseClients.delete(res);
+          });
+          return;
+        }
+
         // Static files from dist/
         serveStatic(DIST_PATH, req, res);
       });
@@ -194,6 +215,11 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
 
   // Clean up server on session shutdown
   pi.on('session_shutdown', () => {
+    // Close all SSE connections before shutting down the server
+    for (const client of sseClients) {
+      client.end();
+    }
+    sseClients.clear();
     if (server) {
       server.close();
       server = null;
@@ -296,6 +322,11 @@ export default function tpsWebExtension(pi: ExtensionAPI) {
         // Update in-memory data for the API endpoint
         telemetryJsonl = content;
         telemetryVersion++;
+
+        // Push update to all connected SSE clients
+        for (const client of sseClients) {
+          client.write(`data: ${JSON.stringify({ version: telemetryVersion })}\n\n`);
+        }
 
         const structuralCount = exportedEntries.filter((e: { type: string }) => isStructural(e)).length;
         const customCount = exportedEntries.length - structuralCount;
