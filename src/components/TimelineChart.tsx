@@ -41,6 +41,14 @@ function CustomTooltip({ active, payload, metric, sessionRate }: { active?: bool
   const costLoss = (bucketRate != null && sessionRate != null && bucketRate > sessionRate)
     ? ((bucketRate - sessionRate) / bucketRate) * 100
     : 0;
+  // Cost multiplier: how many times the bucket's $/M rises vs the session
+  // blend due to loss. Baseline 1.00× at the session average; a bucket at
+  // 20% loss shows 1.25×. Buckets cheaper than the session show < 1.0×
+  // (the honest inverse signal — not floored, since 'how many times the
+  // cost rises' genuinely inverts for sub-average buckets).
+  const costMultiplier = (bucketRate != null && sessionRate != null && sessionRate > 0)
+    ? bucketRate / sessionRate
+    : 0;
   return (
     <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
       <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{String(data.label)}</p>
@@ -83,6 +91,10 @@ function CustomTooltip({ active, payload, metric, sessionRate }: { active?: bool
           <div className="flex items-center justify-between text-[11px]">
             <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
             <span className={`metric-mono font-semibold ${costLoss > 50 ? 'text-ember' : costLoss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{costLoss.toFixed(1)}%</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Cost ×</span>
+            <span className={`metric-mono font-semibold ${costMultiplier > 1.5 ? 'text-ember' : costMultiplier > 1.2 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{costMultiplier.toFixed(2)}×</span>
           </div>
           <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
             <div className="h-full" style={{ width: `${Math.max(0, Math.min(100, costRetained))}%`, backgroundColor: config.color }} />
