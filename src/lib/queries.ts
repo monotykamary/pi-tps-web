@@ -1366,12 +1366,8 @@ export async function queryEnergyDetails(sessionFilter?: string | null, modelFil
 
   const detailResult = await runQuery(detailSql);
   const details: EnergyDetailRow[] = [];
-  let cumulativeCarbon = 0;
 
   for (let i = 0; i < detailResult.rowCount; i++) {
-    const carbonG = maybeNum(detailResult, i, 'carbon_g_co2eq') ?? 0;
-    cumulativeCarbon += carbonG;
-
     details.push({
       index: num(detailResult, i, 'idx'),
       timestamp: str(detailResult, i, 'timestamp'),

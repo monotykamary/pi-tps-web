@@ -167,19 +167,34 @@ function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }
     [dbVersion, activeSessionId, selectedModel],
   );
 
-  const details = queryData?.details ?? [];
+  // Stabilize the details array identity (the `?? []` fallback would
+  // otherwise create a new array each render and bust enrichedDetails'
+  // useMemo dep, per the react-hooks/exhaustive-deps warning).
+  const details = useMemo(() => queryData?.details ?? [], [queryData]);
   const aggregates = queryData?.aggregates ?? null;
 
   const { hasCarbonData, hasApcData, hasPowerData, hasMcrData, hasAnySseData } = aggregates ?? { hasCarbonData: false, hasApcData: false, hasPowerData: false, hasMcrData: false, hasAnySseData: false };
 
-  // Compute cumulative carbon and timeLabel for chart usage
+  // Compute cumulative carbon and timeLabel for chart usage.
+  // Built from a single reduce pass so no outer variable is mutated
+  // during the map (which would trip the react-hooks/immutability rule).
   const enrichedDetails = useMemo(() => {
-    let cumulativeCarbon = 0;
-    return details.map(d => ({
-      ...d,
-      timeLabel: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      cumulativeCarbonG: (cumulativeCarbon += d.carbonGCo2eq ?? 0, cumulativeCarbon),
-    }));
+    // Functional forward pass: each step produces { running, item } so no
+    // outer variable is reassigned during iteration (react-hooks/immutability
+    // forbids mutation during render, even inside useMemo).
+    return details.reduce<Array<EnergyDetailRow & { cumulativeCarbonG: number; timeLabel: string }>>(
+      (acc, d) => {
+        const prevRunning = acc.length > 0 ? acc[acc.length - 1].cumulativeCarbonG : 0;
+        const running = prevRunning + (d.carbonGCo2eq ?? 0);
+        acc.push({
+          ...d,
+          timeLabel: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          cumulativeCarbonG: running,
+        });
+        return acc;
+      },
+      [],
+    );
   }, [details]);
 
   if (!aggregates || !hasAnySseData || details.length === 0) return null;

@@ -18,8 +18,14 @@ export function useExtensionApi(
 ) {
   const addSessionRef = useRef(addSession);
   const setLoadingRef = useRef(setLoading);
-  addSessionRef.current = addSession;
-  setLoadingRef.current = setLoading;
+  // Keep the refs in sync with the latest props without writing to them
+  // during render (which the react-hooks/refs rule forbids). The effect
+  // runs after render; the long-lived SSE/poll effect below reads via
+  // .current so it always sees the freshest callbacks.
+  useEffect(() => {
+    addSessionRef.current = addSession;
+    setLoadingRef.current = setLoading;
+  }, [addSession, setLoading]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
