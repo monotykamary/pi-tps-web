@@ -2,8 +2,9 @@ import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { HardDrives } from '@phosphor-icons/react';
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip
+  PieChart, Pie, Cell, ResponsiveContainer
 } from 'recharts';
+import FadingTooltip from './FadingTooltip';
 
 import type { CacheOverallSlice, CacheOverTimeInterval } from '../lib/queries';
 
@@ -57,7 +58,7 @@ function CacheEfficiencyInner({ overall, overTime, hitRate }: Props) {
                   <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.85} />
                 ))}
               </Pie>
-              <Tooltip content={<CacheTooltip />} wrapperStyle={{ zIndex: 10 }} />
+              <FadingTooltip content={<CacheTooltip />} wrapperStyle={{ zIndex: 10 }} />
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">

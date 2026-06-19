@@ -83,6 +83,21 @@ export interface TimingBucketRow {
   totalTokens: number;
   /** Volume-weighted blended $/M-tokens for the bucket: sum(effective cost) / (sum(tokens)/1e6). null when no cost data in the bucket. */
   blendedRateUsdPerM: number | null;
+  /** Per-bucket envelope (per-turn max/min within the bucket). Plotted as a faint band behind the blended avg so individual spike turns (e.g. one $2.37/M call averaged into a $1.16/M bucket) stay visible. null when the bucket has no usable per-turn rate. */
+  peakRateUsdPerM: number | null;
+  troughRateUsdPerM: number | null;
+  peakTtft: number;
+  troughTtft: number;
+  peakTotal: number;
+  troughTotal: number;
+  peakTps: number;
+  troughTps: number;
+  /** Per-turn max/min instantaneous GPU power across the bucket's NeuralWatt turns (W). null when no energy data in the bucket. */
+  peakPowerWatts: number | null;
+  troughPowerWatts: number | null;
+  /** Per-turn max/min joules-per-million-tokens within the bucket (energy_joules / tokens_total/1e6). null when no energy data in the bucket. */
+  peakJoulesPerM: number | null;
+  troughJoulesPerM: number | null;
   /** Sum of the effective cost across the bucket ($): COALESCE(energy_cost_usd, cost_total) summed. The numerator of blendedRateUsdPerM; also lets the chart derive a session-wide blended rate by summing across buckets. */
   effectiveCostTotal: number | null;
   /** Sum of raw energy joules across the bucket (NeuralWatt turns only). null when no energy data. */
@@ -630,7 +645,27 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
             / nullif(sum(tokens_total) / 1000000.0, 0)
           * 100
         ) / 100.0
-        ELSE NULL END                                           AS blended_rate_usd_per_m
+        ELSE NULL END                                           AS blended_rate_usd_per_m,
+      -- Per-bucket envelope: per-turn max/min within the bucket. Drawn as a
+      -- faint band behind the blended avg so a single spike turn (e.g. one
+      -- $2.37/M call) stays visible instead of being averaged away. min/max
+      -- skip nulls, so cost peaks/troughs are null exactly when the blend is.
+      max(ttft_ms)                                    AS peak_ttft,
+      min(ttft_ms)                                    AS trough_ttft,
+      max(total_ms)                                   AS peak_total,
+      min(total_ms)                                   AS trough_total,
+      max(effective_tps)                              AS peak_tps,
+      min(effective_tps)                              AS trough_tps,
+      max(rate_usd_per_m_tokens_effective)            AS peak_rate_usd_per_m,
+      min(rate_usd_per_m_tokens_effective)            AS trough_rate_usd_per_m,
+      -- Per-turn power/joules envelope for the cost-breakdown panel. Power ×
+      -- and Joules × there are bucket blends; these let the panel render a
+      -- trough–peak range so individual spike turns stay visible just like
+      -- the rate envelope does on the main chart.
+      max(avg_power_watts)                            AS peak_power_watts,
+      min(avg_power_watts)                            AS trough_power_watts,
+      max(energy_joules / nullif(tokens_total / 1000000.0, 0)) AS peak_joules_per_m,
+      min(energy_joules / nullif(tokens_total / 1000000.0, 0)) AS trough_joules_per_m
     FROM ranked
     GROUP BY bucket
     ORDER BY min(timestamp)
@@ -658,6 +693,18 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       ratioWasCapped: (col(result, i, 'ratio_was_capped') as boolean | null),
       attributionRatio: maybeNum(result, i, 'attribution_ratio'),
       dominantGridId: str(result, i, 'dominant_grid_id') || null,
+      peakRateUsdPerM: maybeNum(result, i, 'peak_rate_usd_per_m'),
+      troughRateUsdPerM: maybeNum(result, i, 'trough_rate_usd_per_m'),
+      peakPowerWatts: maybeNum(result, i, 'peak_power_watts'),
+      troughPowerWatts: maybeNum(result, i, 'trough_power_watts'),
+      peakJoulesPerM: maybeNum(result, i, 'peak_joules_per_m'),
+      troughJoulesPerM: maybeNum(result, i, 'trough_joules_per_m'),
+      peakTtft: num(result, i, 'peak_ttft'),
+      troughTtft: num(result, i, 'trough_ttft'),
+      peakTotal: num(result, i, 'peak_total'),
+      troughTotal: num(result, i, 'trough_total'),
+      peakTps: num(result, i, 'peak_tps'),
+      troughTps: num(result, i, 'trough_tps'),
     });
   }
   return buckets;

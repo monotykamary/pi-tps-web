@@ -1,8 +1,9 @@
 import { useMemo, useState, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
+import FadingTooltip from './FadingTooltip';
 
 import type { ScatterPoint } from '../lib/queries';
 import { formatDuration } from '../lib/parser';
@@ -191,7 +192,7 @@ function TimingScatterInner({ data, onPointClick, thresholds }: Props) {
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
             <ZAxis type="number" dataKey="z" range={[40, 200]} />
-            <Tooltip content={<TimingTooltip />} cursor={{ strokeDasharray: '3 3' }} />
+            <FadingTooltip content={<TimingTooltip />} cursor={{ strokeDasharray: '3 3' }} />
             <Scatter data={displayData} onClick={(d) => onPointClick((d as unknown as { payload: { id: string } }).payload.id)}>
               {displayData.map((entry, index) => (
                 <Cell

@@ -1,8 +1,9 @@
 import { useMemo, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ZAxis, Cell
 } from 'recharts';
+import FadingTooltip from './FadingTooltip';
 
 import type { MultiSessionSummary } from '../types';
 import { formatCurrency, formatDuration, formatTps, formatEnergy } from '../lib/parser';
@@ -164,7 +165,7 @@ function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
               tickFormatter={yFormatter}
             />
             <ZAxis type="number" dataKey="z" range={[60, 400]} />
-            <Tooltip content={<SessionTooltip hasCost={hasCost} />} cursor={{ strokeDasharray: '3 3' }} />
+            <FadingTooltip content={<SessionTooltip hasCost={hasCost} />} cursor={{ strokeDasharray: '3 3' }} />
             <Scatter data={data} onClick={(d) => onSessionClick((d as unknown as { payload: { sessionId: string } }).payload.sessionId)}>
               {data.map((entry, index) => (
                 <Cell

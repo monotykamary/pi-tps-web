@@ -3,9 +3,10 @@ import { motion } from 'framer-motion';
 import { Leaf, Lightning, MapPin, ChartLineUp } from '@phosphor-icons/react';
 import { MetricPill } from './metrics/MetricPill';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine,
   ComposedChart, Bar, PieChart, Pie, Cell,
 } from 'recharts';
+import FadingTooltip from './FadingTooltip';
 
 import { useDuckQuery } from '../hooks/useDuckQuery';
 import { queryEnergyDetails } from '../lib/queries';
@@ -587,7 +588,7 @@ function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }
                     dx={4}
                     tickFormatter={(v: number) => v < 0.01 ? `${(v * 1000).toFixed(0)}mg` : `${v.toFixed(2)}g`}
                   />
-                  <Tooltip content={<Co2Tooltip />} />
+                  <FadingTooltip content={<Co2Tooltip />} />
                   <Area
                     yAxisId="cumulative"
                     type="monotone"
@@ -734,7 +735,7 @@ function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }
                     domain={[0, 1.05]}
                     tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
                   />
-                  <Tooltip content={<ApcTooltip />} />
+                  <FadingTooltip content={<ApcTooltip />} />
                   <ReferenceLine y={1} stroke="#059669" strokeDasharray="4 4" strokeOpacity={0.4} />
                   <Area
                     type="monotone"
@@ -903,7 +904,7 @@ function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }
                     dx={-4}
                     tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}kW` : `${v.toFixed(0)}W`}
                   />
-                  <Tooltip content={<PowerTooltip />} />
+                  <FadingTooltip content={<PowerTooltip />} />
                   <Area
                     type="monotone"
                     dataKey="avgPowerWatts"
@@ -1043,7 +1044,7 @@ function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }
                     dx={-4}
                     tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
                   />
-                  <Tooltip content={<ContextTooltip />} />
+                  <FadingTooltip content={<ContextTooltip />} />
                   <Area
                     type="monotone"
                     dataKey="outputTokens"

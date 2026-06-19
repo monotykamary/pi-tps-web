@@ -7,9 +7,9 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import FadingTooltip from './FadingTooltip';
 
 import type { TokenCompositionRow } from '../lib/queries';
 
@@ -77,7 +77,7 @@ function TokenBreakdownInner({ data }: Props) {
               dx={-4}
               tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`}
             />
-            <Tooltip content={<TokenTooltip />} />
+            <FadingTooltip content={<TokenTooltip />} />
             <Bar dataKey="cacheRead" name="Cache Read" stackId="a" fill="#0891b2" fillOpacity={0.8} radius={[0, 0, 0, 0]} />
             <Bar dataKey="input" name="New Input" stackId="a" fill="#3f3f46" fillOpacity={0.8} radius={[0, 0, 0, 0]} />
             <Bar dataKey="output" name="Output" stackId="a" fill="#059669" fillOpacity={0.7} radius={[2, 2, 0, 0]} />

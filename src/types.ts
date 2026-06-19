@@ -272,6 +272,21 @@ export interface TimingBucket {
   totalTokens: number;
   /** Volume-weighted blended $/M-tokens for the bucket: sum(effective cost) / (sum(tokens)/1e6). null when no cost data. */
   blendedRateUsdPerM: number | null;
+  /** Per-bucket envelope (per-turn max/min within the bucket). Plotted as a faint band behind the blended avg so individual spike turns stay visible instead of being averaged away. null when the bucket has no usable per-turn rate. */
+  peakRateUsdPerM: number | null;
+  troughRateUsdPerM: number | null;
+  peakTtft: number;
+  troughTtft: number;
+  peakTotal: number;
+  troughTotal: number;
+  peakTps: number;
+  troughTps: number;
+  /** Per-turn max/min instantaneous GPU power across the bucket's NeuralWatt turns (W). null when no energy data in the bucket. */
+  peakPowerWatts: number | null;
+  troughPowerWatts: number | null;
+  /** Per-turn max/min joules-per-million-tokens within the bucket (energy_joules / tokens_total/1e6). null when no energy data in the bucket. */
+  peakJoulesPerM: number | null;
+  troughJoulesPerM: number | null;
   /** Sum of the effective cost across the bucket ($). Lets the chart derive a session-wide blended rate by summing across buckets. */
   effectiveCostTotal: number | null;
   /** Sum of raw energy joules across the bucket (NeuralWatt turns only). null when no energy data. */
