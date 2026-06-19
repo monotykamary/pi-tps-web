@@ -83,6 +83,8 @@ export interface TimingBucketRow {
   totalTokens: number;
   /** Volume-weighted blended $/M-tokens for the bucket: sum(effective cost) / (sum(tokens)/1e6). null when no cost data in the bucket. */
   blendedRateUsdPerM: number | null;
+  /** Sum of the effective cost across the bucket ($): COALESCE(energy_cost_usd, cost_total) summed. The numerator of blendedRateUsdPerM; also lets the chart derive a session-wide blended rate by summing across buckets. */
+  effectiveCostTotal: number | null;
 }
 
 export interface TokenCompositionRow {
@@ -581,6 +583,7 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       -- Matches pi-tps' per-turn effectiveCost definition, so it agrees
       -- with the stored rate_usd_per_m_tokens for turns that have it.
       -- null when the bucket has no usable cost or zero tokens.
+      sum(COALESCE(energy_cost_usd, cost_total))                  AS effective_cost_total,
       CASE WHEN sum(tokens_total) > 0
         THEN round(
           sum(COALESCE(energy_cost_usd, cost_total))
@@ -607,6 +610,7 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       avgTpsLoss: num(result, i, 'avg_tps_loss'),
       totalTokens: num(result, i, 'total_tokens'),
       blendedRateUsdPerM: maybeNum(result, i, 'blended_rate_usd_per_m'),
+      effectiveCostTotal: maybeNum(result, i, 'effective_cost_total'),
     });
   }
   return buckets;

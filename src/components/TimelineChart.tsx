@@ -21,7 +21,7 @@ const metricConfig: Record<MetricKey, { label: string; color: string; fill: stri
   cost: { label: '$/M', color: '#7c3aed', fill: 'rgba(124,58,237,0.08)', unit: '$/M' },
 };
 
-function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }>; metric: MetricKey }) {
+function CustomTooltip({ active, payload, metric, sessionRate }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }>; metric: MetricKey; sessionRate: number | null }) {
   if (!active || !payload?.length) return null;
   const data = payload[0].payload as Record<string, unknown>;
   const config = metricConfig[metric];
@@ -29,6 +29,18 @@ function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?
   const isCostMode = metric === 'cost';
   const wallShare = (data.avgTps as number) > 0 ? ((data.avgWallTps as number) / (data.avgTps as number)) * 100 : 0;
   const rate = data.blendedRateUsdPerM as number | null;
+  // Cost bar mirrors the speed (wall-vs-loss) bar: bucket rate plays
+  // 'active', session-blend rate plays 'wall'. retained = session/bucket
+  // (how close this bucket is to the session average); loss = the deficit
+  // when the bucket is pricier than the session. Buckets cheaper than the
+  // session aren't 'loss', so loss is floored at 0.
+  const bucketRate = rate;
+  const costRetained = (bucketRate != null && sessionRate != null && bucketRate > 0)
+    ? Math.min(100, (sessionRate / bucketRate) * 100)
+    : 0;
+  const costLoss = (bucketRate != null && sessionRate != null && bucketRate > sessionRate)
+    ? ((bucketRate - sessionRate) / bucketRate) * 100
+    : 0;
   return (
     <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
       <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{String(data.label)}</p>
@@ -56,6 +68,29 @@ function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?
             <div className="h-full bg-moss" style={{ width: `${Math.max(0, Math.min(100, wallShare))}%` }} />
             <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - wallShare))}%` }} />
           </div>
+        </div>
+      )}
+      {isCostMode && (
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Bucket</span>
+            <span className="metric-mono font-semibold" style={{ color: config.color }}>{formatUsdPerM(bucketRate)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Session</span>
+            <span className="metric-mono font-semibold text-zinc-500 dark:text-zinc-400">{formatUsdPerM(sessionRate)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-zinc-400 dark:text-zinc-400">Loss</span>
+            <span className={`metric-mono font-semibold ${costLoss > 50 ? 'text-ember' : costLoss > 20 ? 'text-amber' : 'text-zinc-500 dark:text-zinc-400'}`}>{costLoss.toFixed(1)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden flex bg-zinc-100 dark:bg-white/[0.06]">
+            <div className="h-full" style={{ width: `${Math.max(0, Math.min(100, costRetained))}%`, backgroundColor: config.color }} />
+            <div className="h-full bg-ember" style={{ width: `${Math.max(0, Math.min(100, 100 - costRetained))}%` }} />
+          </div>
+          {bucketRate == null && (
+            <p className="text-[10px] text-zinc-400 dark:text-zinc-500">No cost data in this bucket.</p>
+          )}
         </div>
       )}
       <div className={`pt-1.5 border-t border-zinc-200/50 dark:border-white/[0.06] grid grid-cols-3 gap-3 text-[11px] mt-1.5`}>
@@ -92,6 +127,17 @@ function TimelineChartInner({ buckets }: Props) {
     // also reads blendedRateUsdPerM directly for the headline + footer.
     cost: b.blendedRateUsdPerM,
   })), [buckets]);
+
+  // Session-wide blended $/M: sum of per-bucket effective cost ÷ sum of
+  // tokens (scaled to millions). Same definition as the per-bucket blend,
+  // just summed across all buckets so the chart can show each bucket's
+  // deviation from the session average in the loss bar. null when no cost.
+  const sessionRate = useMemo(() => {
+    const totalCost = buckets.reduce((s, b) => s + (b.effectiveCostTotal ?? 0), 0);
+    const totalTokens = buckets.reduce((s, b) => s + (b.totalTokens ?? 0), 0);
+    if (totalTokens <= 0 || totalCost <= 0) return null;
+    return Math.round((totalCost / (totalTokens / 1_000_000)) * 100) / 100;
+  }, [buckets]);
 
   const config = metricConfig[metric];
   const isCostMode = metric === 'cost';
@@ -149,7 +195,7 @@ function TimelineChartInner({ buckets }: Props) {
               dx={-4}
               tickFormatter={(v: number) => isCostMode ? (v == null || !Number.isFinite(v) ? '-' : `$${v}`) : v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
-            <Tooltip content={<CustomTooltip metric={metric} />} />
+            <Tooltip content={<CustomTooltip metric={metric} sessionRate={sessionRate} />} />
             <Area
               type="monotone"
               dataKey={metric}

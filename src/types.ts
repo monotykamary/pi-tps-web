@@ -272,6 +272,8 @@ export interface TimingBucket {
   totalTokens: number;
   /** Volume-weighted blended $/M-tokens for the bucket: sum(effective cost) / (sum(tokens)/1e6). null when no cost data. */
   blendedRateUsdPerM: number | null;
+  /** Sum of the effective cost across the bucket ($). Lets the chart derive a session-wide blended rate by summing across buckets. */
+  effectiveCostTotal: number | null;
 }
 
 /** Session state for the main app — tracks loaded files and their parsed events */
