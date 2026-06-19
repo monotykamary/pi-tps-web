@@ -267,9 +267,11 @@ export function ingestJsonl(raw: string, sessionId?: string): IngestResult {
         // Structured format: TurnTelemetry
         // Normalize: cost may be absent (undefined) - coerce to null
         // Normalize: tps may be null (e.g. generation timing unavailable) - coerce to 0
+        // Normalize: rateUsdPerMTokens may be absent on older sessions - coerce to null
         const tpsData = rawEvent.data;
         if (tpsData.cost === undefined) tpsData.cost = null;
         if (tpsData.tps === null || tpsData.tps === undefined) tpsData.tps = 0;
+        if (tpsData.rateUsdPerMTokens === undefined) tpsData.rateUsdPerMTokens = null;
         events.push({
           sessionId: sid,
           id: rawEvent.id,
@@ -578,6 +580,6 @@ export function buildTimeline(
 }
 
 // Re-export format utilities from extracted module
-export { formatDuration, formatNumber, formatCurrency, formatTps, formatEnergy, formatEnergyParts } from './format/format';
+export { formatDuration, formatNumber, formatCurrency, formatTps, formatEnergy, formatEnergyParts, formatUsdPerM } from './format/format';
 export { formatThreshold } from './format/format';
 export { exportMultiSessionCsv } from './format/csv';

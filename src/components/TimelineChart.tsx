@@ -5,30 +5,38 @@ import {
 } from 'recharts';
 
 import type { TimingBucket } from '../types';
+import { formatUsdPerM } from '../lib/format/format';
 
 interface Props {
   buckets: TimingBucket[];
   onBucketClick: (bucket: TimingBucket) => void;
 }
 
-const metricConfig = {
+type MetricKey = 'ttft' | 'total' | 'tps' | 'cost';
+
+const metricConfig: Record<MetricKey, { label: string; color: string; fill: string; unit: string }> = {
   ttft: { label: 'TTFT', color: '#0891b2', fill: 'rgba(8,145,178,0.08)', unit: 'ms' },
   total: { label: 'Total Time', color: '#dc2626', fill: 'rgba(220,38,38,0.06)', unit: 'ms' },
   tps: { label: 'Speed', color: '#059669', fill: 'rgba(5,150,105,0.08)', unit: 't/s' },
+  cost: { label: '$/M', color: '#7c3aed', fill: 'rgba(124,58,237,0.08)', unit: '$/M' },
 };
 
-function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }>; metric: 'ttft' | 'total' | 'tps' }) {
+function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }>; metric: MetricKey }) {
   if (!active || !payload?.length) return null;
   const data = payload[0].payload as Record<string, unknown>;
   const config = metricConfig[metric];
   const isTpsMode = metric === 'tps';
+  const isCostMode = metric === 'cost';
   const wallShare = (data.avgTps as number) > 0 ? ((data.avgWallTps as number) / (data.avgTps as number)) * 100 : 0;
+  const rate = data.blendedRateUsdPerM as number | null;
   return (
     <div className="glass-panel rounded-2xl px-4 py-3 text-sm" style={{ minWidth: 240 }}>
       <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 mb-1">{String(data.label)}</p>
       <div className="flex items-baseline gap-2">
-        <span className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300">{String(data[metric])}</span>
-        <span className="text-xs text-zinc-400 dark:text-zinc-400">{config.unit} {isTpsMode ? '· Active TPS' : ''}</span>
+        <span className="metric-mono text-lg font-bold text-zinc-800 dark:text-zinc-300" style={{ color: isCostMode ? config.color : undefined }}>
+          {isCostMode ? formatUsdPerM(rate) : String(data[metric])}
+        </span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-400">{config.unit} {isTpsMode ? '· Active TPS' : ''}{isCostMode ? '· Blended' : ''}</span>
       </div>
       {isTpsMode && (
         <div className="mt-2 space-y-1">
@@ -60,8 +68,10 @@ function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?
           <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{((data.totalTokens as number) / 1000).toFixed(1)}k</p>
         </div>
         <div>
-          <span className="text-zinc-400 dark:text-zinc-400">Avg TPS</span>
-          <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">{String(data.avgTps)}</p>
+          <span className="text-zinc-400 dark:text-zinc-400">{isCostMode ? 'Avg TPS' : '$/M'}</span>
+          <p className="metric-mono font-semibold text-zinc-700 dark:text-zinc-300">
+            {isCostMode ? String(data.avgTps) : formatUsdPerM(rate)}
+          </p>
         </div>
       </div>
     </div>
@@ -69,7 +79,7 @@ function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?
 }
 
 function TimelineChartInner({ buckets }: Props) {
-  const [metric, setMetric] = useState<'ttft' | 'total' | 'tps'>('ttft');
+  const [metric, setMetric] = useState<MetricKey>('ttft');
 
   const chartData = useMemo(() => buckets.map(b => ({
     ...b,
@@ -78,9 +88,13 @@ function TimelineChartInner({ buckets }: Props) {
     tps: b.avgTps,
     tpsWall: b.avgWallTps,
     tpsLoss: b.avgTpsLoss,
+    // The 'cost' data key carries the bucket's blended $/M. CustomTooltip
+    // also reads blendedRateUsdPerM directly for the headline + footer.
+    cost: b.blendedRateUsdPerM,
   })), [buckets]);
 
   const config = metricConfig[metric];
+  const isCostMode = metric === 'cost';
 
   return (
     <motion.div
@@ -95,7 +109,7 @@ function TimelineChartInner({ buckets }: Props) {
           <p className="text-sm text-zinc-400 dark:text-zinc-400 mt-0.5">Performance patterns across the session</p>
         </div>
         <div className="flex items-center gap-1.5 bg-zinc-100/80 dark:bg-white/[0.06] rounded-xl p-1">
-          {(['ttft', 'total', 'tps'] as const).map(m => (
+          {(['ttft', 'total', 'tps', 'cost'] as const).map(m => (
             <button
               key={m}
               onClick={() => setMetric(m)}
@@ -133,7 +147,7 @@ function TimelineChartInner({ buckets }: Props) {
               axisLine={false}
               tickLine={false}
               dx={-4}
-              tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
+              tickFormatter={(v: number) => isCostMode ? (v == null || !Number.isFinite(v) ? '-' : `$${v}`) : v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
             />
             <Tooltip content={<CustomTooltip metric={metric} />} />
             <Area
@@ -143,6 +157,7 @@ function TimelineChartInner({ buckets }: Props) {
               strokeWidth={2}
               fill={`url(#fill-${metric})`}
               animationDuration={400}
+              connectNulls={!isCostMode}
             />
           </AreaChart>
         </ResponsiveContainer>

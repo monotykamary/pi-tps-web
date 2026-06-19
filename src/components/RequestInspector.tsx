@@ -5,7 +5,7 @@ import { X, Clock, Hash, ArrowBendUpLeft, ArrowsLeftRight, TreeStructure, Binocu
 
 import type { TimelineEventRow } from '../lib/queries';
 import type { DataThresholds } from '../types';
-import { formatDuration, formatTps } from '../lib/parser';
+import { formatDuration, formatTps, formatUsdPerM } from '../lib/parser';
 
 const formatTime = (ts: string) => ts.substring(11, 19);
 
@@ -270,6 +270,26 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <TimingPill label="Energy" value={selectedTps.energyJoules !== null ? `${selectedTps.energyJoules.toFixed(1)}J` : '-'} />
                     <TimingPill label={selectedTps.costTotal !== null ? 'Cost (est.)' : 'Cost'} value={selectedTps.energyCostUsd !== null ? `$${selectedTps.energyCostUsd.toFixed(4)}` : selectedTps.costTotal !== null ? `$${selectedTps.costTotal.toFixed(4)}` : '-'} />
+                  </div>
+                  {/* Blended $/M for this turn. A-else-B: prefer pi-tps' precomputed
+                      rateUsdPerMTokens (matches the turn-end banner exactly);
+                      otherwise derive from effective cost + tokens so older
+                      sessions still show a value. */}
+                  <div
+                    className="flex items-center justify-between text-[10px] bg-violet-500/5 dark:bg-violet-500/10 rounded-lg px-3 py-2"
+                    title={selectedTps.rateUsdPerMTokens !== null
+                      ? 'Stored $/M from pi-tps (effective cost ÷ tokens/1M).'
+                      : (selectedTps.rateUsdPerMTokensEffective !== null
+                        ? 'Derived $/M (no stored value for this turn — older session).'
+                        : 'No usable cost/token data for this turn.')}
+                  >
+                    <span className="text-violet-600 dark:text-violet-300">$/M-tokens</span>
+                    <span className="metric-mono text-violet-600 dark:text-violet-300">
+                      {formatUsdPerM(selectedTps.rateUsdPerMTokensEffective)}
+                      {selectedTps.rateUsdPerMTokens === null && selectedTps.rateUsdPerMTokensEffective !== null && (
+                        <span className="ml-1.5 text-[8px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">derived</span>
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>

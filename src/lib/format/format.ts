@@ -53,6 +53,12 @@ export function formatCurrency(n: number | null): string {
   return `$${n.toFixed(4)}`;
 }
 
+/** Format a $/M-tokens rate (the pi-tps banner's blended $/M). null → '-'. */
+export function formatUsdPerM(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return '-';
+  return `$${n.toFixed(2)}/M`;
+}
+
 export function formatTps(n: number): string {
   if (n >= 1000) return Math.round(n).toString();
   return n.toFixed(1);

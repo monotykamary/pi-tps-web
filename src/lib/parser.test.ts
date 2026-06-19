@@ -104,3 +104,44 @@ describe('pairEnergyWithTps', () => {
     expect(paired[0].energy).toBeUndefined();
   });
 });
+
+describe('rateUsdPerMTokens normalization', () => {
+  it('preserves the stored rateUsdPerMTokens field through ingest + derive', () => {
+    const raw = JSON.stringify({
+      id: 'turn-rate',
+      parentId: null,
+      timestamp: '2025-01-01T00:00:00.000Z',
+      type: 'custom',
+      customType: 'tps',
+      data: {
+        model: { provider: 'openai', modelId: 'gpt-4o' },
+        tokens: { input: 100, output: 50, cacheRead: 10, cacheWrite: 5, total: 165 },
+        timing: { ttftMs: 2000, totalMs: 5000, generationMs: 3000, streamMs: null, stallMs: 0, stallCount: 0, messageCount: 1 },
+        tps: 12.5,
+        cost: { input: 0.001, output: 0.0015, cacheRead: 0.0001, cacheWrite: 0.00025, total: 0.00285 },
+        rateUsdPerMTokens: 4.2,
+        timestamp: 1735689600000,
+      },
+    });
+    const derived = deriveEvents(ingestJsonl(raw));
+    const tps = getTpsEvents(derived)[0];
+    expect(tps.data.rateUsdPerMTokens).toBe(4.2);
+  });
+
+  it('coerces absent rateUsdPerMTokens to null (older sessions)', () => {
+    // VALID_TELEMETRY has no rateUsdPerMTokens field — older-session shape
+    const derived = deriveEvents(ingestJsonl(VALID_TELEMETRY));
+    const tps = getTpsEvents(derived)[0];
+    expect(tps.data.rateUsdPerMTokens).toBeNull();
+  });
+
+  it('preserves an explicit null rateUsdPerMTokens', () => {
+    const raw = VALID_TELEMETRY.replace(
+      'timestamp: 1735689600000,',
+      'rateUsdPerMTokens: null,\n    timestamp: 1735689600000,',
+    );
+    const derived = deriveEvents(ingestJsonl(raw));
+    const tps = getTpsEvents(derived)[0];
+    expect(tps.data.rateUsdPerMTokens).toBeNull();
+  });
+});

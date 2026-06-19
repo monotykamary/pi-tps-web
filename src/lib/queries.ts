@@ -81,6 +81,8 @@ export interface TimingBucketRow {
   avgWallTps: number;
   avgTpsLoss: number;
   totalTokens: number;
+  /** Volume-weighted blended $/M-tokens for the bucket: sum(effective cost) / (sum(tokens)/1e6). null when no cost data in the bucket. */
+  blendedRateUsdPerM: number | null;
 }
 
 export interface TokenCompositionRow {
@@ -155,6 +157,10 @@ export type TimelineEventRow =
       costTotal: number | null;
       energyJoules: number | null;
       energyCostUsd: number | null;
+      /** pi-tps' precomputed blended $/M (effectiveCost / (tokens.total/1e6)). null on older sessions. */
+      rateUsdPerMTokens: number | null;
+      /** A-else-B: rateUsdPerMTokens when present, else derived from effective cost + tokens. null only when no cost/zero tokens. */
+      rateUsdPerMTokensEffective: number | null;
       cacheRatio: number;
     }
   | {
@@ -568,7 +574,20 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       CASE WHEN avg(effective_tps) > 0
         THEN round(((avg(effective_tps) - avg(wall_tps)) / avg(effective_tps)) * 1000) / 10.0
         ELSE 0 END                                              AS avg_tps_loss,
-      sum(tokens_total)                                         AS total_tokens
+      sum(tokens_total)                                         AS total_tokens,
+      -- Volume-weighted blended $/M for the bucket. The effective cost
+      -- (Neuralwatt billed cost when present, else list-price cost_total)
+      -- is summed across the bucket, then divided by total scaled tokens.
+      -- Matches pi-tps' per-turn effectiveCost definition, so it agrees
+      -- with the stored rate_usd_per_m_tokens for turns that have it.
+      -- null when the bucket has no usable cost or zero tokens.
+      CASE WHEN sum(tokens_total) > 0
+        THEN round(
+          sum(COALESCE(energy_cost_usd, cost_total))
+            / nullif(sum(tokens_total) / 1000000.0, 0)
+          * 100
+        ) / 100.0
+        ELSE NULL END                                           AS blended_rate_usd_per_m
     FROM ranked
     GROUP BY bucket
     ORDER BY min(timestamp)
@@ -587,6 +606,7 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       avgWallTps: num(result, i, 'avg_wall_tps'),
       avgTpsLoss: num(result, i, 'avg_tps_loss'),
       totalTokens: num(result, i, 'total_tokens'),
+      blendedRateUsdPerM: maybeNum(result, i, 'blended_rate_usd_per_m'),
     });
   }
   return buckets;
@@ -1029,6 +1049,8 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       ttft_ms, total_ms, generation_ms, stall_ms, stall_count,
       effective_tps, wall_tps, tps,
       cost_total, energy_joules, energy_cost_usd,
+      rate_usd_per_m_tokens,
+      rate_usd_per_m_tokens_effective,
       CASE WHEN tokens_total > 0 THEN tokens_cache_read::double / tokens_total ELSE 0 END AS cache_ratio,
       NULL::bigint AS rewind_v,
       NULL::varchar AS from_id,
@@ -1045,6 +1067,8 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       NULL, NULL, NULL, NULL, NULL,
       NULL, NULL, NULL,
       NULL, NULL, NULL,
+      NULL,
+      NULL,
       NULL,
       rewind_v,
       from_id,
@@ -1087,6 +1111,8 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
         costTotal: maybeNum(result, i, 'cost_total'),
         energyJoules: maybeNum(result, i, 'energy_joules'),
         energyCostUsd: maybeNum(result, i, 'energy_cost_usd'),
+        rateUsdPerMTokens: maybeNum(result, i, 'rate_usd_per_m_tokens'),
+        rateUsdPerMTokensEffective: maybeNum(result, i, 'rate_usd_per_m_tokens_effective'),
         cacheRatio: num(result, i, 'cache_ratio'),
       });
     } else if (type === 'model_change') {

@@ -38,6 +38,17 @@ export interface TpsPayload {
     cacheWrite: number;
     total: number;
   } | null;
+  /**
+   * Blended $/M-tokens rate precomputed by pi-tps at turn end
+   * (rateUsdPerMTokens = effectiveCost / (tokens.total / 1_000_000)).
+   * The effective cost is the Neuralwatt billed cost when available,
+   * otherwise the list-price compute cost — exactly the value the
+   * pi-tps notification banner shows as `$X.XX/M`. null when the
+   * turn predates this field (older sessions) or when no usable
+   * cost/tokens were available; callers fall back to deriving it
+   * from cost/energy + tokens.
+   */
+  rateUsdPerMTokens?: number | null;
   timestamp: number;
 }
 
@@ -259,6 +270,8 @@ export interface TimingBucket {
   avgWallTps: number;
   avgTpsLoss: number;
   totalTokens: number;
+  /** Volume-weighted blended $/M-tokens for the bucket: sum(effective cost) / (sum(tokens)/1e6). null when no cost data. */
+  blendedRateUsdPerM: number | null;
 }
 
 /** Session state for the main app — tracks loaded files and their parsed events */

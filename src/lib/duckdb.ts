@@ -102,6 +102,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       cost_cache_read  DOUBLE,
       cost_cache_write DOUBLE,
       cost_total    DOUBLE,
+      rate_usd_per_m_tokens DOUBLE,
 
       -- Energy fields
       energy_joules DOUBLE,
@@ -176,6 +177,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           num(d.cost?.input ?? null), num(d.cost?.output ?? null),
           num(d.cost?.cacheRead ?? null), num(d.cost?.cacheWrite ?? null),
           num(d.cost?.total ?? null),
+          num(d.rateUsdPerMTokens ?? null),
           // energy
           'NULL', 'NULL',
           // sse energy raw
@@ -206,7 +208,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           // tps fields
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
-          'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           num(d.energy_joules), num(d.cost_usd),
           // sse energy raw
@@ -250,7 +252,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           // tps fields
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
-          'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
           // sse energy raw
@@ -273,7 +275,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           // remaining tps fields
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
-          'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
           // sse energy raw
@@ -295,7 +297,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           // tps fields
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
-          'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
           // sse energy raw
@@ -318,7 +320,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           // tps fields
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
-          'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // energy
           'NULL', 'NULL',
           // sse energy raw
@@ -342,7 +344,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   const COLS = `(session_id, id, parent_id, timestamp, type,
     provider, model_id, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_total,
     ttft_ms, total_ms, generation_ms, stream_ms, stall_ms, stall_count, tps,
-    cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total,
+    cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total, rate_usd_per_m_tokens,
     energy_joules, energy_cost_usd,
     carbon_g_co2eq, grid_carbon_intensity, grid_id, avg_power_watts,
     energy_kwh, attribution_method, attribution_ratio, ratio_was_capped,
@@ -367,7 +369,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       provider, model_id,
       tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_total,
       ttft_ms, total_ms, generation_ms, stream_ms, stall_ms, stall_count, tps,
-      cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total
+      cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total,
+      rate_usd_per_m_tokens
     FROM events
     WHERE type = 'tps'
   `);
@@ -430,6 +433,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
         t.tokens_input, t.tokens_output, t.tokens_cache_read, t.tokens_cache_write, t.tokens_total,
         t.ttft_ms, t.total_ms, t.generation_ms, t.stream_ms, t.stall_ms, t.stall_count, t.tps,
         t.cost_input, t.cost_output, t.cost_cache_read, t.cost_cache_write, t.cost_total,
+        t.rate_usd_per_m_tokens,
         e.energy_joules,
         e.energy_cost_usd,
         e.carbon_g_co2eq,
@@ -470,6 +474,19 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
     )
     SELECT
       *,
+      -- Effective blended cost: Neuralwatt billed cost (energy) when present,
+      -- otherwise the list-price token cost. Mirrors pi-tps' effectiveCost
+      -- selection so the rate below matches the banner's $/M exactly for
+      -- turns where pi-tps populated rate_usd_per_m_tokens.
+      COALESCE(energy_cost_usd, cost_total) AS effective_cost_usd,
+      -- A-else-B blended $/M-tokens: prefer pi-tps' precomputed per-turn
+      -- rate (A) when present; otherwise derive from effective cost + tokens
+      -- (B) so older sessions (logged before the field shipped) still get a
+      -- value. null only when no cost or zero tokens.
+      COALESCE(
+        rate_usd_per_m_tokens,
+        COALESCE(energy_cost_usd, cost_total) / NULLIF(tokens_total / 1000000.0, 0)
+      ) AS rate_usd_per_m_tokens_effective,
       CASE WHEN effective_ms > 0
         THEN tokens_output / (effective_ms / 1000.0)
         ELSE 0 END AS effective_tps,
