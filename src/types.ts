@@ -274,6 +274,20 @@ export interface TimingBucket {
   blendedRateUsdPerM: number | null;
   /** Sum of the effective cost across the bucket ($). Lets the chart derive a session-wide blended rate by summing across buckets. */
   effectiveCostTotal: number | null;
+  /** Sum of raw energy joules across the bucket (NeuralWatt turns only). null when no energy data. */
+  totalEnergyJoules: number | null;
+  /** Sum of energy-backed cost ($) across the bucket: SUM(energy_cost_usd) for NeuralWatt turns. null when no energy data. */
+  totalEnergyCost: number | null;
+  /** Sum of list-price token cost ($) across the bucket: SUM(cost_total). null when no list-price cost. */
+  totalListCost: number | null;
+  /** Mean instantaneous GPU power across the bucket's NeuralWatt turns (W). Live spike signal — surges when the model does more work per unit time. null when no energy data. */
+  avgPowerWatts: number | null;
+  /** Whether the attribution cap kicked in for any energy turn in the bucket (turn touched the full node but was only billed for `attributionRatio` of it). null when no energy data. */
+  ratioWasCapped: boolean | null;
+  /** Typical share of the node's draw the bucket's turns were billed for. Usually flat per session; surfaced as context, not as a multiplier. null when no energy data. */
+  attributionRatio: number | null;
+  /** Dominant electricity grid id for the bucket's NeuralWatt turns (e.g. "US-MIDA-PJM"). null when no energy data with a grid id. */
+  dominantGridId: string | null;
 }
 
 /** Session state for the main app — tracks loaded files and their parsed events */

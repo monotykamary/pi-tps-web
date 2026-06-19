@@ -85,6 +85,20 @@ export interface TimingBucketRow {
   blendedRateUsdPerM: number | null;
   /** Sum of the effective cost across the bucket ($): COALESCE(energy_cost_usd, cost_total) summed. The numerator of blendedRateUsdPerM; also lets the chart derive a session-wide blended rate by summing across buckets. */
   effectiveCostTotal: number | null;
+  /** Sum of raw energy joules across the bucket (NeuralWatt turns only). null when no energy data. */
+  totalEnergyJoules: number | null;
+  /** Sum of energy-backed cost ($) across the bucket: SUM(energy_cost_usd) for NeuralWatt turns. null when no energy data. */
+  totalEnergyCost: number | null;
+  /** Sum of list-price token cost ($) across the bucket: SUM(cost_total). null when no list-price cost. */
+  totalListCost: number | null;
+  /** Mean instantaneous GPU power across the bucket's NeuralWatt turns (W). Live spike signal — surges when the model does more work per unit time. null when no energy data. */
+  avgPowerWatts: number | null;
+  /** Whether the attribution cap kicked in for any energy turn in the bucket. null when no energy data. */
+  ratioWasCapped: boolean | null;
+  /** Typical share of the node's draw the bucket's turns were billed for. null when no energy data. */
+  attributionRatio: number | null;
+  /** Dominant electricity grid id for the bucket's NeuralWatt turns (e.g. "US-MIDA-PJM"). null when no energy data with a grid id. */
+  dominantGridId: string | null;
 }
 
 export interface TokenCompositionRow {
@@ -583,6 +597,32 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       -- Matches pi-tps' per-turn effectiveCost definition, so it agrees
       -- with the stored rate_usd_per_m_tokens for turns that have it.
       -- null when the bucket has no usable cost or zero tokens.
+      sum(energy_joules)                                        AS total_energy_joules,
+      sum(energy_cost_usd)                                      AS total_energy_cost,
+      sum(COALESCE(cost_total, 0))                              AS total_list_cost,
+      -- Live GPU power signal per bucket (mean instantaneous draw across
+      -- the bucket's NeuralWatt turns). Spikes here = the model doing more
+      -- work per unit time (bigger batches, longer decode, heavier attention).
+      avg(avg_power_watts)                                      AS avg_power_watts,
+      -- Attribution: how much of the node's real draw this turn was billed
+      -- for. ratio_was_capped means the cap kicked in (turn touched the full
+      -- node but was only billed for the attribution_ratio slice). Flat per
+      -- session usually, so surfaced as context rather than a multiplier.
+      max(ratio_was_capped)                                     AS ratio_was_capped,
+      avg(attribution_ratio)                                    AS attribution_ratio,
+      -- Dominant electricity grid for the bucket's NeuralWatt turns
+      -- (the grid_id accounting for the most joules). Used by the
+      -- cost-breakdown panel to label which grid priced the bucket.
+      -- "" when no energy rows carry a grid_id.
+      COALESCE(
+        (SELECT grid_id FROM (
+          SELECT grid_id, sum(energy_joules) AS j
+          FROM ranked e2 WHERE e2.bucket = ranked.bucket
+            AND energy_joules IS NOT NULL AND grid_id IS NOT NULL
+          GROUP BY grid_id ORDER BY j DESC LIMIT 1
+        ) sub),
+        ''
+      )                                                          AS dominant_grid_id,
       sum(COALESCE(energy_cost_usd, cost_total))                  AS effective_cost_total,
       CASE WHEN sum(tokens_total) > 0
         THEN round(
@@ -611,6 +651,13 @@ export async function queryTimingBuckets(sessionFilter?: string | null, modelFil
       totalTokens: num(result, i, 'total_tokens'),
       blendedRateUsdPerM: maybeNum(result, i, 'blended_rate_usd_per_m'),
       effectiveCostTotal: maybeNum(result, i, 'effective_cost_total'),
+      totalEnergyJoules: maybeNum(result, i, 'total_energy_joules'),
+      totalEnergyCost: maybeNum(result, i, 'total_energy_cost'),
+      totalListCost: maybeNum(result, i, 'total_list_cost'),
+      avgPowerWatts: maybeNum(result, i, 'avg_power_watts'),
+      ratioWasCapped: (col(result, i, 'ratio_was_capped') as boolean | null),
+      attributionRatio: maybeNum(result, i, 'attribution_ratio'),
+      dominantGridId: str(result, i, 'dominant_grid_id') || null,
     });
   }
   return buckets;
