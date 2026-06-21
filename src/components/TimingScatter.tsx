@@ -193,7 +193,7 @@ function TimingScatterInner({ data, onPointClick, thresholds }: Props) {
             />
             <ZAxis type="number" dataKey="z" range={[40, 200]} />
             <FadingTooltip content={<TimingTooltip />} cursor={{ strokeDasharray: '3 3' }} />
-            <Scatter data={displayData} onClick={(d) => onPointClick((d as unknown as { payload: { id: string } }).payload.id)}>
+            <Scatter data={displayData} onClick={(d: unknown) => onPointClick((d as unknown as { payload: { id: string } }).payload.id)}>
               {displayData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}

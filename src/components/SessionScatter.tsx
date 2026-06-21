@@ -166,7 +166,7 @@ function SessionScatterInner({ multiSummary, onSessionClick }: Props) {
             />
             <ZAxis type="number" dataKey="z" range={[60, 400]} />
             <FadingTooltip content={<SessionTooltip hasCost={hasCost} />} cursor={{ strokeDasharray: '3 3' }} />
-            <Scatter data={data} onClick={(d) => onSessionClick((d as unknown as { payload: { sessionId: string } }).payload.sessionId)}>
+            <Scatter data={data} onClick={(d: unknown) => onSessionClick((d as unknown as { payload: { sessionId: string } }).payload.sessionId)}>
               {data.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
