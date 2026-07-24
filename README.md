@@ -9,6 +9,8 @@ _Drag a `.jsonl` session file — no upload, no cloud, no persistence. Everythin
 [![pi extension](https://img.shields.io/badge/pi-extension-blueviolet)](https://github.com/earendil-works/pi-coding-agent)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/pi-tps-web?referralCode=ZqgrJ0)
+
 </div>
 
 ---
