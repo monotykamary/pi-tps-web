@@ -2,6 +2,7 @@
   "name": "pi-tps-web",
   "version": "1.5.0",
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
