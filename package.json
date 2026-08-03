@@ -79,5 +79,5 @@
     "next": "16.3.0-canary.24",
     "postcss": "8.5.15"
   },
-  "packageManager": "pnpm@11.18.0"
+  "packageManager": "pnpm@11.20.0"
 }
