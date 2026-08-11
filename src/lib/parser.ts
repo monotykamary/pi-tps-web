@@ -543,15 +543,38 @@ export function getRewindEvents(events: ParsedEvent[]): RewindEvent[] {
 }
 
 export function pairEnergyWithTps(tpsEvents: TpsEvent[], energyEvents: EnergyEvent[]): (TpsEvent & { energy?: EnergyPayload })[] {
-  const energyByNsParentId = new Map<string, EnergyPayload>();
+  // Entry order depends on extension load order: when pi-tps' turn_end runs
+  // first the chain is tps → energy (energy.parentId === tps.id); when the
+  // provider runs first it's energy → tps (tps.parentId === energy.id) —
+  // observed on real sessions, e.g. with queued flex models. Match both
+  // directions; each energy event pairs with at most one tps entry so a
+  // corrected-duplicate tps entry can't double-count it.
+  const byParentId = new Map<string, EnergyEvent[]>();
+  const byId = new Map<string, EnergyEvent>();
   for (const e of energyEvents) {
-    if (e.parentId == null) continue;
-    energyByNsParentId.set(`${e.sessionId}:${e.parentId}`, e.data);
+    if (e.id) byId.set(`${e.sessionId}:${e.id}`, e);
+    if (e.parentId != null) {
+      const key = `${e.sessionId}:${e.parentId}`;
+      byParentId.set(key, [...(byParentId.get(key) ?? []), e]);
+    }
   }
-  return tpsEvents.map(t => ({
-    ...t,
-    energy: t.id ? energyByNsParentId.get(`${t.sessionId}:${t.id}`) : undefined,
-  }));
+  const consumed = new Set<string>();
+  return tpsEvents.map(t => {
+    let match: EnergyEvent | undefined;
+    if (t.id) {
+      const list = byParentId.get(`${t.sessionId}:${t.id}`);
+      while (list?.length) {
+        const cand = list.shift()!;
+        if (!consumed.has(cand.id)) { match = cand; break; }
+      }
+    }
+    if (!match && t.parentId) {
+      const cand = byId.get(`${t.sessionId}:${t.parentId}`);
+      if (cand && !consumed.has(cand.id)) match = cand;
+    }
+    if (match?.id) consumed.add(match.id);
+    return { ...t, energy: match?.data };
+  });
 }
 
 /**

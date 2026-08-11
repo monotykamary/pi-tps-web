@@ -97,6 +97,49 @@ describe('pairEnergyWithTps', () => {
     expect(paired[0].energy).toBeUndefined();
   });
 
+  it('pairs energy appended BEFORE the tps entry (provider-first load order)', () => {
+    // Real-chain order observed when the neuralwatt provider's turn_end runs
+    // before pi-tps': assistant → energy → tps (energy.parentId = assistant,
+    // tps.parentId = energy). Common with queued flex models.
+    const energy = JSON.stringify({
+      id: 'nw-1', parentId: 'msg-1', timestamp: '2025-01-01T00:00:01.000Z',
+      type: 'custom', customType: 'neuralwatt-energy',
+      data: { energy_joules: 55.5, cost_usd: 0.000077 },
+    });
+    const tps = VALID_TELEMETRY.replace('"parentId":null', '"parentId":"nw-1"');
+    const parsed = parseJsonl([energy, tps].join('\n'));
+    const paired = pairEnergyWithTps(getTpsEvents(parsed), getEnergyEvents(parsed));
+    expect(paired[0].energy).toBeDefined();
+    expect(paired[0].energy?.cost_usd).toBe(0.000077);
+  });
+
+  it('pairs each energy event at most once across corrected-duplicate tps entries', () => {
+    // Chain A → T1 → N → T2 (T2 is pi-tps' billed-rate correction duplicate):
+    // energy must pair with T1 via T1.id = N.parentId and NOT again with T2
+    // via T2.parentId = N.id.
+    const mkTps = (id: string, parentId: string | null, ts: string) => JSON.stringify({
+      id, parentId, timestamp: ts, type: 'custom', customType: 'tps',
+      data: {
+        model: { provider: 'neuralwatt', modelId: 'glm-5.2-flex' },
+        tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
+        timing: { ttftMs: 1, totalMs: 2, generationMs: 1, streamMs: null, stallMs: 0, stallCount: 0, messageCount: 1 },
+        tps: 5, cost: null, timestamp: 1735689600000,
+      },
+    });
+    const t1 = mkTps('t1', 'msg-1', '2025-01-01T00:00:01.000Z');
+    const energy = JSON.stringify({
+      id: 'nw-cor', parentId: 't1', timestamp: '2025-01-01T00:00:01.500Z',
+      type: 'custom', customType: 'neuralwatt-energy',
+      data: { energy_joules: 1, cost_usd: 0.00001 },
+    });
+    const t2 = mkTps('t2', 'nw-cor', '2025-01-01T00:00:02.000Z');
+    const parsed = parseJsonl([t1, energy, t2].join('\n'));
+    const paired = pairEnergyWithTps(getTpsEvents(parsed), getEnergyEvents(parsed));
+    expect(paired.filter(p => p.energy)).toHaveLength(1);
+    expect(paired.find(p => p.id === 't1')?.energy?.cost_usd).toBe(0.00001);
+    expect(paired.find(p => p.id === 't2')?.energy).toBeUndefined();
+  });
+
   it('skips pairing when TPS id is empty', () => {
     const emptyIdTps = getTpsEvents(parseJsonl(VALID_TELEMETRY.replace('"id":"turn-1"', '"id":""')));
     const energy = getEnergyEvents(parseJsonl(ENERGY_EVENT));

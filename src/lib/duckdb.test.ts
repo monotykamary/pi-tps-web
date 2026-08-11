@@ -94,6 +94,18 @@ describe('duckdb SQL contracts', () => {
     }
   });
 
+  describe('energy↔tps pairing direction', () => {
+    it('tps_paired joins energy appended after OR before the tps entry', () => {
+      const joinStart = duckdbSrc.indexOf('FROM tps_flat t');
+      const join = duckdbSrc.slice(joinStart, joinStart + 1200);
+      expect(join).toContain('t.id = e.parent_id');
+      expect(join).toContain('t.parent_id = e.id');
+      // The fallback direction must not re-pair energy already claimed by a
+      // normal tps → energy chain (prevents corrected-duplicate double counting)
+      expect(join).toContain('NOT EXISTS');
+    });
+  });
+
   describe('rate_usd_per_m_tokens threaded through every SQL layer', () => {
     // Regression guard for "Referenced column ... not found in FROM clause":
     // the tps_paired base CTE names columns explicitly (no t.*), so adding a

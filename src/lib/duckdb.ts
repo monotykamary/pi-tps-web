@@ -470,7 +470,14 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
         END AS effective_ms
       FROM tps_flat t
       LEFT JOIN energy_detailed e
-        ON t.session_id = e.session_id AND t.id = e.parent_id
+        ON t.session_id = e.session_id AND (
+          -- energy appended right after the tps entry (pi-tps turn_end first)
+          t.id = e.parent_id
+          -- energy appended right before it (provider turn_end first)
+          OR (t.parent_id = e.id AND NOT EXISTS (
+            SELECT 1 FROM tps_flat t2
+            WHERE t2.session_id = e.session_id AND t2.id = e.parent_id))
+        )
     )
     SELECT
       *,
