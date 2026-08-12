@@ -60,6 +60,12 @@ export interface EnergyPayload {
   sse_energy_raw?: Record<string, unknown>;
   sse_mcr_session_raw?: Record<string, unknown>;
   sse_cost_raw?: Record<string, unknown>;
+  // Flex tier telemetry, derived client-side by the provider from SSE data
+  // chunks (not upstream-verbatim). Absent on non-flex and older entries.
+  service_tier?: string;
+  queue_seconds?: number;
+  flex_discount_pct_est?: number;
+  list_cost_usd_est?: number;
 }
 
 export interface TpsEvent extends TelemetryEvent {

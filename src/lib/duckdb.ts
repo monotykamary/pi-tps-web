@@ -135,6 +135,12 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       mcr_session_turns        BIGINT,
       mcr_all_chunks_cached    BOOLEAN,
 
+      -- Flex tier telemetry (derived client-side from SSE data chunks)
+      service_tier          VARCHAR,
+      queue_seconds         DOUBLE,
+      flex_discount_pct     DOUBLE,
+      list_cost_usd         DOUBLE,
+
       -- Rewind fields
       rewind_v BIGINT,
 
@@ -184,6 +190,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // sse mcr raw
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // flex
+          'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -236,6 +244,9 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           num(mcr?.summaries_used as number | null | undefined),
           num(mcr?.session_turns as number | null | undefined),
           bool(mcr?.all_chunks_cached),
+          // flex
+          esc(d.service_tier), num(d.queue_seconds),
+          num(d.flex_discount_pct_est), num(d.list_cost_usd_est),
           // rewind
           'NULL',
           // branch summary
@@ -259,6 +270,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // sse mcr raw
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // flex
+          'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           num(d.v),
           // branch summary
@@ -282,6 +295,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // sse mcr raw
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // flex
+          'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -304,6 +319,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // sse mcr raw
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // flex
+          'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -327,6 +344,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
           // sse mcr raw
           'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL', 'NULL',
+          // flex
+          'NULL', 'NULL', 'NULL', 'NULL',
           // rewind
           'NULL',
           // branch summary
@@ -353,6 +372,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
     compaction_triggered, compaction_energy_joules,
     mcr_original_tokens, mcr_compacted_tokens, current_turn_new_tokens,
     mcr_mode, mcr_summaries_used, mcr_session_turns, mcr_all_chunks_cached,
+    service_tier, queue_seconds, flex_discount_pct, list_cost_usd,
     rewind_v, from_id, summary,
     message_role, message_content, message_model)`;
   const BATCH = 500;
@@ -395,10 +415,11 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
       apc_hit_rate, apc_hit_tokens, apc_miss_tokens,
       context_tokens, compaction_triggered, compaction_energy_joules,
       mcr_original_tokens, mcr_compacted_tokens, current_turn_new_tokens,
-      mcr_mode, mcr_summaries_used, mcr_session_turns, mcr_all_chunks_cached
+      mcr_mode, mcr_summaries_used, mcr_session_turns, mcr_all_chunks_cached,
+      service_tier, queue_seconds, flex_discount_pct, list_cost_usd
     FROM events
     WHERE type = 'energy'
-      AND (carbon_g_co2eq IS NOT NULL OR avg_power_watts IS NOT NULL OR apc_hit_rate IS NOT NULL OR context_tokens IS NOT NULL)
+      AND (carbon_g_co2eq IS NOT NULL OR avg_power_watts IS NOT NULL OR apc_hit_rate IS NOT NULL OR context_tokens IS NOT NULL OR service_tier IS NOT NULL)
   `);
 
   await c.query(`
@@ -454,6 +475,10 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
         e.mcr_compacted_tokens,
         e.current_turn_new_tokens,
         e.mcr_mode,
+        e.service_tier,
+        e.queue_seconds,
+        e.flex_discount_pct,
+        e.list_cost_usd,
         CASE
           WHEN t.stream_ms > 0 AND t.stall_ms < t.stream_ms
                AND (t.stream_ms - t.stall_ms) >= 50

@@ -48,6 +48,11 @@ function maybeNum(results: QueryResult, row: number, colName: string): number | 
   return Number(v);
 }
 
+function maybeStr(results: QueryResult, row: number, colName: string): string | null {
+  const v = col(results, row, colName);
+  return v == null ? null : String(v);
+}
+
 // ─── Scatter/Chart data types ────────────────────────────────────────────────
 
 export interface ScatterPoint {
@@ -192,6 +197,14 @@ export type TimelineEventRow =
       rateUsdPerMTokens: number | null;
       /** A-else-B: rateUsdPerMTokens when present, else derived from effective cost + tokens. null only when no cost/zero tokens. */
       rateUsdPerMTokensEffective: number | null;
+      /** NeuralWatt service tier for this turn ('flex' = discounted async tier). null when no energy data. */
+      serviceTier: string | null;
+      /** Seconds this flex turn waited in the server-side queue (client-derived estimate). null when not a flex turn or unknown. */
+      queueSeconds: number | null;
+      /** Effective flex discount vs list price, in percent (client-derived estimate). null when not computable. */
+      flexDiscountPct: number | null;
+      /** List-price estimate for the same token counts — the discount baseline. null when not computable. */
+      listCostUsdEst: number | null;
       cacheRatio: number;
     }
   | {
@@ -1149,6 +1162,7 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       cost_total, energy_joules, energy_cost_usd,
       rate_usd_per_m_tokens,
       rate_usd_per_m_tokens_effective,
+      service_tier, queue_seconds, flex_discount_pct, list_cost_usd,
       CASE WHEN tokens_total > 0 THEN tokens_cache_read::double / tokens_total ELSE 0 END AS cache_ratio,
       NULL::bigint AS rewind_v,
       NULL::varchar AS from_id,
@@ -1167,6 +1181,7 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       NULL, NULL, NULL,
       NULL,
       NULL,
+      NULL, NULL, NULL, NULL,
       NULL,
       rewind_v,
       from_id,
@@ -1211,6 +1226,10 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
         energyCostUsd: maybeNum(result, i, 'energy_cost_usd'),
         rateUsdPerMTokens: maybeNum(result, i, 'rate_usd_per_m_tokens'),
         rateUsdPerMTokensEffective: maybeNum(result, i, 'rate_usd_per_m_tokens_effective'),
+        serviceTier: maybeStr(result, i, 'service_tier'),
+        queueSeconds: maybeNum(result, i, 'queue_seconds'),
+        flexDiscountPct: maybeNum(result, i, 'flex_discount_pct'),
+        listCostUsdEst: maybeNum(result, i, 'list_cost_usd'),
         cacheRatio: num(result, i, 'cache_ratio'),
       });
     } else if (type === 'model_change') {

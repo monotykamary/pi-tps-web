@@ -32,7 +32,7 @@ Built for provider engineers to inspect real-world LLM behavior: how cache hit r
 
 ## Energy data
 
-Energy and cost metrics come from the `pi-neuralwatt-provider` extension. If your `.jsonl` does not include energy events, those fields display `-` instead of hiding the UI entirely.
+Energy and cost metrics come from the `pi-neuralwatt-provider` extension. If your `.jsonl` does not include energy events, those fields display `-` instead of hiding the UI entirely. Requests served on the discounted async **flex** tier additionally show their server-side queue wait and effective discount vs list price in the request detail.
 
 ## Usage
 

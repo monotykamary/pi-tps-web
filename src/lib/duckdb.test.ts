@@ -45,6 +45,13 @@ function tpsFlatColumns(): string[] {
   return m![1].split(',').map((c) => c.trim().split(/\s+/)[0]).filter(Boolean);
 }
 
+/** Column names projected by the `energy_detailed` view, in order. */
+function energyDetailedColumns(): string[] {
+  const m = duckdbSrc.match(/CREATE VIEW energy_detailed AS\s*SELECT\s*([\s\S]*?)\s*FROM events\s*WHERE type = 'energy'/);
+  expect(m, 'energy_detailed view not found').not.toBeNull();
+  return m![1].split(',').map((c) => c.trim().split(/\s+/)[0]).filter(Boolean);
+}
+
 /** `t.col` / `e.col` references the `base` CTE selects (excludes the
  *  trailing CASE...AS effective_ms, which is a computed column). */
 function baseCteRefs(): string[] {
@@ -129,6 +136,27 @@ describe('duckdb SQL contracts', () => {
     it('is referenced by the tps_paired outer SELECT (A-else-B blend)', () => {
       expect(tpsPairedOuterSelect()).toContain(`COALESCE(\n        ${col},`);
     });
+  });
+
+  describe('flex telemetry threaded through every SQL layer', () => {
+    // Regression guard mirroring the rate_usd_per_m_tokens guard: flex fields
+    // flow events -> energy_detailed -> tps_paired. Forgetting a hop breaks
+    // view creation at load time or silently nulls the RequestInspector row.
+    const flexCols = ['service_tier', 'queue_seconds', 'flex_discount_pct', 'list_cost_usd'];
+
+    for (const col of flexCols) {
+      it(`"${col}" is declared in the events table`, () => {
+        expect(eventsColumns()).toContain(col);
+      });
+
+      it(`"${col}" is projected by energy_detailed`, () => {
+        expect(energyDetailedColumns()).toContain(col);
+      });
+
+      it(`"${col}" is exposed by the tps_paired base CTE (e.${col})`, () => {
+        expect(baseCteRefs()).toContain(col);
+      });
+    }
   });
 
   describe('tps_paired outer-SELECT bindings resolve against the base CTE', () => {
