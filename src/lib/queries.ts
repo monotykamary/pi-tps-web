@@ -201,10 +201,12 @@ export type TimelineEventRow =
       serviceTier: string | null;
       /** Seconds this flex turn waited in the server-side queue (client-derived estimate). null when not a flex turn or unknown. */
       queueSeconds: number | null;
-      /** Effective flex discount vs list price, in percent (client-derived estimate). null when not computable. */
+      /** Flex discount in percent. Constant 35 today — a fixed 0.65 pricing multiplier per the flex-tier docs (NeuralWatt pricing is energy-based; do not derive this from token list prices). Individual entries from older provider versions may carry stale derived values. */
       flexDiscountPct: number | null;
-      /** List-price estimate for the same token counts — the discount baseline. null when not computable. */
+      /** @deprecated Token list-price estimate — meaningless under energy-based pricing; provider ≥1.12.1 entries leave this null. */
       listCostUsdEst: number | null;
+      /** Standard-price (consumed) equivalent for the request: charged / 0.65 per flex-tier docs. null when unavailable. */
+      consumedCostUsdEst: number | null;
       cacheRatio: number;
     }
   | {
@@ -1162,7 +1164,7 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
       cost_total, energy_joules, energy_cost_usd,
       rate_usd_per_m_tokens,
       rate_usd_per_m_tokens_effective,
-      service_tier, queue_seconds, flex_discount_pct, list_cost_usd,
+      service_tier, queue_seconds, flex_discount_pct, list_cost_usd, consumed_cost_usd,
       CASE WHEN tokens_total > 0 THEN tokens_cache_read::double / tokens_total ELSE 0 END AS cache_ratio,
       NULL::bigint AS rewind_v,
       NULL::varchar AS from_id,
@@ -1230,6 +1232,7 @@ export async function queryTimeline(sessionFilter?: string | null, modelFilter?:
         queueSeconds: maybeNum(result, i, 'queue_seconds'),
         flexDiscountPct: maybeNum(result, i, 'flex_discount_pct'),
         listCostUsdEst: maybeNum(result, i, 'list_cost_usd'),
+        consumedCostUsdEst: maybeNum(result, i, 'consumed_cost_usd'),
         cacheRatio: num(result, i, 'cache_ratio'),
       });
     } else if (type === 'model_change') {

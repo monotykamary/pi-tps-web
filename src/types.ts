@@ -65,7 +65,10 @@ export interface EnergyPayload {
   service_tier?: string;
   queue_seconds?: number;
   flex_discount_pct_est?: number;
+  /** @deprecated Fiction under energy-based pricing (token list-cost estimates); provider ≥1.12.1 stops writing this and writes consumed_cost_usd_est instead. Kept for legacy entries. */
   list_cost_usd_est?: number;
+  /** Standard-price (consumed) equivalent = charged / 0.65, per the flex-tier docs. */
+  consumed_cost_usd_est?: number;
 }
 
 export interface TpsEvent extends TelemetryEvent {

@@ -142,7 +142,7 @@ describe('duckdb SQL contracts', () => {
     // Regression guard mirroring the rate_usd_per_m_tokens guard: flex fields
     // flow events -> energy_detailed -> tps_paired. Forgetting a hop breaks
     // view creation at load time or silently nulls the RequestInspector row.
-    const flexCols = ['service_tier', 'queue_seconds', 'flex_discount_pct', 'list_cost_usd'];
+    const flexCols = ['service_tier', 'queue_seconds', 'flex_discount_pct', 'list_cost_usd', 'consumed_cost_usd'];
 
     for (const col of flexCols) {
       it(`"${col}" is declared in the events table`, () => {

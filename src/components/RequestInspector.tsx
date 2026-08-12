@@ -294,12 +294,12 @@ function RequestInspectorInner({ timeline, selectedId, onSelect, thresholds }: P
                   {selectedTps.serviceTier === 'flex' && (
                     <div
                       className="flex items-center justify-between text-[10px] bg-moss/5 dark:bg-moss/10 rounded-lg px-3 py-2"
-                      title="Discounted async tier — the provider may hold requests in a server-side queue at peak. Discount and queue wait are client-side estimates derived from SSE data chunks (pi-neuralwatt-provider)."
+                      title="Discounted async tier — the provider may hold requests in a server-side queue at peak. Per the flex-tier docs, flex is billed at a fixed 35% off the standard (consumed) price; the charged amount is energy-derived, so it must not be compared against token list prices. Queue wait is derived client-side from SSE heartbeats (pi-neuralwatt-provider)."
                     >
                       <span className="text-moss">Flex tier</span>
                       <span className="metric-mono text-moss">
                         {[
-                          selectedTps.flexDiscountPct !== null ? `−${selectedTps.flexDiscountPct.toFixed(0)}% vs list` : null,
+                          selectedTps.flexDiscountPct !== null ? `−${selectedTps.flexDiscountPct.toFixed(0)}% vs standard` : null,
                           selectedTps.queueSeconds !== null ? `queued ~${formatDuration(selectedTps.queueSeconds * 1000)}` : null,
                         ].filter(Boolean).join(' · ') || 'async tier'}
                       </span>
