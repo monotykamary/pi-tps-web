@@ -52,12 +52,12 @@ function energyDetailedColumns(): string[] {
   return m![1].split(',').map((c) => c.trim().split(/\s+/)[0]).filter(Boolean);
 }
 
-/** `t.col` / `e.col` references the `base` CTE selects (excludes the
- *  trailing CASE...AS effective_ms, which is a computed column). */
+/** Energy/TPS columns the first `paired` SELECT projects into `base`.
+ *  Excludes the trailing CASE...AS effective_ms, which is computed later. */
 function baseCteRefs(): string[] {
   const viewSrc = duckdbSrc.slice(duckdbSrc.indexOf('CREATE VIEW tps_paired'));
-  const m = viewSrc.match(/WITH base AS \(\s*SELECT\s*([\s\S]*?)\s*FROM tps_flat/);
-  expect(m, 'tps_paired base CTE not found').not.toBeNull();
+  const m = viewSrc.match(/WITH paired AS \(\s*SELECT\s*([\s\S]*?)\s*FROM tps_flat t\s*INNER JOIN energy_detailed/);
+  expect(m, 'tps_paired paired CTE not found').not.toBeNull();
   return [...m![1].matchAll(/[te]\.(\w+)/g)].map((x) => x[1]);
 }
 
@@ -103,13 +103,15 @@ describe('duckdb SQL contracts', () => {
 
   describe('energy↔tps pairing direction', () => {
     it('tps_paired joins energy appended after OR before the tps entry', () => {
-      const joinStart = duckdbSrc.indexOf('FROM tps_flat t');
-      const join = duckdbSrc.slice(joinStart, joinStart + 1200);
-      expect(join).toContain('t.id = e.parent_id');
-      expect(join).toContain('t.parent_id = e.id');
-      // The fallback direction must not re-pair energy already claimed by a
-      // normal tps → energy chain (prevents corrected-duplicate double counting)
-      expect(join).toContain('NOT EXISTS');
+      const pairingSrc = duckdbSrc.slice(duckdbSrc.indexOf('CREATE TABLE claimed AS'));
+      expect(pairingSrc).toContain('t.id = e.parent_id');
+      expect(pairingSrc).toContain('t.parent_id = e.id');
+      // DuckDB WASM cannot LEFT JOIN a subquery, so leftover energy is
+      // materialised and the reverse match ANTI JOINs claimed TPS rows.
+      expect(pairingSrc).toContain('CREATE TABLE leftover_energy');
+      expect(pairingSrc).toContain('ANTI JOIN claimed');
+      expect(pairingSrc).not.toContain('NOT EXISTS');
+      expect(pairingSrc).not.toContain('LEFT JOIN');
     });
   });
 

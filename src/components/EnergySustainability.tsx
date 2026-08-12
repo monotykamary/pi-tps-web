@@ -17,6 +17,7 @@ interface Props {
   dbVersion: number;
   activeSessionId: string | null;
   selectedModel: string | null;
+  ready?: boolean;
 }
 
 function Co2Tooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: Record<string, unknown> }> }) {
@@ -159,13 +160,14 @@ function formatWatts(w: number | null): string {
   return `${(w / 1000).toFixed(2)} kW`;
 }
 
-function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel }: Props) {
+function EnergySustainabilityInner({ dbVersion, activeSessionId, selectedModel, ready = true }: Props) {
   const { data: queryData } = useDuckQuery<{
     details: EnergyDetailRow[];
     aggregates: EnergyAggregateRow;
   } | null>(
     () => queryEnergyDetails(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
+    { skip: !ready },
   );
 
   // Stabilize the details array identity (the `?? []` fallback would

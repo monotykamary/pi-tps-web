@@ -66,6 +66,8 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   const { conn: c } = await getDuckDB();
 
   await c.query(`DROP VIEW IF EXISTS tps_paired`);
+  await c.query(`DROP TABLE IF EXISTS leftover_energy`);
+  await c.query(`DROP TABLE IF EXISTS claimed`);
   await c.query(`DROP VIEW IF EXISTS messages_flat`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);
@@ -434,8 +436,29 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   `);
 
   // Enriched view: TPS rows with effective_tps, wall_tps, effective_ms,
-  // and LEFT JOINed energy data. This is the primary view for all dashboard queries.
+  // and paired energy data. This is the primary view for all dashboard queries.
   //
+  // DuckDB WASM cannot LEFT JOIN on a subquery/CTE ("Cannot perform non-inner
+  // join on subquery"), so pairing uses two materialised tables. Forward
+  // matches (energy appended after the TPS entry) claim first; leftover
+  // energy is only offered to reverse matches (tps.parent_id = energy.id)
+  // that no TPS already claimed. Mirrors pairEnergyWithTps().
+  await c.query(`
+    CREATE TABLE claimed AS
+    SELECT t.session_id, t.id AS tps_id, e.id AS energy_id
+    FROM tps_flat t
+    INNER JOIN energy_detailed e
+      ON t.session_id = e.session_id AND t.id = e.parent_id
+  `);
+
+  await c.query(`
+    CREATE TABLE leftover_energy AS
+    SELECT e.*
+    FROM energy_detailed e
+    ANTI JOIN claimed c
+      ON e.session_id = c.session_id AND e.id = c.energy_id
+  `);
+
   // effective_tps mirrors computeSafeEffectiveMs / computeEffectiveTps from parser.ts:
   //   Primary branch (stream-based, excludes TTFT):
   //     if streamMs > 0 AND stallMs < streamMs AND (streamMs - stallMs) >= 50 AND stallMs < (streamMs - stallMs)
@@ -449,7 +472,7 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
   //   Else: effective_ms = 0, effective_tps = 0
   await c.query(`
     CREATE VIEW tps_paired AS
-    WITH base AS (
+    WITH paired AS (
       SELECT
         t.session_id, t.id, t.parent_id, t.timestamp,
         t.provider, t.model_id,
@@ -481,31 +504,117 @@ export async function loadEvents(events: ParsedEvent[]): Promise<void> {
         e.queue_seconds,
         e.flex_discount_pct,
         e.list_cost_usd,
-        e.consumed_cost_usd,
+        e.consumed_cost_usd
+      FROM tps_flat t
+      INNER JOIN energy_detailed e
+        ON t.session_id = e.session_id AND t.id = e.parent_id
+
+      UNION ALL
+
+      SELECT
+        t.session_id, t.id, t.parent_id, t.timestamp,
+        t.provider, t.model_id,
+        t.tokens_input, t.tokens_output, t.tokens_cache_read, t.tokens_cache_write, t.tokens_total,
+        t.ttft_ms, t.total_ms, t.generation_ms, t.stream_ms, t.stall_ms, t.stall_count, t.tps,
+        t.cost_input, t.cost_output, t.cost_cache_read, t.cost_cache_write, t.cost_total,
+        t.rate_usd_per_m_tokens,
+        e.energy_joules,
+        e.energy_cost_usd,
+        e.carbon_g_co2eq,
+        e.grid_carbon_intensity,
+        e.grid_id,
+        e.avg_power_watts,
+        e.attribution_method,
+        e.attribution_ratio,
+        e.ratio_was_capped,
+        e.uncapped_energy_joules,
+        e.apc_hit_rate,
+        e.apc_hit_tokens,
+        e.apc_miss_tokens,
+        e.context_tokens,
+        e.compaction_triggered,
+        e.compaction_energy_joules,
+        e.mcr_original_tokens,
+        e.mcr_compacted_tokens,
+        e.current_turn_new_tokens,
+        e.mcr_mode,
+        e.service_tier,
+        e.queue_seconds,
+        e.flex_discount_pct,
+        e.list_cost_usd,
+        e.consumed_cost_usd
+      FROM tps_flat t
+      INNER JOIN leftover_energy e
+        ON t.session_id = e.session_id AND t.parent_id = e.id
+      ANTI JOIN claimed c
+        ON t.session_id = c.session_id AND t.id = c.tps_id
+
+      UNION ALL
+
+      SELECT
+        t.session_id, t.id, t.parent_id, t.timestamp,
+        t.provider, t.model_id,
+        t.tokens_input, t.tokens_output, t.tokens_cache_read, t.tokens_cache_write, t.tokens_total,
+        t.ttft_ms, t.total_ms, t.generation_ms, t.stream_ms, t.stall_ms, t.stall_count, t.tps,
+        t.cost_input, t.cost_output, t.cost_cache_read, t.cost_cache_write, t.cost_total,
+        t.rate_usd_per_m_tokens,
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, NULL
+      FROM tps_flat t
+      ANTI JOIN claimed c
+        ON t.session_id = c.session_id AND t.id = c.tps_id
+      ANTI JOIN leftover_energy e
+        ON t.session_id = e.session_id AND t.parent_id = e.id
+    ),
+    base AS (
+      SELECT
+        session_id, id, parent_id, timestamp,
+        provider, model_id,
+        tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_total,
+        ttft_ms, total_ms, generation_ms, stream_ms, stall_ms, stall_count, tps,
+        cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total,
+        rate_usd_per_m_tokens,
+        energy_joules,
+        energy_cost_usd,
+        carbon_g_co2eq,
+        grid_carbon_intensity,
+        grid_id,
+        avg_power_watts,
+        attribution_method,
+        attribution_ratio,
+        ratio_was_capped,
+        uncapped_energy_joules,
+        apc_hit_rate,
+        apc_hit_tokens,
+        apc_miss_tokens,
+        context_tokens,
+        compaction_triggered,
+        compaction_energy_joules,
+        mcr_original_tokens,
+        mcr_compacted_tokens,
+        current_turn_new_tokens,
+        mcr_mode,
+        service_tier,
+        queue_seconds,
+        flex_discount_pct,
+        list_cost_usd,
+        consumed_cost_usd,
         CASE
-          WHEN t.stream_ms > 0 AND t.stall_ms < t.stream_ms
-               AND (t.stream_ms - t.stall_ms) >= 50
-               AND t.stall_ms < (t.stream_ms - t.stall_ms)
-            THEN t.stream_ms - t.stall_ms
-          WHEN t.generation_ms >= 50 THEN
+          WHEN stream_ms > 0 AND stall_ms < stream_ms
+               AND (stream_ms - stall_ms) >= 50
+               AND stall_ms < (stream_ms - stall_ms)
+            THEN stream_ms - stall_ms
+          WHEN generation_ms >= 50 THEN
             CASE
-              WHEN (t.generation_ms - t.stall_ms) < 200
-                   OR t.stall_ms > t.generation_ms * 0.85
-                THEN greatest(t.generation_ms - t.stall_ms / 2.0, 50)
-              ELSE greatest(t.generation_ms - t.stall_ms, 50)
+              WHEN (generation_ms - stall_ms) < 200
+                   OR stall_ms > generation_ms * 0.85
+                THEN greatest(generation_ms - stall_ms / 2.0, 50)
+              ELSE greatest(generation_ms - stall_ms, 50)
             END
           ELSE 0
         END AS effective_ms
-      FROM tps_flat t
-      LEFT JOIN energy_detailed e
-        ON t.session_id = e.session_id AND (
-          -- energy appended right after the tps entry (pi-tps turn_end first)
-          t.id = e.parent_id
-          -- energy appended right before it (provider turn_end first)
-          OR (t.parent_id = e.id AND NOT EXISTS (
-            SELECT 1 FROM tps_flat t2
-            WHERE t2.session_id = e.session_id AND t2.id = e.parent_id))
-        )
+      FROM paired
     )
     SELECT
       *,
@@ -557,6 +666,8 @@ export async function runQuery(sql: string): Promise<QueryResult> {
 export async function resetDB(): Promise<void> {
   const { conn: c } = await getDuckDB();
   await c.query(`DROP VIEW IF EXISTS tps_paired`);
+  await c.query(`DROP TABLE IF EXISTS leftover_energy`);
+  await c.query(`DROP TABLE IF EXISTS claimed`);
   await c.query(`DROP VIEW IF EXISTS messages_flat`);
   await c.query(`DROP VIEW IF EXISTS tps_flat`);
   await c.query(`DROP VIEW IF EXISTS energy_flat`);

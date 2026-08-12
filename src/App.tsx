@@ -87,13 +87,13 @@ export default function App() {
   const { data: summary } = useDuckQuery<ConversationSummaryRow | null>(
     () => querySummary(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const { data: queryModelsResult } = useDuckQuery<ModelInfoRow[]>(
     () => queryModels(activeSessionId),
     [dbVersion, activeSessionId],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const modelList = queryModelsResult ?? [];
@@ -116,7 +116,7 @@ export default function App() {
   const { data: dataThresholds } = useDuckQuery<DataThresholdsRow>(
     () => queryDataThresholds(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const dataThresholdsJs = useMemo(
@@ -143,7 +143,7 @@ export default function App() {
   const { data: buckets } = useDuckQuery<TimingBucketRow[]>(
     () => queryTimingBuckets(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const { data: multiSummary } = useDuckQuery<{
@@ -170,7 +170,7 @@ export default function App() {
       return queryMultiSessionSummary(fileNames);
     },
     [dbVersion, sessions.size, activeSessionId],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   // ---- DuckDB queries for migrated components ----
@@ -182,13 +182,13 @@ export default function App() {
   }>(
     () => queryCacheEfficiency(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const { data: tokenComposition } = useDuckQuery<TokenCompositionRow[]>(
     () => queryTokenComposition(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const { data: ttftDistribution } = useDuckQuery<{
@@ -199,31 +199,31 @@ export default function App() {
   }>(
     () => queryTtftDistribution(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const { data: thresholdStats } = useDuckQuery<ThresholdStat[]>(
     () => dataThresholds ? queryThresholdCrossings(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
     [dbVersion, activeSessionId, selectedModel, dataThresholds],
-    { skip: viewTab === 'sql' || !dataThresholds },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading || !dataThresholds },
   );
 
   const { data: anomalies } = useDuckQuery<AnomalyRow[]>(
     () => dataThresholds ? queryAnomalies(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
     [dbVersion, activeSessionId, selectedModel, dataThresholds],
-    { skip: viewTab === 'sql' || !dataThresholds },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading || !dataThresholds },
   );
 
   const { data: scatterData } = useDuckQuery<ScatterPoint[]>(
     () => dataThresholds ? queryScatter(dataThresholds, activeSessionId, selectedModel) : Promise.resolve([]),
     [dbVersion, activeSessionId, selectedModel, dataThresholds],
-    { skip: viewTab === 'sql' || !dataThresholds },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading || !dataThresholds },
   );
 
   const { data: timelineRows } = useDuckQuery<TimelineEventRow[]>(
     () => queryTimeline(activeSessionId, selectedModel),
     [dbVersion, activeSessionId, selectedModel],
-    { skip: viewTab === 'sql' },
+    { skip: viewTab === 'sql' || !hasLoaded || dbLoading },
   );
 
   const handleExportCsv = useCallback(() => {
@@ -641,7 +641,7 @@ export default function App() {
             </div>
 
             {/* Energy & Sustainability — only shown when SSE raw data exists */}
-            <EnergySustainability dbVersion={dbVersion} activeSessionId={activeSessionId} selectedModel={selectedModel} />
+            <EnergySustainability dbVersion={dbVersion} activeSessionId={activeSessionId} selectedModel={selectedModel} ready={hasLoaded && !dbLoading} />
           </div>
         )}
       </div>
