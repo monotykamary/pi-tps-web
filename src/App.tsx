@@ -341,9 +341,9 @@ export default function App() {
                     onChange={(e) => setSelectedModel(e.target.value || null)}
                     className="appearance-none bg-transparent dark:bg-transparent border-0 rounded-md pl-2 pr-5 py-1.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-accent/30 max-w-[10rem] truncate"
                   >
-                    <option value="">All models</option>
+                    <option value="" className="bg-white text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">All models</option>
                     {modelList.map((m) => (
-                      <option key={m.modelId} value={m.modelId}>
+                      <option key={m.modelId} value={m.modelId} className="bg-white text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
                         ({m.provider}) {m.modelId.split('/')?.pop()}
                       </option>
                     ))}
