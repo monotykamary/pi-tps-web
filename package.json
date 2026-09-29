@@ -1,6 +1,6 @@
 {
   "name": "pi-tps-web",
-  "version": "1.7.7",
+  "version": "1.7.8",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "precommit": "npm run typecheck && npm run test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:pi": "node scripts/test-pi-compat.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -57,7 +58,8 @@
     "typescript-eslint": "8.59.4",
     "vite": "^8.0.16",
     "vitest": "^4.1.7",
-    "@earendil-works/pi-coding-agent": "0.87.0"
+    "@earendil-works/pi-coding-agent": "0.99.0",
+    "@earendil-works/pi-ai": "0.99.0"
   },
   "files": [
     "dist",
@@ -72,14 +74,14 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.74.0",
-    "@earendil-works/pi-coding-agent": ">=0.74.0"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
   },
   "overrides": {
     "brace-expansion": "5.0.6",
     "next": "16.3.0-canary.24",
     "postcss": "8.5.15",
-    "@earendil-works/pi-coding-agent": "0.87.0",
-    "@earendil-works/pi-ai": "0.87.0"
+    "@earendil-works/pi-coding-agent": "0.99.0",
+    "@earendil-works/pi-ai": "0.99.0"
   }
 }
