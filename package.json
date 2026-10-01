@@ -1,6 +1,6 @@
 {
   "name": "pi-tps-web",
-  "version": "1.7.8",
+  "version": "1.7.9",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -58,8 +58,8 @@
     "typescript-eslint": "8.59.4",
     "vite": "^8.0.16",
     "vitest": "^4.1.7",
-    "@earendil-works/pi-coding-agent": "0.99.0",
-    "@earendil-works/pi-ai": "0.99.0"
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@earendil-works/pi-ai": "1.0.0"
   },
   "files": [
     "dist",
@@ -81,7 +81,7 @@
     "brace-expansion": "5.0.6",
     "next": "16.3.0-canary.24",
     "postcss": "8.5.15",
-    "@earendil-works/pi-coding-agent": "0.99.0",
-    "@earendil-works/pi-ai": "0.99.0"
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@earendil-works/pi-ai": "1.0.0"
   }
 }

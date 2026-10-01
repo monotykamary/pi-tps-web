@@ -13,6 +13,10 @@ _Drag a `.jsonl` session file — no upload, no cloud, no persistence. Everythin
 
 </div>
 
+## Pi 1.0 compatibility (1.7.9)
+
+Development SDKs are pinned to **1.0.0**; host-provided dependencies remain wildcard peers. Run `bun run test:pi` for offline real-host registrations, prompt/tool loadouts, nested calls, reload and shutdown. Set `PI1_HOST_PACKAGE` to an installed Pi package directory and `PI1_HOST_ENTRY=bundle` to check its bundled runtime.
+
 ---
 
 Built for provider engineers to inspect real-world LLM behavior: how cache hit rates shift as conversations grow, where the slow zones live, and whether routing thresholds land where they should.
@@ -82,6 +86,7 @@ Once both extensions are loaded, run the `/tps-web` slash command in pi:
 ```
 
 This will:
+
 1. Export telemetry JSONL to `~/.cache/pi-telemetry/` (same as `/tps-export`)
 2. Open the folder in Finder/your file manager
 3. Start a local HTTP server on port 3141 (auto-increments if taken)
@@ -104,8 +109,10 @@ Expects the newline-delimited JSON format produced by `pi-tps` (via `/tps-export
 ### Tree structure
 
 ParentIds are re-chained so the exported entries form a self-contained tree. The root is typically a `model_change` entry with `parentId: null`. Branching (rewinds) creates new children at earlier points in the tree, just like pi's native session tree.
+
 ```
 
 ## License
 
 MIT
+```
