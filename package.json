@@ -3,6 +3,10 @@
   "version": "1.7.11",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monotykamary/pi-tps-web.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
