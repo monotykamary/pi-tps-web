@@ -1,6 +1,6 @@
 {
   "name": "pi-tps-web",
-  "version": "1.7.10",
+  "version": "1.7.11",
   "type": "module",
   "license": "MIT",
   "scripts": {
